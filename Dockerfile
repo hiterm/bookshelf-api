@@ -1,7 +1,7 @@
 FROM rust:1.58
 
 RUN cargo new --bin bookshelf-api
-WORKDIR /app
+WORKDIR /bookshelf-api
 
 COPY ./Cargo.lock ./Cargo.lock
 COPY ./Cargo.toml ./Cargo.toml
