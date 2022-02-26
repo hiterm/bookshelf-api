@@ -14,9 +14,13 @@ async fn hello() -> impl Responder {
 }
 
 fn fetch_port() -> u16 {
-    std::env::var("PORT")
-        // TODO: エラー処理を細かく
-        .unwrap_or("8080".to_string())
-        .parse()
-        .expect("Failed to parse environment variable PORT.")
+    use std::env::VarError;
+
+    match std::env::var("PORT") {
+        Ok(s) => s
+            .parse()
+            .expect("Failed to parse environment variable PORT."),
+        Err(VarError::NotPresent) => panic!("Environment variable PORT is required."),
+        Err(VarError::NotUnicode(_)) => panic!("Environment variable PORT is not unicode."),
+    }
 }
