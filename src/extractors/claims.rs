@@ -132,9 +132,9 @@ impl FromRequest for Claims {
 }
 
 #[derive(Debug, Display, derive_more::Error)]
-#[display(fmt = "my error: {}", name)]
+#[display(fmt = "my error: {}", message)]
 struct MyError {
-    name: &'static str,
+    message: String,
 }
 
 // Use default implementation for `error_response()` method
@@ -154,10 +154,10 @@ async fn fetch_jwks(domain: &str) -> Result<JwkSet, MyError> {
         .await;
     let mut response = match response {
         Ok(response) => response,
-        Err(_) => return Err(MyError {name: "TODO"}),
+        Err(e) => return Err(MyError {message: format!("TODO1: {}", e)}),
     };
     match response.json().await {
         Ok(jwks) => Ok(jwks),
-        Err(_) => Err(MyError {name: "TODO"}),
+        Err(_) => Err(MyError {message: "TODO2".to_string()}),
     }
 }

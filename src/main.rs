@@ -4,6 +4,8 @@ mod types;
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 
+use crate::extractors::Claims;
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let db_url = fetch_database_url();
@@ -14,9 +16,12 @@ async fn main() -> std::io::Result<()> {
         .await
         .unwrap();
 
+    let auth0_config = extractors::Auth0Config::default();
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .app_data(auth0_config.clone())
             .service(hello)
     })
     .bind(("0.0.0.0", fetch_port()))?
@@ -25,7 +30,7 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[get("/")]
-async fn hello(pool: web::Data<PgPool>) -> impl Responder {
+async fn hello(pool: web::Data<PgPool>, _claims: Claims) -> impl Responder {
     let row: (i64,) = sqlx::query_as("SELECT $1")
         .bind(150_i64)
         .fetch_one(pool.get_ref())
