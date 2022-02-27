@@ -4,10 +4,10 @@ use actix_web::{
     http::{StatusCode, Uri},
     Error, FromRequest, HttpResponse,
 };
-use awc::Client;
 use actix_web_httpauth::{
     extractors::bearer::BearerAuth, headers::www_authenticate::bearer::Bearer,
 };
+use awc::Client;
 use derive_more::Display;
 use jsonwebtoken::{
     decode, decode_header,
@@ -103,19 +103,9 @@ impl FromRequest for Claims {
                 ClientError::NotFound("kid not found in token header".to_string())
             })?;
             let domain = config.domain.as_str();
-            let jwks: JwkSet = Client::new()
-                .get(
-                    Uri::builder()
-                        .scheme("https")
-                        .authority(domain)
-                        .path_and_query("/.well-known/jwks.json")
-                        .build()
-                        .unwrap(),
-                )
-                .send()
-                .await?
-                .json()
-                .await?;
+            // TODO: サンプル実装の通りに戻せそうなら戻す
+            // https://github.com/auth0-developer-hub/api_actix-web_rust_hello-world/blob/c86861763a4a4f2ad5f0e39bb3c15a7216d3fdba/src/extractors/claims.rs#L107-L119
+            let jwks = fetch_jwks(domain).await?;
             let jwk = jwks
                 .find(&kid)
                 .ok_or_else(|| ClientError::NotFound("No JWK found for kid".to_string()))?;
@@ -138,5 +128,36 @@ impl FromRequest for Claims {
                 algorithm => Err(ClientError::UnsupportedAlgortithm(algorithm).into()),
             }
         })
+    }
+}
+
+#[derive(Debug, Display, derive_more::Error)]
+#[display(fmt = "my error: {}", name)]
+struct MyError {
+    name: &'static str,
+}
+
+// Use default implementation for `error_response()` method
+impl ResponseError for MyError {}
+
+async fn fetch_jwks(domain: &str) -> Result<JwkSet, MyError> {
+    let response = Client::new()
+        .get(
+            Uri::builder()
+                .scheme("https")
+                .authority(domain)
+                .path_and_query("/.well-known/jwks.json")
+                .build()
+                .unwrap(),
+        )
+        .send()
+        .await;
+    let mut response = match response {
+        Ok(response) => response,
+        Err(_) => return Err(MyError {name: "TODO"}),
+    };
+    match response.json().await {
+        Ok(jwks) => Ok(jwks),
+        Err(_) => Err(MyError {name: "TODO"}),
     }
 }
