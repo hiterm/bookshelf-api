@@ -1,4 +1,5 @@
-mod auth;
+mod extractors;
+mod types;
 
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use sqlx::{postgres::PgPoolOptions, PgPool};
