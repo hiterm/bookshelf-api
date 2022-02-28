@@ -1,13 +1,15 @@
 mod extractors;
 mod types;
 
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 
 use crate::extractors::Claims;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    dotenv::dotenv().ok();
+
     let db_url = fetch_database_url();
 
     let pool = PgPoolOptions::new()
@@ -18,10 +20,13 @@ async fn main() -> std::io::Result<()> {
 
     let auth0_config = extractors::Auth0Config::default();
 
+    env_logger::init();
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(auth0_config.clone())
+            .wrap(Logger::default())
             .service(hello)
     })
     .bind(("0.0.0.0", fetch_port()))?
