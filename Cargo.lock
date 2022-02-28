@@ -359,6 +359,7 @@ dependencies = [
  "env_logger",
  "envy",
  "jsonwebtoken",
+ "log",
  "serde",
  "sqlx",
 ]

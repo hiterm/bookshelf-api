@@ -10,6 +10,8 @@ use crate::extractors::Claims;
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
 
+    env_logger::init();
+
     let db_url = fetch_database_url();
 
     let pool = PgPoolOptions::new()
@@ -20,13 +22,12 @@ async fn main() -> std::io::Result<()> {
 
     let auth0_config = extractors::Auth0Config::default();
 
-    env_logger::init();
-
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(auth0_config.clone())
             .wrap(Logger::default())
+            .service(root)
             .service(hello)
     })
     .bind(("0.0.0.0", fetch_port()))?
