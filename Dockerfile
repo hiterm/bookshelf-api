@@ -1,4 +1,4 @@
-FROM rust:1.58
+FROM rust:1.58 AS build-stage
 
 RUN cargo new --bin bookshelf-api
 WORKDIR /bookshelf-api
@@ -10,8 +10,9 @@ RUN rm src/*.rs
 
 COPY ./src ./src
 RUN touch src/main.rs
-RUN cargo install --locked --path .
+RUN cargo build --release
 
-EXPOSE 8080
 
-CMD ["bookshelf-api"]
+FROM debian:buster-slim
+COPY --from=build-stage /bookshelf-api/target/release/bookshelf-api /
+CMD ["/bookshelf-api"]

@@ -154,10 +154,16 @@ async fn fetch_jwks(domain: &str) -> Result<JwkSet, MyError> {
         .await;
     let mut response = match response {
         Ok(response) => response,
-        Err(e) => return Err(MyError {message: format!("TODO1: {}", e)}),
+        Err(e) => {
+            return Err(MyError {
+                message: format!("TODO1: {}", e),
+            })
+        }
     };
     match response.json().await {
         Ok(jwks) => Ok(jwks),
-        Err(_) => Err(MyError {message: "TODO2".to_string()}),
+        Err(_) => Err(MyError {
+            message: "TODO2".to_string(),
+        }),
     }
 }
