@@ -9,7 +9,7 @@ services:
       - DATABASE_URL=postgres://postgres:password@db:5432/postgres
       - PORT=8080
     env_file:
-      - .env
+      - .env.docker
   db:
     image: postgres:latest
     ports:
