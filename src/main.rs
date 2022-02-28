@@ -30,13 +30,18 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[get("/")]
-async fn hello(pool: web::Data<PgPool>, _claims: Claims) -> impl Responder {
+async fn root(pool: web::Data<PgPool>, _claims: Claims) -> impl Responder {
     let row: (i64,) = sqlx::query_as("SELECT $1")
         .bind(150_i64)
         .fetch_one(pool.get_ref())
         .await
         .unwrap();
     HttpResponse::Ok().body(row.0.to_string())
+}
+
+#[get("/hello")]
+async fn hello() -> impl Responder {
+    HttpResponse::Ok().body("hello")
 }
 
 fn fetch_port() -> u16 {
