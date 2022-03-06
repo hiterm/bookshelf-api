@@ -1,8 +1,17 @@
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
+mod extractors;
+mod types;
+
+use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use sqlx::{postgres::PgPoolOptions, PgPool};
+
+use crate::extractors::Claims;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    dotenv::dotenv().ok();
+
+    env_logger::init();
+
     let db_url = fetch_database_url();
 
     let pool = PgPoolOptions::new()
@@ -11,9 +20,14 @@ async fn main() -> std::io::Result<()> {
         .await
         .unwrap();
 
+    let auth0_config = extractors::Auth0Config::default();
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .app_data(auth0_config.clone())
+            .wrap(Logger::default())
+            .service(root)
             .service(hello)
     })
     .bind(("0.0.0.0", fetch_port()))?
@@ -22,13 +36,18 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[get("/")]
-async fn hello(pool: web::Data<PgPool>) -> impl Responder {
+async fn root(pool: web::Data<PgPool>, _claims: Claims) -> impl Responder {
     let row: (i64,) = sqlx::query_as("SELECT $1")
         .bind(150_i64)
         .fetch_one(pool.get_ref())
         .await
         .unwrap();
     HttpResponse::Ok().body(row.0.to_string())
+}
+
+#[get("/hello")]
+async fn hello() -> impl Responder {
+    HttpResponse::Ok().body("hello")
 }
 
 fn fetch_port() -> u16 {
