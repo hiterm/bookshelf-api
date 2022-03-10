@@ -1,5 +1,6 @@
 mod extractors;
 mod types;
+mod infrastructure;
 
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use sqlx::{postgres::PgPoolOptions, PgPool};
