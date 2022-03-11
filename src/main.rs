@@ -1,3 +1,4 @@
+mod domain;
 mod extractors;
 mod types;
 mod infrastructure;
