@@ -1,5 +1,5 @@
 CREATE TABLE bookshelf_user (
-  id text NOT NULL PRIMARY KEY,
+  id uuid NOT NULL PRIMARY KEY,
   sub text NOT NULL
 );
 
@@ -19,8 +19,8 @@ INSERT INTO book_store VALUES
   ('Kindle');
 
 CREATE TABLE book (
-  id text NOT NULL PRIMARY KEY,
-  user_id text NOT NULL,
+  id uuid NOT NULL PRIMARY KEY,
+  user_id uuid NOT NULL,
   title text NOT NULL,
   isbn text,
   read boolean NOT NULL,
@@ -30,18 +30,20 @@ CREATE TABLE book (
   store text,
   created_at timestamp NOT NULL,
   updated_at timestamp NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES bookshelf_user(id) ON UPDATE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES bookshelf_user(id),
   FOREIGN KEY (format) REFERENCES book_format(format) ON UPDATE CASCADE,
   FOREIGN KEY (store) REFERENCES book_store(store) ON UPDATE CASCADE
 );
 
 CREATE TABLE author (
-  id text PRIMARY KEY,
+  id uuid PRIMARY KEY,
   name text
 );
 
 CREATE TABLE book_author (
-  id text PRIMARY KEY,
-  book_id text,
-  author_id text
+  id uuid PRIMARY KEY,
+  book_id uuid,
+  author_id uuid,
+  FOREIGN KEY (book_id) REFERENCES book(id),
+  FOREIGN KEY (author_id) REFERENCES author(id)
 );
