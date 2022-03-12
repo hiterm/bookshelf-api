@@ -1,32 +1,51 @@
+use async_trait::async_trait;
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
+use crate::domain::{
+    self, entity::user::User, error::domain_error::DomainError,
+    repository::user_repository::UserRepository,
+};
+
+// TODO unwrapをやめる
+
 #[derive(sqlx::FromRow)]
-struct User {
+struct UserRow {
     id: Uuid,
     sub: String,
 }
 
-struct UserRepository {
+struct PgUserRepository {
     pool: PgPool,
 }
 
-impl UserRepository {
-    async fn find_by_id(&self, id: Uuid) -> User {
+#[async_trait]
+impl UserRepository for PgUserRepository {
+    async fn create(&self, user: domain::entity::user::User) -> Result<(), DomainError> {
+        todo!()
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError> {
         let mut conn = self.pool.acquire().await.unwrap();
-        InternalUserRepository::find_by_id(id, &mut conn).await
+        Ok(InternalUserRepository::find_by_id(id, &mut conn).await)
     }
 }
 
 struct InternalUserRepository {}
 
 impl InternalUserRepository {
-    async fn find_by_id(id: Uuid, conn: &mut PgConnection) -> User {
-        let user: User = sqlx::query_as("SELECT * FROM bookshelf_user WHERE id = ?")
+    async fn create() -> Result<(), DomainError> {
+        todo!()
+        // sqlx::query("INSERT INTO user (id, sub) VALUES ($1, $2)");
+    }
+
+    async fn find_by_id(id: Uuid, conn: &mut PgConnection) -> Option<User> {
+        let row: Option<UserRow> = sqlx::query_as("SELECT * FROM bookshelf_user WHERE id = ?")
             .bind(id)
-            .fetch_one(conn)
+            .fetch_optional(conn)
             .await
             .unwrap();
-        user
+
+        row.map(|row| User::new(row.id, row.sub))
     }
 }

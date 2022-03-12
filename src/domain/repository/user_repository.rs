@@ -1,6 +1,10 @@
+use async_trait::async_trait;
+use uuid::Uuid;
+
 use crate::domain::{entity::user::User, error::domain_error::DomainError};
 
+#[async_trait]
 pub trait UserRepository {
-    fn create(user: User) -> Result<(), DomainError>;
-    fn find_by_id() -> Result<Option<User>, DomainError>;
+    async fn create(&self, user: User) -> Result<(), DomainError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError>;
 }
