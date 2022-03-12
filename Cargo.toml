@@ -16,6 +16,7 @@ envy = "0.4.2"
 jsonwebtoken = "8.0.1"
 log = "0.4.14"
 serde = { version = "1.0", features = ["derive"] }
-sqlx = { version = "0.5", features = [ "runtime-actix-rustls", "postgres", "sqlite" ] }
+sqlx = { version = "0.5", features = [ "runtime-actix-rustls", "postgres", "time", "uuid" ] }
 time = "0.3.7"
 tokio = { version = "1.13.1", features = ["full"] }
+uuid = { version = "0.8.2", features = ["v4"] }
