@@ -368,7 +368,7 @@ dependencies = [
  "log",
  "serde",
  "sqlx",
- "time 0.3.7",
+ "time 0.2.27",
  "tokio",
  "uuid",
 ]
