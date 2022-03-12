@@ -18,11 +18,6 @@ impl BookRepository {
     }
 }
 
-async fn query_1(conn: &mut PgConnection) -> i32 {
-    let book_row: (i32,) = sqlx::query_as("SELECT 1").fetch_one(conn).await.unwrap();
-    book_row.0
-}
-
 #[derive(sqlx::FromRow)]
 struct BookRow {
     id: Uuid,
@@ -43,26 +38,6 @@ mod tests {
 
     use super::*;
     use sqlx::postgres::PgPoolOptions;
-
-    #[tokio::test]
-    async fn test_query_1() {
-        dotenv::dotenv().ok();
-
-        let db_url = fetch_database_url();
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect_timeout(Duration::from_secs(1))
-            .connect(&db_url)
-            .await
-            .unwrap();
-        let mut tx = pool.begin().await.unwrap();
-
-        let actual = query_1(&mut tx).await;
-
-        tx.rollback().await.unwrap();
-
-        assert_eq!(actual, 1);
-    }
 
     #[tokio::test]
     async fn test_find_all() {
