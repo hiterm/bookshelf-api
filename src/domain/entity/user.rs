@@ -1,7 +1,11 @@
+use getset::Getters;
 use uuid::Uuid;
 
+#[derive(Getters)]
 pub struct User {
+    #[getset(get = "pub")]
     id: Uuid,
+    #[getset(get = "pub")]
     sub: String,
 }
 
