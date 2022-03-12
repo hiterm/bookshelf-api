@@ -1,2 +1,3 @@
-pub mod book;
-pub mod user;
+pub mod entity;
+pub mod error;
+pub mod repository;

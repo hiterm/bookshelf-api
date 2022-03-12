@@ -2,7 +2,7 @@ use sqlx::{PgConnection, PgPool};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
-use crate::domain::book::Book;
+use crate::domain::entity::book::Book;
 
 struct BookRepository {
     pool: PgPool,

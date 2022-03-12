@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-struct User {
+pub struct User {
     id: Uuid,
     sub: String,
 }
