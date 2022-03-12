@@ -368,6 +368,7 @@ dependencies = [
  "log",
  "serde",
  "sqlx",
+ "thiserror",
  "time 0.2.27",
  "tokio",
  "uuid",
