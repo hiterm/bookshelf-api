@@ -1,7 +1,7 @@
 use getset::Getters;
 use uuid::Uuid;
 
-#[derive(Getters)]
+#[derive(Debug, Clone, PartialEq, Eq, Getters)]
 pub struct User {
     #[getset(get = "pub")]
     id: Uuid,
