@@ -23,12 +23,14 @@ struct PgUserRepository {
 impl UserRepository for PgUserRepository {
     async fn create(&self, user: &User) -> Result<(), DomainError> {
         let mut conn = self.pool.acquire().await.unwrap();
-        InternalUserRepository::create(user, &mut conn).await
+        let result = InternalUserRepository::create(user, &mut conn).await?;
+        Ok(result)
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError> {
         let mut conn = self.pool.acquire().await.unwrap();
-        Ok(InternalUserRepository::find_by_id(id, &mut conn).await)
+        let user = InternalUserRepository::find_by_id(id, &mut conn).await?;
+        Ok(user)
     }
 }
 
@@ -45,14 +47,14 @@ impl InternalUserRepository {
         Ok(())
     }
 
-    async fn find_by_id(id: Uuid, conn: &mut PgConnection) -> Option<User> {
+    async fn find_by_id(id: Uuid, conn: &mut PgConnection) -> Result<Option<User>, DomainError> {
         let row: Option<UserRow> = sqlx::query_as("SELECT * FROM bookshelf_user WHERE id = $1")
             .bind(id)
             .fetch_optional(conn)
             .await
             .unwrap();
 
-        row.map(|row| User::new(row.id, row.sub))
+        Ok(row.map(|row| User::new(row.id, row.sub)))
     }
 }
 
@@ -79,14 +81,18 @@ mod tests {
         let id = Uuid::parse_str("e112995d-3e3b-4d32-8c25-7ce9451ab18b").unwrap();
         let user = User::new(id, String::from("foo"));
 
-        let fetched_user = InternalUserRepository::find_by_id(id, &mut tx).await;
+        let fetched_user = InternalUserRepository::find_by_id(id, &mut tx)
+            .await
+            .unwrap();
         assert!(fetched_user.is_none());
 
         InternalUserRepository::create(&user, &mut tx)
             .await
             .unwrap();
 
-        let fetched_user = InternalUserRepository::find_by_id(id, &mut tx).await;
+        let fetched_user = InternalUserRepository::find_by_id(id, &mut tx)
+            .await
+            .unwrap();
         assert_eq!(fetched_user, Some(user));
 
         tx.rollback().await.unwrap();
