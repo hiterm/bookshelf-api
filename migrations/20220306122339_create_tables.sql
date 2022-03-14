@@ -37,6 +37,7 @@ CREATE TABLE book (
 
 CREATE TABLE author (
   id uuid PRIMARY KEY,
+  user_id uuid NOT NULL,
   name text
 );
 

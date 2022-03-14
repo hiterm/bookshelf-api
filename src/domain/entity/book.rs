@@ -1,4 +1,9 @@
+// TODO: 消す
+#![allow(warnings, unused)]
+
 use time::PrimitiveDateTime;
+
+use super::author::Author;
 
 pub struct BookshelfUser {
     id: String,
@@ -26,9 +31,4 @@ pub enum BookFormat {
 
 pub enum BookStore {
     Kindle,
-}
-
-pub struct Author {
-    id: String,
-    name: String,
 }

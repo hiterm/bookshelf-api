@@ -1,3 +1,6 @@
+// TODO: 消す
+#![allow(warnings, unused)]
+
 use sqlx::{PgConnection, PgPool};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
