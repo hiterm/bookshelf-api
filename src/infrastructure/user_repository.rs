@@ -7,8 +7,6 @@ use crate::domain::{
     repository::user_repository::UserRepository,
 };
 
-// TODO unwrapをやめる
-
 #[derive(sqlx::FromRow)]
 struct UserRow {
     id: Uuid,
@@ -22,13 +20,13 @@ struct PgUserRepository {
 #[async_trait]
 impl UserRepository for PgUserRepository {
     async fn create(&self, user: &User) -> Result<(), DomainError> {
-        let mut conn = self.pool.acquire().await.unwrap();
+        let mut conn = self.pool.acquire().await?;
         let result = InternalUserRepository::create(user, &mut conn).await?;
         Ok(result)
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError> {
-        let mut conn = self.pool.acquire().await.unwrap();
+        let mut conn = self.pool.acquire().await?;
         let user = InternalUserRepository::find_by_id(id, &mut conn).await?;
         Ok(user)
     }
@@ -42,8 +40,7 @@ impl InternalUserRepository {
             .bind(user.id())
             .bind(user.sub())
             .execute(conn)
-            .await
-            .unwrap();
+            .await?;
         Ok(())
     }
 
@@ -51,8 +48,7 @@ impl InternalUserRepository {
         let row: Option<UserRow> = sqlx::query_as("SELECT * FROM bookshelf_user WHERE id = $1")
             .bind(id)
             .fetch_optional(conn)
-            .await
-            .unwrap();
+            .await?;
 
         Ok(row.map(|row| User::new(row.id, row.sub)))
     }
