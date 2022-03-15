@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use sqlx::{PgConnection, PgPool};
 
 use crate::domain::{
-    entity::user::User, error::domain_error::DomainError,
+    entity::user::{User, UserId},
+    error::domain_error::DomainError,
     repository::user_repository::UserRepository,
 };
 
@@ -23,7 +24,7 @@ impl UserRepository for PgUserRepository {
         Ok(result)
     }
 
-    async fn find_by_id(&self, id: &str) -> Result<Option<User>, DomainError> {
+    async fn find_by_id(&self, id: &UserId) -> Result<Option<User>, DomainError> {
         let mut conn = self.pool.acquire().await?;
         let user = InternalUserRepository::find_by_id(id, &mut conn).await?;
         Ok(user)
@@ -35,19 +36,20 @@ struct InternalUserRepository {}
 impl InternalUserRepository {
     async fn create(user: &User, conn: &mut PgConnection) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO bookshelf_user (id) VALUES ($1)")
-            .bind(user.id())
+            .bind(user.id().id())
             .execute(conn)
             .await?;
         Ok(())
     }
 
-    async fn find_by_id(id: &str, conn: &mut PgConnection) -> Result<Option<User>, DomainError> {
+    async fn find_by_id(id: &UserId, conn: &mut PgConnection) -> Result<Option<User>, DomainError> {
         let row: Option<UserRow> = sqlx::query_as("SELECT * FROM bookshelf_user WHERE id = $1")
-            .bind(id)
+            .bind(id.id())
             .fetch_optional(conn)
             .await?;
 
-        Ok(row.map(|row| User::new(row.id)))
+        let id = row.map(|row| UserId::new(row.id)).transpose()?;
+        Ok(id.map(|id| User::new(id)))
     }
 }
 
@@ -71,7 +73,7 @@ mod tests {
             .unwrap();
         let mut tx = pool.begin().await.unwrap();
 
-        let id = String::from("foo");
+        let id = UserId::new(String::from("foo")).unwrap();
         let user = User::new(id.clone());
 
         let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx)
