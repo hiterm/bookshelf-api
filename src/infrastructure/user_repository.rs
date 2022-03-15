@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use sqlx::{PgConnection, PgPool};
-use uuid::Uuid;
 
 use crate::domain::{
     entity::user::User, error::domain_error::DomainError,
@@ -9,8 +8,7 @@ use crate::domain::{
 
 #[derive(sqlx::FromRow)]
 struct UserRow {
-    id: Uuid,
-    sub: String,
+    id: String,
 }
 
 struct PgUserRepository {
@@ -25,7 +23,7 @@ impl UserRepository for PgUserRepository {
         Ok(result)
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError> {
+    async fn find_by_id(&self, id: &str) -> Result<Option<User>, DomainError> {
         let mut conn = self.pool.acquire().await?;
         let user = InternalUserRepository::find_by_id(id, &mut conn).await?;
         Ok(user)
@@ -36,21 +34,20 @@ struct InternalUserRepository {}
 
 impl InternalUserRepository {
     async fn create(user: &User, conn: &mut PgConnection) -> Result<(), DomainError> {
-        sqlx::query("INSERT INTO bookshelf_user (id, sub) VALUES ($1, $2)")
+        sqlx::query("INSERT INTO bookshelf_user (id) VALUES ($1)")
             .bind(user.id())
-            .bind(user.sub())
             .execute(conn)
             .await?;
         Ok(())
     }
 
-    async fn find_by_id(id: Uuid, conn: &mut PgConnection) -> Result<Option<User>, DomainError> {
+    async fn find_by_id(id: &str, conn: &mut PgConnection) -> Result<Option<User>, DomainError> {
         let row: Option<UserRow> = sqlx::query_as("SELECT * FROM bookshelf_user WHERE id = $1")
             .bind(id)
             .fetch_optional(conn)
             .await?;
 
-        Ok(row.map(|row| User::new(row.id, row.sub)))
+        Ok(row.map(|row| User::new(row.id)))
     }
 }
 
@@ -74,10 +71,10 @@ mod tests {
             .unwrap();
         let mut tx = pool.begin().await.unwrap();
 
-        let id = Uuid::parse_str("e112995d-3e3b-4d32-8c25-7ce9451ab18b").unwrap();
-        let user = User::new(id, String::from("foo"));
+        let id = String::from("foo");
+        let user = User::new(id.clone());
 
-        let fetched_user = InternalUserRepository::find_by_id(id, &mut tx)
+        let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx)
             .await
             .unwrap();
         assert!(fetched_user.is_none());
@@ -86,7 +83,7 @@ mod tests {
             .await
             .unwrap();
 
-        let fetched_user = InternalUserRepository::find_by_id(id, &mut tx)
+        let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx)
             .await
             .unwrap();
         assert_eq!(fetched_user, Some(user));

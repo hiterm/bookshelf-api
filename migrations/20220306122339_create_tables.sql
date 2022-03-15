@@ -1,6 +1,5 @@
 CREATE TABLE bookshelf_user (
-  id uuid NOT NULL PRIMARY KEY,
-  sub text NOT NULL
+  id text NOT NULL PRIMARY KEY
 );
 
 CREATE TABLE book_format (
@@ -20,7 +19,7 @@ INSERT INTO book_store VALUES
 
 CREATE TABLE book (
   id uuid NOT NULL PRIMARY KEY,
-  user_id uuid NOT NULL,
+  user_id text NOT NULL,
   title text NOT NULL,
   isbn text,
   read boolean NOT NULL,
@@ -37,7 +36,7 @@ CREATE TABLE book (
 
 CREATE TABLE author (
   id uuid PRIMARY KEY,
-  user_id uuid NOT NULL,
+  user_id text NOT NULL,
   name text
 );
 

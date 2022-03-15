@@ -81,8 +81,7 @@ mod tests {
             .unwrap();
         let mut tx = pool.begin().await.unwrap();
 
-        let user_id = Uuid::parse_str("e112995d-3e3b-4d32-8c25-7ce9451ab18b").unwrap();
-        let user = User::new(user_id, String::from("user1"));
+        let user = User::new(String::from("user1"));
         let author_id = Uuid::parse_str("e324be11-5b77-4ba6-8423-9f27e2d228f1").unwrap();
         let author = Author::new(author_id, String::from("author1"));
         InternalAuthorRepository::create(user, &author, &mut tx).await.unwrap();
