@@ -37,7 +37,8 @@ CREATE TABLE book (
 CREATE TABLE author (
   id uuid PRIMARY KEY,
   user_id text NOT NULL,
-  name text
+  name text,
+  FOREIGN KEY (user_id) REFERENCES bookshelf_user(id)
 );
 
 CREATE TABLE book_author (

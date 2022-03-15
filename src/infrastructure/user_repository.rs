@@ -31,10 +31,10 @@ impl UserRepository for PgUserRepository {
     }
 }
 
-struct InternalUserRepository {}
+pub(in crate::infrastructure) struct InternalUserRepository {}
 
 impl InternalUserRepository {
-    async fn create(user: &User, conn: &mut PgConnection) -> Result<(), DomainError> {
+    pub(in crate::infrastructure) async fn create(user: &User, conn: &mut PgConnection) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO bookshelf_user (id) VALUES ($1)")
             .bind(user.id().id())
             .execute(conn)
