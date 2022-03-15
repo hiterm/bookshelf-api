@@ -84,7 +84,7 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
 
     #[tokio::test]
-    async fn create_and_find() {
+    async fn create_and_find() -> anyhow::Result<()> {
         dotenv::dotenv().ok();
 
         let db_url = fetch_database_url();
@@ -92,27 +92,23 @@ mod tests {
             .max_connections(5)
             .connect_timeout(Duration::from_secs(1))
             .connect(&db_url)
-            .await
-            .unwrap();
-        let mut tx = pool.begin().await.unwrap();
+            .await?;
+        let mut tx = pool.begin().await?;
 
-        let user_id = UserId::new(String::from("user1")).unwrap();
+        let user_id = UserId::new(String::from("user1"))?;
         let user = User::new(user_id.clone());
-        let author_id =
-            AuthorId::new(Uuid::parse_str("e324be11-5b77-4ba6-8423-9f27e2d228f1").unwrap())
-                .unwrap();
-        let author_name = AuthorName::new(String::from("author1")).unwrap();
-        let author = Author::new(author_id.clone(), author_name).unwrap();
+        let author_id = AuthorId::new(Uuid::parse_str("e324be11-5b77-4ba6-8423-9f27e2d228f1")?)?;
+        let author_name = AuthorName::new(String::from("author1"))?;
+        let author = Author::new(author_id.clone(), author_name)?;
 
-        InternalUserRepository::create(&user, &mut tx).await;
-        InternalAuthorRepository::create(&user_id, &author, &mut tx)
-            .await
-            .unwrap();
+        InternalUserRepository::create(&user, &mut tx).await?;
+        InternalAuthorRepository::create(&user_id, &author, &mut tx).await?;
 
-        let actual = InternalAuthorRepository::find_by_id(&user_id, &author_id, &mut tx).await.unwrap();
+        let actual = InternalAuthorRepository::find_by_id(&user_id, &author_id, &mut tx).await?;
         assert_eq!(actual, Some(author));
 
-        tx.rollback().await.unwrap();
+        tx.rollback().await?;
+        Ok(())
     }
 
     fn fetch_database_url() -> String {

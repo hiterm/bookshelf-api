@@ -34,7 +34,10 @@ impl UserRepository for PgUserRepository {
 pub(in crate::infrastructure) struct InternalUserRepository {}
 
 impl InternalUserRepository {
-    pub(in crate::infrastructure) async fn create(user: &User, conn: &mut PgConnection) -> Result<(), DomainError> {
+    pub(in crate::infrastructure) async fn create(
+        user: &User,
+        conn: &mut PgConnection,
+    ) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO bookshelf_user (id) VALUES ($1)")
             .bind(user.id().id())
             .execute(conn)
@@ -61,7 +64,7 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
 
     #[tokio::test]
-    async fn test_user_repository() {
+    async fn test_user_repository() -> anyhow::Result<()> {
         dotenv::dotenv().ok();
 
         let db_url = fetch_database_url();
@@ -69,28 +72,22 @@ mod tests {
             .max_connections(5)
             .connect_timeout(Duration::from_secs(1))
             .connect(&db_url)
-            .await
-            .unwrap();
-        let mut tx = pool.begin().await.unwrap();
+            .await?;
+        let mut tx = pool.begin().await?;
 
-        let id = UserId::new(String::from("foo")).unwrap();
+        let id = UserId::new(String::from("foo"))?;
         let user = User::new(id.clone());
 
-        let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx)
-            .await
-            .unwrap();
+        let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx).await?;
         assert!(fetched_user.is_none());
 
-        InternalUserRepository::create(&user, &mut tx)
-            .await
-            .unwrap();
+        InternalUserRepository::create(&user, &mut tx).await?;
 
-        let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx)
-            .await
-            .unwrap();
+        let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx).await?;
         assert_eq!(fetched_user, Some(user));
 
-        tx.rollback().await.unwrap();
+        tx.rollback().await?;
+        Ok(())
     }
 
     fn fetch_database_url() -> String {
