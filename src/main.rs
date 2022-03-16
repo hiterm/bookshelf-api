@@ -1,9 +1,11 @@
 mod domain;
 mod extractors;
-mod types;
 mod infrastructure;
+mod presentational;
+mod types;
 
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use presentational::controller::graphql_controller::graphql;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 
 use crate::extractors::Claims;
@@ -31,6 +33,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .service(root)
             .service(hello)
+            .service(graphql)
     })
     .bind(("0.0.0.0", fetch_port()))?
     .run()

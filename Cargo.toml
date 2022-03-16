@@ -9,6 +9,8 @@ edition = "2021"
 actix-web = "4"
 actix-web-httpauth = "0.6.0"
 anyhow = "1.0.56"
+async-graphql = "3.0.35"
+async-graphql-actix-web = "3.0.35"
 async-trait = "0.1.52"
 awc = { version = "3.0.0", features = ["rustls"] }
 derive_more = "0.99"
