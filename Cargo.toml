@@ -19,7 +19,12 @@ getset = "0.1.2"
 jsonwebtoken = "8.0.1"
 log = "0.4.14"
 serde = { version = "1.0", features = ["derive"] }
-sqlx = { version = "0.5", features = [ "runtime-actix-rustls", "postgres", "time", "uuid" ] }
+sqlx = { version = "0.5", features = [
+  "runtime-actix-rustls",
+  "postgres",
+  "time",
+  "uuid",
+] }
 thiserror = "1.0.30"
 time = "0.2.27"
 tokio = { version = "1.13.1", features = ["full"] }
