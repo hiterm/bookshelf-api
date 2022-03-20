@@ -78,6 +78,7 @@ pub enum BookStore {
     Kindle,
 }
 
+// TODO: title
 pub struct Book {
     id: BookId,
     authors: Vec<Author>,

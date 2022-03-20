@@ -3,6 +3,7 @@ mod extractors;
 mod infrastructure;
 mod presentational;
 mod types;
+mod use_case;
 
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use presentational::controller::graphql_controller::graphql;
