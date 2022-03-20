@@ -2,16 +2,7 @@ use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema};
 
 use super::{query::QueryRoot, query_service::QueryService};
 
-pub struct Query;
-
-#[Object]
-impl Query {
-    async fn field1(&self) -> String {
-        String::from("value1")
-    }
-}
-
-fn build_schema<T>(query: QueryRoot<T>) -> Schema<QueryRoot<T>, EmptyMutation, EmptySubscription>
+pub fn build_schema<T>(query: QueryRoot<T>) -> Schema<QueryRoot<T>, EmptyMutation, EmptySubscription>
 where
     T: QueryService + Send + Sync + 'static,
 {

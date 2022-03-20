@@ -6,7 +6,7 @@ mod types;
 mod use_case;
 
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
-use presentational::controller::graphql_controller::graphql;
+use presentational::{controller::graphql_controller::graphql, graphql::{schema::build_schema, query::QueryRoot, query_service::{self, QueryServiceImpl}}};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 
 use crate::extractors::Claims;
@@ -26,6 +26,10 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
 
     let auth0_config = extractors::Auth0Config::default();
+
+    let query_service = QueryServiceImpl::new();
+    let query = QueryRoot::new(query_service);
+    let schema = build_schema(query);
 
     HttpServer::new(move || {
         App::new()
