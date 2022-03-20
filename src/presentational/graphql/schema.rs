@@ -1,5 +1,7 @@
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema};
 
+use super::{query::QueryRoot, query_service::QueryService};
+
 pub struct Query;
 
 #[Object]
@@ -9,8 +11,11 @@ impl Query {
     }
 }
 
-fn build_schema() -> Schema<Query, EmptyMutation, EmptySubscription> {
-    Schema::build(Query, EmptyMutation, EmptySubscription).finish()
+fn build_schema<T>(query: QueryRoot<T>) -> Schema<QueryRoot<T>, EmptyMutation, EmptySubscription>
+where
+    T: QueryService + Send + Sync + 'static,
+{
+    Schema::build(query, EmptyMutation, EmptySubscription).finish()
 }
 
 #[cfg(test)]
