@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::domain::{
     entity::{
         author::{Author, AuthorId, AuthorName},
-        user::{User, UserId},
+        user::UserId,
     },
     error::DomainError,
     repository::author_repository::AuthorRepository,
@@ -66,7 +66,7 @@ impl InternalAuthorRepository {
                 .await?;
 
         row.map(|row| -> Result<Author, DomainError> {
-            let author_id = AuthorId::new(row.id)?;
+            let author_id: AuthorId = row.id.into();
             let author_name = AuthorName::new(row.name)?;
             Author::new(author_id, author_name)
         })
@@ -78,7 +78,7 @@ impl InternalAuthorRepository {
 mod tests {
     use std::time::Duration;
 
-    use crate::infrastructure::user_repository::InternalUserRepository;
+    use crate::{infrastructure::user_repository::InternalUserRepository, domain::entity::user::User};
 
     use super::*;
     use sqlx::postgres::PgPoolOptions;
@@ -97,7 +97,7 @@ mod tests {
 
         let user_id = UserId::new(String::from("user1"))?;
         let user = User::new(user_id.clone());
-        let author_id = AuthorId::new(Uuid::parse_str("e324be11-5b77-4ba6-8423-9f27e2d228f1")?)?;
+        let author_id = AuthorId::new("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author_name = AuthorName::new(String::from("author1"))?;
         let author = Author::new(author_id.clone(), author_name)?;
 

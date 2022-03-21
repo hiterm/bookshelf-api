@@ -10,8 +10,21 @@ pub struct AuthorId {
 }
 
 impl AuthorId {
-    pub fn new(id: Uuid) -> Result<AuthorId, DomainError> {
+    pub fn new(id: &str) -> Result<AuthorId, DomainError> {
+        let id = Uuid::parse_str(id).map_err(|err| {
+            DomainError::Validation(format!(
+                r#"Failed to parse id "{}" as uuid. Message from uuid crate: {}"#,
+                id,
+                err.to_string()
+            ))
+        })?;
         Ok(AuthorId { id })
+    }
+}
+
+impl From<Uuid> for AuthorId {
+    fn from(uuid: Uuid) -> Self {
+        AuthorId { id: uuid }
     }
 }
 
