@@ -9,7 +9,7 @@ use crate::domain::{
 };
 
 #[async_trait]
-pub trait AuthorRepository {
+pub trait AuthorRepository: Send + Sync {
     async fn create(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError>;
     async fn find_by_id(
         &self,
