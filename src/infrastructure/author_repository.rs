@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::{PgConnection, PgPool, Acquire};
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::domain::{
@@ -79,7 +79,9 @@ impl InternalAuthorRepository {
 mod tests {
     use std::time::Duration;
 
-    use crate::{infrastructure::user_repository::InternalUserRepository, domain::entity::user::User};
+    use crate::{
+        domain::entity::user::User, infrastructure::user_repository::InternalUserRepository,
+    };
 
     use super::*;
     use sqlx::postgres::PgPoolOptions;

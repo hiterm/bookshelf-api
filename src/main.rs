@@ -6,16 +6,13 @@ mod types;
 mod use_case;
 
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
-use domain::repository::author_repository::AuthorRepository;
 use infrastructure::author_repository::PgAuthorRepository;
 use presentational::{
     controller::graphql_controller::graphql,
     graphql::{query::QueryRoot, query_service::QueryServiceImpl, schema::build_schema},
 };
-use sqlx::{postgres::PgPoolOptions, PgPool};
-use use_case::{interactor::author::ShowAuthorInteractor, use_case::author::ShowAuthorUseCase};
-
-use crate::extractors::Claims;
+use sqlx::postgres::PgPoolOptions;
+use use_case::interactor::author::ShowAuthorInteractor;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -49,11 +46,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(auth0_config.clone())
             .wrap(Logger::default())
             .service(hello)
-            .route(
-                "/graphql",
-                web::post()
-                    .to(graphql::<QSI>),
-            )
+            .route("/graphql", web::post().to(graphql::<QSI>))
     })
     .bind(("0.0.0.0", fetch_port()))?
     .run()

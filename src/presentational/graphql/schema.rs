@@ -1,6 +1,5 @@
-use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema};
-
 use super::{query::QueryRoot, query_service::QueryService};
+use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 
 pub fn build_schema<T>(
     query: QueryRoot<T>,
