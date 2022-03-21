@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::{PgConnection, PgPool};
+use sqlx::{PgConnection, PgPool, Acquire};
 use uuid::Uuid;
 
 use crate::domain::{
@@ -32,7 +32,8 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<Option<Author>, DomainError> {
-        todo!()
+        let mut conn = self.pool.acquire().await?;
+        InternalAuthorRepository::find_by_id(user_id, author_id, &mut conn).await
     }
 }
 

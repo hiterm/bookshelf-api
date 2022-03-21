@@ -16,7 +16,7 @@ mod tests {
     use mockall::predicate;
 
     use crate::{
-        presentational::graphql::{query::QueryRoot, query_service::MockQueryService},
+        presentational::graphql::{query::QueryRoot, query_service::tests::MockQueryService},
         use_case::dto::book::Book,
     };
 

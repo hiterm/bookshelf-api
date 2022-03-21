@@ -10,10 +10,13 @@ use crate::{
 pub async fn graphql<QS>(
     schema: web::Data<Schema<QueryRoot<QS>, EmptyMutation, EmptySubscription>>,
     request: GraphQLRequest,
-    _claims: Claims,
+    claims: Claims,
 ) -> GraphQLResponse
 where
     QS: QueryService,
 {
-    schema.execute(request.into_inner()).await.into()
+    schema
+        .execute(request.into_inner().data(claims))
+        .await
+        .into()
 }
