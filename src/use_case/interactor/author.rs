@@ -45,40 +45,23 @@ where
 
 #[cfg(test)]
 mod tests {
-    use async_trait::async_trait;
-    use mockall::{mock, predicate::always};
 
+    use mockall::predicate::always;
+
+    use crate::domain::repository::author_repository::tests::MockAuthorRepository;
     use crate::{
         domain::{
             self,
-            entity::{
-                author::{AuthorId, AuthorName},
-                user::UserId,
-            },
-            error::DomainError,
-            repository::author_repository::AuthorRepository,
+            entity::author::{AuthorId, AuthorName},
         },
         use_case::use_case::author::ShowAuthorUseCase,
     };
 
     use super::ShowAuthorInteractor;
 
-    mock! {
-        Repo {}
-        #[async_trait]
-        impl AuthorRepository for Repo {
-            async fn create(&self, user_id: &UserId, author: &domain::entity::author::Author) -> Result<(), DomainError>;
-            async fn find_by_id(
-                &self,
-                user_id: &UserId,
-                author_id: &AuthorId,
-            ) -> Result<Option<domain::entity::author::Author>, DomainError>;
-        }
-    }
-
     #[tokio::test]
     async fn find_by_id() {
-        let mut author_repository = MockRepo::new();
+        let mut author_repository = MockAuthorRepository::new();
 
         let user_id = "user1";
         let author_id = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
