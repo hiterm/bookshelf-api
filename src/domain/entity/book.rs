@@ -5,7 +5,7 @@ use getset::Getters;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
-use crate::domain::error::domain_error::DomainError;
+use crate::domain::error::DomainError;
 
 use super::author::Author;
 

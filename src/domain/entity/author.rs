@@ -1,7 +1,7 @@
 use getset::Getters;
 use uuid::Uuid;
 
-use crate::domain::error::domain_error::DomainError;
+use crate::domain::error::DomainError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Getters)]
 pub struct AuthorId {

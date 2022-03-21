@@ -1,4 +1,4 @@
-use crate::domain::error::domain_error::DomainError;
+use crate::domain::error::DomainError;
 
 impl From<sqlx::Error> for DomainError {
     fn from(error: sqlx::Error) -> Self {

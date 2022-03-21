@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::domain::{entity::user::{User, UserId}, error::domain_error::DomainError};
+use crate::domain::{entity::user::{User, UserId}, error::DomainError};
 
 #[async_trait]
 pub trait UserRepository {

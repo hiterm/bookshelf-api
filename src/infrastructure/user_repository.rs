@@ -3,7 +3,7 @@ use sqlx::{PgConnection, PgPool};
 
 use crate::domain::{
     entity::user::{User, UserId},
-    error::domain_error::DomainError,
+    error::DomainError,
     repository::user_repository::UserRepository,
 };
 

@@ -7,7 +7,7 @@ use crate::domain::{
         author::{Author, AuthorId, AuthorName},
         user::{User, UserId},
     },
-    error::domain_error::DomainError,
+    error::DomainError,
     repository::author_repository::AuthorRepository,
 };
 

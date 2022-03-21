@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::domain::{
     entity::{book::Book, user::User},
-    error::domain_error::DomainError,
+    error::DomainError,
 };
 
 #[async_trait]
