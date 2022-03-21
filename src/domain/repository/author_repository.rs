@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 
 use crate::domain::{
-    entity::{author::{Author, AuthorId}, user::UserId},
+    entity::{
+        author::{Author, AuthorId},
+        user::UserId,
+    },
     error::DomainError,
 };
 
