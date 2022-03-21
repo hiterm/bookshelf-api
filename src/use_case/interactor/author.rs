@@ -37,7 +37,7 @@ where
             .ok_or(UseCaseError::NotFound {
                 entity_type: "author",
                 entity_id: raw_author_id.to_string(),
-                user_id: raw_author_id.to_string(),
+                user_id: raw_user_id.to_string(),
             })
             .map(|author| -> Author { author.into() })
     }
