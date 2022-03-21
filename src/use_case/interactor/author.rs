@@ -8,7 +8,7 @@ use crate::{
     use_case::{dto::author::Author, error::UseCaseError, use_case::author::ShowAuthorUseCase},
 };
 
-struct ShowAuthorInteractor<ARepo> {
+pub struct ShowAuthorInteractor<ARepo> {
     author_repository: ARepo,
 }
 

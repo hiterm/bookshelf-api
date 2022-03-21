@@ -1,5 +1,5 @@
 use async_graphql::Object;
-use uuid::Uuid;
+
 
 use crate::presentational::error::error::PresentationalError;
 
@@ -18,7 +18,7 @@ impl<T> QueryRoot<T> {
 #[Object]
 impl<T> QueryRoot<T>
 where
-    T: QueryService + Send + Sync,
+    T: QueryService,
 {
     async fn book(&self, id: String) -> Result<Book, PresentationalError> {
         let book = self.query_service.find_book_by_id(&id)?;

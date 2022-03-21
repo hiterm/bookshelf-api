@@ -6,11 +6,14 @@ mod types;
 mod use_case;
 
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use domain::repository::author_repository::AuthorRepository;
+use infrastructure::author_repository::PgAuthorRepository;
 use presentational::{
     controller::graphql_controller::graphql,
     graphql::{query::QueryRoot, query_service::QueryServiceImpl, schema::build_schema},
 };
 use sqlx::{postgres::PgPoolOptions, PgPool};
+use use_case::{interactor::author::ShowAuthorInteractor, use_case::author::ShowAuthorUseCase};
 
 use crate::extractors::Claims;
 
@@ -30,33 +33,31 @@ async fn main() -> std::io::Result<()> {
 
     let auth0_config = extractors::Auth0Config::default();
 
-    let query_service = QueryServiceImpl::new();
+    let author_repository = PgAuthorRepository { pool };
+    let show_author_use_case = ShowAuthorInteractor::new(author_repository);
+    let query_service = QueryServiceImpl {
+        show_author_use_case,
+    };
     let query = QueryRoot::new(query_service);
     let schema = build_schema(query);
 
+    type QSI = QueryServiceImpl<ShowAuthorInteractor<PgAuthorRepository>>;
+
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(schema.clone()))
             .app_data(auth0_config.clone())
             .wrap(Logger::default())
-            .service(root)
             .service(hello)
-            .service(graphql)
+            .route(
+                "/graphql",
+                web::post()
+                    .to(graphql::<QSI>),
+            )
     })
     .bind(("0.0.0.0", fetch_port()))?
     .run()
     .await
-}
-
-#[get("/")]
-async fn root(pool: web::Data<PgPool>, _claims: Claims) -> impl Responder {
-    let row: (i64,) = sqlx::query_as("SELECT $1")
-        .bind(150_i64)
-        .fetch_one(pool.get_ref())
-        .await
-        .unwrap();
-    HttpResponse::Ok().body(row.0.to_string())
 }
 
 #[get("/hello")]

@@ -18,8 +18,8 @@ struct AuthorRow {
     name: String,
 }
 
-struct PgAuthorRepository {
-    pool: PgPool,
+pub struct PgAuthorRepository {
+    pub pool: PgPool,
 }
 
 #[async_trait]
