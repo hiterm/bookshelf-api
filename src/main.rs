@@ -6,7 +6,10 @@ mod types;
 mod use_case;
 
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
-use presentational::{controller::graphql_controller::graphql, graphql::{schema::build_schema, query::QueryRoot, query_service::{self, QueryServiceImpl}}};
+use presentational::{
+    controller::graphql_controller::graphql,
+    graphql::{query::QueryRoot, query_service::QueryServiceImpl, schema::build_schema},
+};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 
 use crate::extractors::Claims;
@@ -34,6 +37,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(schema.clone()))
             .app_data(auth0_config.clone())
             .wrap(Logger::default())
             .service(root)
