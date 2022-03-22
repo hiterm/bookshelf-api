@@ -1,14 +1,7 @@
-mod dependency_injection;
-mod domain;
-mod extractors;
-mod infrastructure;
-mod presentational;
-mod types;
-mod use_case;
-
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
-use dependency_injection::{dependency_injection, QSI};
-use presentational::controller::graphql_controller::graphql;
+use bookshelf_api::dependency_injection::{dependency_injection, QSI};
+use bookshelf_api::extractors;
+use bookshelf_api::presentational::controller::graphql_controller::graphql;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
