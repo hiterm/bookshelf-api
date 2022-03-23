@@ -35,7 +35,7 @@ where
     SAUC: ShowAuthorUseCase,
 {
     async fn find_user_by_id(&self, user_id: &str) -> Result<User, PresentationalError> {
-        todo!()
+        Ok(self.login_use_case.check_user_registration(user_id).await?)
     }
 
     async fn find_author_by_id(
