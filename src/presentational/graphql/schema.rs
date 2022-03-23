@@ -1,9 +1,9 @@
-use super::{query::QueryRoot, query_service::QueryService};
+use super::{query::Query, query_service::QueryService};
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 
 pub fn build_schema<T>(
-    query: QueryRoot<T>,
-) -> Schema<QueryRoot<T>, EmptyMutation, EmptySubscription>
+    query: Query<T>,
+) -> Schema<Query<T>, EmptyMutation, EmptySubscription>
 where
     T: QueryService + Send + Sync + 'static,
 {
@@ -15,7 +15,7 @@ mod tests {
     use mockall::predicate;
 
     use crate::{
-        presentational::graphql::{query::QueryRoot, query_service::tests::MockQueryService},
+        presentational::graphql::{query::Query, query_service::tests::MockQueryService},
         use_case::dto::book::Book,
     };
 
@@ -35,7 +35,7 @@ mod tests {
                     title: String::from("title1"),
                 })
             });
-        let query = QueryRoot::new(mock_query_service);
+        let query = Query::new(mock_query_service);
         let schema = build_schema(query);
         let res = schema
             .execute(r#"{ book(id: "d065a358-4fa7-4236-ae19-f6f2f9467c35") {id, title} }"#)

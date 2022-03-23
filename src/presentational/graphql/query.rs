@@ -7,18 +7,18 @@ use super::{
     query_service::QueryService,
 };
 
-pub struct QueryRoot<T> {
+pub struct Query<T> {
     query_service: T,
 }
 
-impl<T> QueryRoot<T> {
+impl<T> Query<T> {
     pub fn new(query_service: T) -> Self {
-        QueryRoot { query_service }
+        Query { query_service }
     }
 }
 
 #[Object]
-impl<T> QueryRoot<T>
+impl<T> Query<T>
 where
     T: QueryService,
 {

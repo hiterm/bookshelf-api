@@ -4,14 +4,14 @@ use sqlx::postgres::PgPoolOptions;
 use crate::{
     infrastructure::author_repository::PgAuthorRepository,
     presentational::graphql::{
-        query::QueryRoot, query_service::QueryServiceImpl, schema::build_schema,
+        query::Query, query_service::QueryServiceImpl, schema::build_schema,
     },
     use_case::interactor::author::ShowAuthorInteractor,
 };
 
 pub type QSI = QueryServiceImpl<ShowAuthorInteractor<PgAuthorRepository>>;
 
-pub async fn dependency_injection() -> Schema<QueryRoot<QSI>, EmptyMutation, EmptySubscription> {
+pub async fn dependency_injection() -> Schema<Query<QSI>, EmptyMutation, EmptySubscription> {
     let db_url = fetch_database_url();
 
     let pool = PgPoolOptions::new()
@@ -25,7 +25,7 @@ pub async fn dependency_injection() -> Schema<QueryRoot<QSI>, EmptyMutation, Emp
     let query_service = QueryServiceImpl {
         show_author_use_case,
     };
-    let query = QueryRoot::new(query_service);
+    let query = Query::new(query_service);
 
     build_schema(query)
 }

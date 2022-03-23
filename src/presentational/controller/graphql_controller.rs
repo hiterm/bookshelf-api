@@ -4,11 +4,11 @@ use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 
 use crate::{
     extractors::Claims,
-    presentational::graphql::{query::QueryRoot, query_service::QueryService},
+    presentational::graphql::{query::Query, query_service::QueryService},
 };
 
 pub async fn graphql<QS>(
-    schema: web::Data<Schema<QueryRoot<QS>, EmptyMutation, EmptySubscription>>,
+    schema: web::Data<Schema<Query<QS>, EmptyMutation, EmptySubscription>>,
     request: GraphQLRequest,
     claims: Claims,
 ) -> GraphQLResponse
