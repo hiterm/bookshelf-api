@@ -35,17 +35,13 @@ where
         Ok(Book::new(book.id, book.title))
     }
 
-    async fn author(
-        &self,
-        ctx: &Context<'_>,
-        author_id: String,
-    ) -> Result<Author, PresentationalError> {
+    async fn author(&self, ctx: &Context<'_>, id: ID) -> Result<Author, PresentationalError> {
         let claims = ctx
             .data::<Claims>()
             .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
         let author = self
             .query_service
-            .find_author_by_id(&claims.sub, &author_id)
+            .find_author_by_id(&claims.sub, id.as_str())
             .await?;
         Ok(Author::new(author.id, author.name))
     }
