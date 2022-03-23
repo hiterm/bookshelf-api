@@ -1,4 +1,4 @@
-use async_graphql::SimpleObject;
+use async_graphql::{SimpleObject, ID};
 
 #[derive(SimpleObject)]
 pub struct Book {
@@ -14,12 +14,12 @@ impl Book {
 
 #[derive(SimpleObject)]
 pub struct Author {
-    pub id: String,
+    pub id: ID,
     pub name: String,
 }
 
 impl Author {
     pub fn new(id: String, name: String) -> Self {
-        Self { id, name }
+        Self { id: ID(id), name }
     }
 }
