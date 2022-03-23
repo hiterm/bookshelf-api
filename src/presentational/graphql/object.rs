@@ -1,5 +1,16 @@
 use async_graphql::{SimpleObject, ID};
 
+#[derive(SimpleObject)]
+pub struct User {
+    id: ID,
+}
+
+impl User {
+    pub fn new(id: ID) -> Self {
+        Self { id }
+    }
+}
+
 // TODO
 #[derive(SimpleObject)]
 pub struct Book {

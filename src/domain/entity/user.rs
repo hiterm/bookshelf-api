@@ -5,7 +5,7 @@ use crate::domain::error::DomainError;
 #[derive(Debug, Clone, PartialEq, Eq, Getters)]
 pub struct UserId {
     #[getset(get = "pub")]
-    id: String,
+    pub id: String,
 }
 
 impl UserId {
@@ -17,7 +17,7 @@ impl UserId {
 #[derive(Debug, Clone, PartialEq, Eq, Getters)]
 pub struct User {
     #[getset(get = "pub")]
-    id: UserId,
+    pub id: UserId,
 }
 
 impl User {

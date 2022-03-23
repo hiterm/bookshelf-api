@@ -4,7 +4,7 @@ use mockall::automock;
 use crate::{
     presentational::error::error::PresentationalError,
     use_case::{
-        dto::{author::Author, book::Book},
+        dto::{author::Author, book::Book, user::User},
         use_case::author::ShowAuthorUseCase,
     },
 };
@@ -12,12 +12,14 @@ use crate::{
 #[automock]
 #[async_trait]
 pub trait QueryService: Send + Sync + 'static {
-    async fn find_book_by_id(&self, id: &str) -> Result<Book, PresentationalError>;
+    async fn find_user_by_id(&self, user_id: &str) -> Result<User, PresentationalError>;
     async fn find_author_by_id(
         &self,
         user_id: &str,
         author_id: &str,
     ) -> Result<Author, PresentationalError>;
+    // TODO: fix
+    async fn find_book_by_id(&self, id: &str) -> Result<Book, PresentationalError>;
 }
 
 pub struct QueryServiceImpl<SAUC> {
@@ -29,9 +31,7 @@ impl<SAUC> QueryService for QueryServiceImpl<SAUC>
 where
     SAUC: ShowAuthorUseCase,
 {
-    // TODO: remove attribute
-    #[allow(unused)]
-    async fn find_book_by_id(&self, id: &str) -> Result<Book, PresentationalError> {
+    async fn find_user_by_id(&self, user_id: &str) -> Result<User, PresentationalError> {
         todo!()
     }
 
@@ -44,5 +44,11 @@ where
             .show_author_use_case
             .find_by_id(user_id, author_id)
             .await?)
+    }
+
+    // TODO: remove attribute
+    #[allow(unused)]
+    async fn find_book_by_id(&self, id: &str) -> Result<Book, PresentationalError> {
+        todo!()
     }
 }
