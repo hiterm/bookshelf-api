@@ -7,20 +7,20 @@ use super::{
     query_service::QueryService,
 };
 
-pub struct Query<T> {
-    query_service: T,
+pub struct Query<QS> {
+    query_service: QS,
 }
 
-impl<T> Query<T> {
-    pub fn new(query_service: T) -> Self {
+impl<QS> Query<QS> {
+    pub fn new(query_service: QS) -> Self {
         Query { query_service }
     }
 }
 
 #[Object]
-impl<T> Query<T>
+impl<QS> Query<QS>
 where
-    T: QueryService,
+    QS: QueryService,
 {
     async fn book(&self, id: String) -> Result<Book, PresentationalError> {
         let book = self.query_service.find_book_by_id(&id).await?;
