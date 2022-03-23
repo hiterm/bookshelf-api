@@ -18,6 +18,7 @@ pub trait QueryService: Send + Sync + 'static {
         user_id: &str,
         author_id: &str,
     ) -> Result<Author, PresentationalError>;
+
     // TODO: fix
     async fn find_book_by_id(&self, id: &str) -> Result<Book, PresentationalError>;
 }
