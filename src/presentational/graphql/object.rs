@@ -1,11 +1,13 @@
 use async_graphql::{SimpleObject, ID};
 
+// TODO
 #[derive(SimpleObject)]
 pub struct Book {
     id: String,
     title: String,
 }
 
+// TODO
 impl Book {
     pub fn new(id: String, title: String) -> Self {
         Book { id, title }

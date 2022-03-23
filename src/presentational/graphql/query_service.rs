@@ -29,6 +29,8 @@ impl<SAUC> QueryService for QueryServiceImpl<SAUC>
 where
     SAUC: ShowAuthorUseCase,
 {
+    // TODO: remove attribute
+    #[allow(unused)]
     async fn find_book_by_id(&self, id: &str) -> Result<Book, PresentationalError> {
         todo!()
     }
