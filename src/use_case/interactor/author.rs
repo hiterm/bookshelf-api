@@ -51,7 +51,8 @@ mod tests {
     use crate::{
         domain::{
             self,
-            entity::author::{AuthorId, AuthorName}, repository::author_repository::MockAuthorRepository,
+            entity::author::{AuthorId, AuthorName},
+            repository::author_repository::MockAuthorRepository,
         },
         use_case::use_case::author::ShowAuthorUseCase,
     };
