@@ -12,8 +12,8 @@ struct UserRow {
     id: String,
 }
 
-struct PgUserRepository {
-    pool: PgPool,
+pub struct PgUserRepository {
+    pub pool: PgPool,
 }
 
 #[async_trait]

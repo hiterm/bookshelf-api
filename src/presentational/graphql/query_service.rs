@@ -5,7 +5,7 @@ use crate::{
     presentational::error::error::PresentationalError,
     use_case::{
         dto::{author::Author, book::Book, user::User},
-        use_case::author::ShowAuthorUseCase,
+        use_case::{author::ShowAuthorUseCase, user::LoginUseCase},
     },
 };
 
@@ -23,13 +23,15 @@ pub trait QueryService: Send + Sync + 'static {
     async fn find_book_by_id(&self, id: &str) -> Result<Book, PresentationalError>;
 }
 
-pub struct QueryServiceImpl<SAUC> {
+pub struct QueryServiceImpl<LUC, SAUC> {
+    pub login_use_case: LUC,
     pub show_author_use_case: SAUC,
 }
 
 #[async_trait]
-impl<SAUC> QueryService for QueryServiceImpl<SAUC>
+impl<LUC, SAUC> QueryService for QueryServiceImpl<LUC, SAUC>
 where
+    LUC: LoginUseCase,
     SAUC: ShowAuthorUseCase,
 {
     async fn find_user_by_id(&self, user_id: &str) -> Result<User, PresentationalError> {
