@@ -48,11 +48,10 @@ mod tests {
 
     use mockall::predicate::always;
 
-    use crate::domain::repository::author_repository::tests::MockAuthorRepository;
     use crate::{
         domain::{
             self,
-            entity::author::{AuthorId, AuthorName},
+            entity::author::{AuthorId, AuthorName}, repository::author_repository::MockAuthorRepository,
         },
         use_case::use_case::author::ShowAuthorUseCase,
     };

@@ -1,9 +1,7 @@
 use super::{query::Query, query_service::QueryService};
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 
-pub fn build_schema<T>(
-    query: Query<T>,
-) -> Schema<Query<T>, EmptyMutation, EmptySubscription>
+pub fn build_schema<T>(query: Query<T>) -> Schema<Query<T>, EmptyMutation, EmptySubscription>
 where
     T: QueryService + Send + Sync + 'static,
 {
@@ -15,7 +13,7 @@ mod tests {
     use mockall::predicate;
 
     use crate::{
-        presentational::graphql::{query::Query, query_service::tests::MockQueryService},
+        presentational::graphql::{query::Query, query_service::MockQueryService},
         use_case::dto::book::Book,
     };
 
