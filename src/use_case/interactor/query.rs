@@ -58,3 +58,53 @@ where
             .map(|author| -> Author { author.into() })
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use mockall::predicate::always;
+
+    use crate::{
+        domain::{
+            self,
+            entity::author::{AuthorId, AuthorName},
+            repository::{
+                author_repository::MockAuthorRepository, user_repository::MockUserRepository,
+            },
+        },
+        use_case::{interactor::query::QueryInteractor, use_case::query::QueryUseCase},
+    };
+
+    #[tokio::test]
+    async fn find_author_by_id() {
+        let mut author_repository = MockAuthorRepository::new();
+        let user_repository = MockUserRepository::new();
+
+        let user_id = "user1";
+        let author_id = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let author_name = "author1";
+
+        author_repository
+            .expect_find_by_id()
+            .with(always(), always())
+            .returning(|_, _| {
+                Ok(Some(domain::entity::author::Author {
+                    id: AuthorId::new(author_id).unwrap(),
+                    name: AuthorName::new(author_name.to_string()).unwrap(),
+                }))
+            });
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            author_repository,
+        };
+
+        let author = query_interactor
+            .find_author_by_id(user_id, author_id)
+            .await
+            .unwrap();
+
+        assert_eq!(author.id, author_id);
+        assert_eq!(author.name, author_name);
+    }
+}
