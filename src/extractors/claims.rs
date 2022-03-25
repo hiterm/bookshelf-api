@@ -83,7 +83,7 @@ impl ResponseError for ClientError {
 #[derive(Debug, Deserialize)]
 pub struct Claims {
     pub sub: String,
-    _permissions: Option<HashSet<String>>,
+    pub _permissions: Option<HashSet<String>>,
 }
 
 impl FromRequest for Claims {
