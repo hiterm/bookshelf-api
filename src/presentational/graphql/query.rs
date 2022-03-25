@@ -7,12 +7,12 @@ use crate::{
 
 use super::object::{Author, User};
 
-pub struct Query<QS> {
-    query_use_case: QS,
+pub struct Query<QUC> {
+    query_use_case: QUC,
 }
 
-impl<QS> Query<QS> {
-    pub fn new(query_service: QS) -> Self {
+impl<QUC> Query<QUC> {
+    pub fn new(query_service: QUC) -> Self {
         Query {
             query_use_case: query_service,
         }
@@ -20,9 +20,9 @@ impl<QS> Query<QS> {
 }
 
 #[Object]
-impl<QS> Query<QS>
+impl<QUC> Query<QUC>
 where
-    QS: QueryUseCase,
+    QUC: QueryUseCase,
 {
     async fn login_user(&self, ctx: &Context<'_>) -> Result<User, PresentationalError> {
         let claims = ctx
