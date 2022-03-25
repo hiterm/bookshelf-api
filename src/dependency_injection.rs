@@ -1,15 +1,18 @@
-use async_graphql::{EmptyMutation, EmptySubscription, Schema};
+use async_graphql::{EmptySubscription, Schema};
 use sqlx::postgres::PgPoolOptions;
 
 use crate::{
     infrastructure::{author_repository::PgAuthorRepository, user_repository::PgUserRepository},
-    presentational::graphql::{query::Query, schema::build_schema},
-    use_case::interactor::query::QueryInteractor,
+    presentational::graphql::{mutation::Mutation, query::Query, schema::build_schema},
+    use_case::interactor::{
+        mutation::MutationInteractor, query::QueryInteractor, user::RegisterUserInteractor,
+    },
 };
 
 pub type QI = QueryInteractor<PgUserRepository, PgAuthorRepository>;
+pub type MI = MutationInteractor<RegisterUserInteractor<PgUserRepository>>;
 
-pub async fn dependency_injection() -> Schema<Query<QI>, EmptyMutation, EmptySubscription> {
+pub async fn dependency_injection() -> Schema<Query<QI>, Mutation<MI>, EmptySubscription> {
     let db_url = fetch_database_url();
 
     let pool = PgPoolOptions::new()
@@ -22,12 +25,16 @@ pub async fn dependency_injection() -> Schema<Query<QI>, EmptyMutation, EmptySub
     let user_repository = PgUserRepository { pool: pool.clone() };
     let author_repository = PgAuthorRepository { pool: pool.clone() };
     let query_use_case = QueryInteractor {
-        user_repository,
+        user_repository: user_repository.clone(),
         author_repository,
     };
     let query = Query::new(query_use_case);
 
-    build_schema(query)
+    let register_user_use_case = RegisterUserInteractor::new(user_repository);
+    let mutation_use_case = MutationInteractor::new(register_user_use_case);
+    let mutation = Mutation::new(mutation_use_case);
+
+    build_schema(query, mutation)
 }
 
 fn fetch_database_url() -> String {

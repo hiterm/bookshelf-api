@@ -1,13 +1,17 @@
-use crate::use_case::use_case::query::QueryUseCase;
+use crate::use_case::use_case::{mutation::MutationUseCase, query::QueryUseCase};
 
-use super::query::Query;
-use async_graphql::{EmptyMutation, EmptySubscription, Schema};
+use super::{mutation::Mutation, query::Query};
+use async_graphql::{EmptySubscription, Schema};
 
-pub fn build_schema<T>(query: Query<T>) -> Schema<Query<T>, EmptyMutation, EmptySubscription>
+pub fn build_schema<QUC, MUC>(
+    query: Query<QUC>,
+    mutation: Mutation<MUC>,
+) -> Schema<Query<QUC>, Mutation<MUC>, EmptySubscription>
 where
-    T: QueryUseCase,
+    QUC: QueryUseCase,
+    MUC: MutationUseCase,
 {
-    Schema::build(query, EmptyMutation, EmptySubscription).finish()
+    Schema::build(query, mutation, EmptySubscription).finish()
 }
 
 #[cfg(test)]
@@ -16,8 +20,11 @@ mod tests {
 
     use crate::{
         extractors::Claims,
-        presentational::graphql::query::Query,
-        use_case::{dto::author::Author, use_case::query::MockQueryUseCase},
+        presentational::graphql::{mutation::Mutation, query::Query},
+        use_case::{
+            dto::author::Author,
+            use_case::{mutation::MockMutationUseCase, query::MockQueryUseCase},
+        },
     };
 
     use super::build_schema;
@@ -40,7 +47,9 @@ mod tests {
                 })
             });
         let query = Query::new(mock_query_use_case);
-        let schema = build_schema(query);
+        let mutation_use_case = MockMutationUseCase::new();
+        let mutation = Mutation::new(mutation_use_case);
+        let schema = build_schema(query, mutation);
         let claims = Claims {
             sub: user_id.to_string(),
             _permissions: None,

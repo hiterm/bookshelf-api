@@ -12,6 +12,7 @@ struct UserRow {
     id: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct PgUserRepository {
     pub pool: PgPool,
 }
