@@ -3,16 +3,13 @@ use sqlx::postgres::PgPoolOptions;
 
 use crate::{
     infrastructure::{author_repository::PgAuthorRepository, user_repository::PgUserRepository},
-    presentational::graphql::{
-        query::Query, query_service::QueryServiceImpl, schema::build_schema,
-    },
-    use_case::interactor::{author::ShowAuthorInteractor, user::LoginInteractor},
+    presentational::graphql::{query::Query, schema::build_schema},
+    use_case::interactor::query::QueryInteractor,
 };
 
-pub type QSI =
-    QueryServiceImpl<LoginInteractor<PgUserRepository>, ShowAuthorInteractor<PgAuthorRepository>>;
+pub type QI = QueryInteractor<PgUserRepository, PgAuthorRepository>;
 
-pub async fn dependency_injection() -> Schema<Query<QSI>, EmptyMutation, EmptySubscription> {
+pub async fn dependency_injection() -> Schema<Query<QI>, EmptyMutation, EmptySubscription> {
     let db_url = fetch_database_url();
 
     let pool = PgPoolOptions::new()
@@ -23,14 +20,12 @@ pub async fn dependency_injection() -> Schema<Query<QSI>, EmptyMutation, EmptySu
 
     // TODO: newを使う
     let user_repository = PgUserRepository { pool: pool.clone() };
-    let login_use_case = LoginInteractor::new(user_repository);
     let author_repository = PgAuthorRepository { pool: pool.clone() };
-    let show_author_use_case = ShowAuthorInteractor::new(author_repository);
-    let query_service = QueryServiceImpl {
-        login_use_case,
-        show_author_use_case,
+    let query_use_case = QueryInteractor {
+        user_repository,
+        author_repository,
     };
-    let query = Query::new(query_service);
+    let query = Query::new(query_use_case);
 
     build_schema(query)
 }

@@ -13,8 +13,8 @@ use crate::{
 };
 
 pub struct QueryInteractor<UR, AR> {
-    user_repository: UR,
-    author_repository: AR,
+    pub user_repository: UR,
+    pub author_repository: AR,
 }
 
 #[async_trait]

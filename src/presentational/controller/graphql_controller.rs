@@ -3,17 +3,17 @@ use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 
 use crate::{
-    extractors::Claims,
-    presentational::graphql::{query::Query, query_service::QueryService},
+    extractors::Claims, presentational::graphql::query::Query,
+    use_case::use_case::query::QueryUseCase,
 };
 
-pub async fn graphql<QS>(
-    schema: web::Data<Schema<Query<QS>, EmptyMutation, EmptySubscription>>,
+pub async fn graphql<QUC>(
+    schema: web::Data<Schema<Query<QUC>, EmptyMutation, EmptySubscription>>,
     request: GraphQLRequest,
     claims: Claims,
 ) -> GraphQLResponse
 where
-    QS: QueryService,
+    QUC: QueryUseCase,
 {
     schema
         .execute(request.into_inner().data(claims))
