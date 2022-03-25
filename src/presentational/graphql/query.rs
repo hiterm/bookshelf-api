@@ -12,10 +12,8 @@ pub struct Query<QUC> {
 }
 
 impl<QUC> Query<QUC> {
-    pub fn new(query_service: QUC) -> Self {
-        Query {
-            query_use_case: query_service,
-        }
+    pub fn new(query_use_case: QUC) -> Self {
+        Query { query_use_case }
     }
 }
 
