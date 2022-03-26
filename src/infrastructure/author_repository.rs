@@ -14,8 +14,6 @@ use crate::domain::{
 #[derive(sqlx::FromRow)]
 struct AuthorRow {
     id: Uuid,
-    // TODO: remove attribute
-    #[allow(unused)]
     user_id: String,
     name: String,
 }
@@ -27,10 +25,10 @@ pub struct PgAuthorRepository {
 
 #[async_trait]
 impl AuthorRepository for PgAuthorRepository {
-    // TODO: remove attribute
-    #[allow(unused)]
     async fn create(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
-        todo!()
+        let mut conn = self.pool.acquire().await?;
+        InternalAuthorRepository::create(user_id, author, &mut conn).await?;
+        Ok(())
     }
     async fn find_by_id(
         &self,
@@ -45,8 +43,6 @@ impl AuthorRepository for PgAuthorRepository {
 struct InternalAuthorRepository {}
 
 impl InternalAuthorRepository {
-    // TODO: remove attribute
-    #[allow(unused)]
     async fn create(
         user_id: &UserId,
         author: &Author,
