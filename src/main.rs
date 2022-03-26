@@ -1,7 +1,8 @@
+use actix_cors::Cors;
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use bookshelf_api::dependency_injection::{dependency_injection, MI, QI};
 use bookshelf_api::extractors;
-use bookshelf_api::presentational::controller::graphql_controller::{graphql_playground, graphql};
+use bookshelf_api::presentational::controller::graphql_controller::{graphql, graphql_playground};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -14,10 +15,12 @@ async fn main() -> std::io::Result<()> {
     let schema = dependency_injection().await;
 
     HttpServer::new(move || {
+        let cors = Cors::default().allowed_origin("http://localhost:4040");
         App::new()
             .app_data(web::Data::new(schema.clone()))
             .app_data(auth0_config.clone())
             .wrap(Logger::default())
+            .wrap(cors)
             .service(hello)
             .service(graphql_playground)
             .route("/graphql", web::post().to(graphql::<QI, MI>))
