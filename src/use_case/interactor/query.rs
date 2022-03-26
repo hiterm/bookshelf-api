@@ -43,7 +43,7 @@ where
         let raw_user_id = user_id;
         let raw_author_id = author_id;
         let user_id = UserId::new(raw_user_id.to_string())?;
-        let author_id = AuthorId::new(raw_author_id)?;
+        let author_id = AuthorId::try_from(raw_author_id)?;
         let author = self
             .author_repository
             .find_by_id(&user_id, &author_id)
@@ -87,9 +87,9 @@ mod tests {
         author_repository
             .expect_find_by_id()
             .with(always(), always())
-            .returning(|_, _| {
+            .returning(move |_, _| {
                 Ok(Some(domain::entity::author::Author {
-                    id: AuthorId::new(author_id).unwrap(),
+                    id: AuthorId::try_from(author_id).unwrap(),
                     name: AuthorName::new(author_name.to_string()).unwrap(),
                 }))
             });

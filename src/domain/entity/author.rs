@@ -9,12 +9,14 @@ pub struct AuthorId {
     pub id: Uuid,
 }
 
-impl AuthorId {
-    pub fn new(id: &str) -> Result<AuthorId, DomainError> {
-        let id = Uuid::parse_str(id).map_err(|err| {
+impl TryFrom<&str> for AuthorId {
+    type Error = DomainError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let id = Uuid::parse_str(value).map_err(|err| {
             DomainError::Validation(format!(
                 r#"Failed to parse id "{}" as uuid. Message from uuid crate: {}"#,
-                id,
+                value,
                 err.to_string()
             ))
         })?;

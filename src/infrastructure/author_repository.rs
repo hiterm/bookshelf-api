@@ -106,7 +106,7 @@ mod tests {
 
         let user_id = UserId::new(String::from("user1"))?;
         let user = User::new(user_id.clone());
-        let author_id = AuthorId::new("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author_name = AuthorName::new(String::from("author1"))?;
         let author = Author::new(author_id.clone(), author_name)?;
 
