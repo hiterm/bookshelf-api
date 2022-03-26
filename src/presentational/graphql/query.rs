@@ -40,4 +40,16 @@ where
             .await?;
         Ok(Author::new(author.id, author.name))
     }
+
+    async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>, PresentationalError> {
+        let claims = ctx
+            .data::<Claims>()
+            .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
+        let authors = self.query_use_case.find_all_authors(&claims.sub).await?;
+        let authors: Vec<Author> = authors
+            .into_iter()
+            .map(|author| Author::from(author))
+            .collect();
+        Ok(authors)
+    }
 }
