@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures_util::{StreamExt, TryStreamExt};
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
@@ -36,6 +37,11 @@ impl AuthorRepository for PgAuthorRepository {
     ) -> Result<Option<Author>, DomainError> {
         let mut conn = self.pool.acquire().await?;
         InternalAuthorRepository::find_by_id(user_id, author_id, &mut conn).await
+    }
+
+    async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError> {
+        let mut conn = self.pool.acquire().await?;
+        InternalAuthorRepository::find_all(user_id, &mut conn).await
     }
 }
 
@@ -75,6 +81,29 @@ impl InternalAuthorRepository {
         })
         .transpose()
     }
+
+    async fn find_all(
+        user_id: &UserId,
+        conn: &mut PgConnection,
+    ) -> Result<Vec<Author>, DomainError> {
+        let authors: Result<Vec<Author>, DomainError> =
+            sqlx::query_as("SELECT * FROM author WHERE user_id = $1")
+                .bind(user_id.id.as_str())
+                .fetch(conn)
+                .map(
+                    |row: Result<AuthorRow, sqlx::Error>| -> Result<Author, DomainError> {
+                        let row = row?;
+                        let author_id = AuthorId::new(row.id);
+                        let author_name = AuthorName::new(row.name)?;
+                        let author = Author::new(author_id, author_name)?;
+                        Ok(author)
+                    },
+                )
+                .try_collect()
+                .await;
+
+        Ok(authors?)
+    }
 }
 
 #[cfg(test)]
@@ -110,7 +139,16 @@ mod tests {
         InternalAuthorRepository::create(&user_id, &author, &mut tx).await?;
 
         let actual = InternalAuthorRepository::find_by_id(&user_id, &author_id, &mut tx).await?;
-        assert_eq!(actual, Some(author));
+        assert_eq!(actual, Some(author.clone()));
+
+        let author_id = AuthorId::try_from("e9700384-6217-4152-88c0-7ba38aeee73a")?;
+        let author_name = AuthorName::new(String::from("author2"))?;
+        let author2 = Author::new(author_id.clone(), author_name)?;
+        InternalAuthorRepository::create(&user_id, &author2, &mut tx).await?;
+
+        let all_authors = InternalAuthorRepository::find_all(&user_id, &mut tx).await?;
+        assert_eq!(all_authors.len(), 2);
+        assert_eq!(all_authors, vec![author, author2]);
 
         tx.rollback().await?;
         Ok(())
