@@ -87,7 +87,7 @@ impl InternalAuthorRepository {
         conn: &mut PgConnection,
     ) -> Result<Vec<Author>, DomainError> {
         let authors: Result<Vec<Author>, DomainError> =
-            sqlx::query_as("SELECT * FROM author WHERE user_id = $1")
+            sqlx::query_as("SELECT * FROM author WHERE user_id = $1 ORDER BY name ASC")
                 .bind(user_id.id.as_str())
                 .fetch(conn)
                 .map(
