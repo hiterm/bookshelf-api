@@ -4,13 +4,16 @@ use sqlx::postgres::PgPoolOptions;
 use crate::{
     infrastructure::{author_repository::PgAuthorRepository, user_repository::PgUserRepository},
     presentational::graphql::{mutation::Mutation, query::Query, schema::build_schema},
-    use_case::interactor::{
-        mutation::MutationInteractor, query::QueryInteractor, user::RegisterUserInteractor,
+    use_case::{
+        interactor::{
+            mutation::MutationInteractor, query::QueryInteractor, user::RegisterUserInteractor,
+        },
+        use_case::author::MockCreateAuthorUseCase,
     },
 };
 
 pub type QI = QueryInteractor<PgUserRepository, PgAuthorRepository>;
-pub type MI = MutationInteractor<RegisterUserInteractor<PgUserRepository>>;
+pub type MI = MutationInteractor<RegisterUserInteractor<PgUserRepository>, MockCreateAuthorUseCase>;
 
 pub async fn dependency_injection() -> Schema<Query<QI>, Mutation<MI>, EmptySubscription> {
     let db_url = fetch_database_url();
@@ -31,7 +34,8 @@ pub async fn dependency_injection() -> Schema<Query<QI>, Mutation<MI>, EmptySubs
     let query = Query::new(query_use_case);
 
     let register_user_use_case = RegisterUserInteractor::new(user_repository);
-    let mutation_use_case = MutationInteractor::new(register_user_use_case);
+    let create_author_use_case = MockCreateAuthorUseCase::new();
+    let mutation_use_case = MutationInteractor::new(register_user_use_case, create_author_use_case);
     let mutation = Mutation::new(mutation_use_case);
 
     build_schema(query, mutation)

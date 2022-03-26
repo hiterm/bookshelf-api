@@ -5,7 +5,7 @@ use crate::{
     use_case::use_case::mutation::MutationUseCase,
 };
 
-use super::object::User;
+use super::object::{Author, CreateAuthorData, User};
 
 pub struct Mutation<MUC> {
     mutation_use_case: MUC,
@@ -28,5 +28,20 @@ where
             .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
         let user = self.mutation_use_case.register_user(&claims.sub).await?;
         Ok(User::new(ID(user.id)))
+    }
+
+    async fn create_author(
+        &self,
+        ctx: &Context<'_>,
+        author_data: CreateAuthorData,
+    ) -> Result<Author, PresentationalError> {
+        let claims = ctx
+            .data::<Claims>()
+            .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
+        let author = self
+            .mutation_use_case
+            .create_author(&claims.sub, author_data.into())
+            .await?;
+        Ok(author.into())
     }
 }

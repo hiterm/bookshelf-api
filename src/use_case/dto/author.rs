@@ -14,3 +14,11 @@ impl From<domain::entity::author::Author> for Author {
         }
     }
 }
+
+pub struct CreateAuthorData {
+    pub name: String,
+}
+
+impl CreateAuthorData {
+    pub fn new(name: String) -> Self { Self { name } }
+}

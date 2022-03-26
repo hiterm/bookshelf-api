@@ -1,30 +1,48 @@
 use async_trait::async_trait;
 
 use crate::use_case::{
-    dto::user::User,
+    dto::{
+        author::{Author, CreateAuthorData},
+        user::User,
+    },
     error::UseCaseError,
-    use_case::{mutation::MutationUseCase, user::RegisterUserUseCase},
+    use_case::{author::CreateAuthorUseCase, mutation::MutationUseCase, user::RegisterUserUseCase},
 };
 
-pub struct MutationInteractor<RUUC> {
+pub struct MutationInteractor<RUUC, CAUC> {
     register_user_use_case: RUUC,
+    create_author_use_case: CAUC,
 }
 
-impl<RUUC> MutationInteractor<RUUC> {
-    pub fn new(register_user_use_case: RUUC) -> Self {
+impl<RUUC, CAUC> MutationInteractor<RUUC, CAUC> {
+    pub fn new(register_user_use_case: RUUC, create_author_use_case: CAUC) -> Self {
         Self {
             register_user_use_case,
+            create_author_use_case,
         }
     }
 }
 
 #[async_trait]
-impl<RUUC> MutationUseCase for MutationInteractor<RUUC>
+impl<RUUC, CAUC> MutationUseCase for MutationInteractor<RUUC, CAUC>
 where
     RUUC: RegisterUserUseCase,
+    CAUC: CreateAuthorUseCase,
 {
     async fn register_user(&self, user_id: &str) -> Result<User, UseCaseError> {
         let user = self.register_user_use_case.register_user(user_id).await?;
         Ok(user)
+    }
+
+    async fn create_author(
+        &self,
+        user_id: &str,
+        author_data: CreateAuthorData,
+    ) -> Result<Author, UseCaseError> {
+        let author = self
+            .create_author_use_case
+            .create(user_id, author_data)
+            .await?;
+        Ok(author)
     }
 }
