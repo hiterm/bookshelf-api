@@ -20,6 +20,7 @@ struct AuthorRow {
     name: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct PgAuthorRepository {
     pub pool: PgPool,
 }
