@@ -1,5 +1,5 @@
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
-use bookshelf_api::dependency_injection::{dependency_injection, QI};
+use bookshelf_api::dependency_injection::{dependency_injection, MI, QI};
 use bookshelf_api::extractors;
 use bookshelf_api::presentational::controller::graphql_controller::graphql;
 
@@ -19,7 +19,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(auth0_config.clone())
             .wrap(Logger::default())
             .service(hello)
-            .route("/graphql", web::post().to(graphql::<QI>))
+            .route("/graphql", web::post().to(graphql::<QI, MI>))
     })
     .bind(("0.0.0.0", fetch_port()))?
     .run()
