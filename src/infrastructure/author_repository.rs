@@ -14,7 +14,6 @@ use crate::domain::{
 #[derive(sqlx::FromRow)]
 struct AuthorRow {
     id: Uuid,
-    user_id: String,
     name: String,
 }
 
