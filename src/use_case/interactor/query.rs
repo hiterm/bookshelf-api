@@ -55,7 +55,17 @@ where
                 entity_id: raw_author_id.to_string(),
                 user_id: raw_user_id.to_string(),
             })
-            .map(|author| -> Author { author.into() })
+            .map(|author| Author::from(author))
+    }
+
+    async fn find_all_authors(&self, user_id: &str) -> Result<Vec<Author>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let authors = self.author_repository.find_all(&user_id).await?;
+        let authors: Vec<Author> = authors
+            .into_iter()
+            .map(|author| Author::from(author))
+            .collect();
+        Ok(authors)
     }
 }
 
