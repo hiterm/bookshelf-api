@@ -1,7 +1,6 @@
 // TODO: 消す
 #![allow(warnings, unused)]
 
-use getset::Getters;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -9,9 +8,8 @@ use crate::domain::error::DomainError;
 
 use super::author::Author;
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct BookId {
-    #[getset(get = "pub")]
     id: Uuid,
 }
 
@@ -21,9 +19,8 @@ impl BookId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Isbn {
-    #[getset(get = "pub")]
     value: String,
 }
 
@@ -33,9 +30,8 @@ impl Isbn {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ReadFlag {
-    #[getset(get = "pub")]
     value: bool,
 }
 
@@ -45,9 +41,8 @@ impl ReadFlag {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct OwnedFlag {
-    #[getset(get = "pub")]
     value: bool,
 }
 
@@ -57,9 +52,8 @@ impl OwnedFlag {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Priority {
-    #[getset(get = "pub")]
     value: i32,
 }
 

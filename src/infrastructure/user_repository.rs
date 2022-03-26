@@ -40,7 +40,7 @@ impl InternalUserRepository {
         conn: &mut PgConnection,
     ) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO bookshelf_user (id) VALUES ($1)")
-            .bind(user.id().id())
+            .bind(user.id.id.as_str())
             .execute(conn)
             .await?;
         Ok(())
@@ -48,7 +48,7 @@ impl InternalUserRepository {
 
     async fn find_by_id(id: &UserId, conn: &mut PgConnection) -> Result<Option<User>, DomainError> {
         let row: Option<UserRow> = sqlx::query_as("SELECT * FROM bookshelf_user WHERE id = $1")
-            .bind(id.id())
+            .bind(id.id.as_str())
             .fetch_optional(conn)
             .await?;
 

@@ -1,10 +1,7 @@
-use getset::Getters;
-
 use crate::domain::error::DomainError;
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserId {
-    #[getset(get = "pub")]
     pub id: String,
 }
 
@@ -14,9 +11,8 @@ impl UserId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
-    #[getset(get = "pub")]
     pub id: UserId,
 }
 

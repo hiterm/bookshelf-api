@@ -1,11 +1,9 @@
-use getset::Getters;
 use uuid::Uuid;
 
 use crate::domain::error::DomainError;
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorId {
-    #[getset(get = "pub")]
     pub id: Uuid,
 }
 
@@ -30,9 +28,8 @@ impl From<Uuid> for AuthorId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorName {
-    #[getset(get = "pub")]
     pub name: String,
 }
 
@@ -42,11 +39,9 @@ impl AuthorName {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Author {
-    #[getset(get = "pub")]
     pub id: AuthorId,
-    #[getset(get = "pub")]
     pub name: AuthorName,
 }
 
