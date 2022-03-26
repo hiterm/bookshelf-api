@@ -4,12 +4,9 @@ use sqlx::postgres::PgPoolOptions;
 use crate::{
     infrastructure::{author_repository::PgAuthorRepository, user_repository::PgUserRepository},
     presentational::graphql::{mutation::Mutation, query::Query, schema::build_schema},
-    use_case::{
-        interactor::{
-            author::CreateAuthorInteractor, mutation::MutationInteractor, query::QueryInteractor,
-            user::RegisterUserInteractor,
-        },
-        use_case::author::MockCreateAuthorUseCase,
+    use_case::interactor::{
+        author::CreateAuthorInteractor, mutation::MutationInteractor, query::QueryInteractor,
+        user::RegisterUserInteractor,
     },
 };
 
