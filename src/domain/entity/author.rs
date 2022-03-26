@@ -7,6 +7,12 @@ pub struct AuthorId {
     pub id: Uuid,
 }
 
+impl AuthorId {
+    pub fn new(id: Uuid) -> Self {
+        Self { id }
+    }
+}
+
 impl TryFrom<&str> for AuthorId {
     type Error = DomainError;
 
