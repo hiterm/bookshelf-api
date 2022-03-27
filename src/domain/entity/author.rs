@@ -16,6 +16,10 @@ impl AuthorId {
     pub fn as_uuid(&self) -> Uuid {
         self.id
     }
+
+    pub fn to_string(&self) -> String {
+        self.id.to_hyphenated().to_string()
+    }
 }
 
 impl TryFrom<&str> for AuthorId {
@@ -67,7 +71,20 @@ impl Author {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::{entity::author::AuthorName, error::DomainError};
+    use uuid::Uuid;
+
+    use crate::domain::{
+        entity::author::{AuthorId, AuthorName},
+        error::DomainError,
+    };
+
+    #[test]
+    fn author_id_to_string() {
+        let uuid_str = "c6ea22c8-7b70-470c-a713-c7aade5693bd";
+        let uuid = Uuid::parse_str(uuid_str).unwrap();
+        let author_id = AuthorId::new(uuid);
+        assert_eq!(author_id.to_string(), uuid_str);
+    }
 
     #[test]
     fn validation_success() {
