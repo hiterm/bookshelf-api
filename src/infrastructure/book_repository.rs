@@ -43,6 +43,7 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
 
     #[tokio::test]
+    #[ignore] // Depends on PostgreSQL
     async fn test_find_all() {
         dotenv::dotenv().ok();
 

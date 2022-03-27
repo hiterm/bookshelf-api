@@ -122,6 +122,7 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
 
     #[tokio::test]
+    #[ignore] // Depends on PostgreSQL
     async fn create_and_find() -> anyhow::Result<()> {
         dotenv::dotenv().ok();
 
