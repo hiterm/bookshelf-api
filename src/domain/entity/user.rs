@@ -14,6 +14,10 @@ impl UserId {
         user_id.validate()?;
         Ok(user_id)
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,10 +39,7 @@ mod tests {
 
     #[test]
     fn validation_success() {
-        assert!(matches!(
-            UserId::new(String::from("user1")),
-            Ok(_)
-        ));
+        assert!(matches!(UserId::new(String::from("user1")), Ok(_)));
     }
 
     #[test]
