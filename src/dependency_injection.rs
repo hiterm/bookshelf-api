@@ -27,15 +27,16 @@ pub async fn dependency_injection() -> Schema<Query<QI>, Mutation<MI>, EmptySubs
 
     let user_repository = PgUserRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
+
     let query_use_case = QueryInteractor {
         user_repository: user_repository.clone(),
         author_repository: author_repository.clone(),
     };
-    let query = Query::new(query_use_case);
-
     let register_user_use_case = RegisterUserInteractor::new(user_repository);
     let create_author_use_case = CreateAuthorInteractor::new(author_repository);
     let mutation_use_case = MutationInteractor::new(register_user_use_case, create_author_use_case);
+
+    let query = Query::new(query_use_case);
     let mutation = Mutation::new(mutation_use_case);
 
     build_schema(query, mutation)
