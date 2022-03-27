@@ -12,6 +12,10 @@ impl AuthorId {
     pub fn new(id: Uuid) -> Self {
         Self { id }
     }
+
+    pub fn as_uuid(&self) -> Uuid {
+        self.id
+    }
 }
 
 impl TryFrom<&str> for AuthorId {
