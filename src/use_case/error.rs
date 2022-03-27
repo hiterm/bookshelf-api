@@ -20,7 +20,7 @@ impl From<DomainError> for UseCaseError {
     fn from(err: DomainError) -> Self {
         match err {
             DomainError::Validation(message) => UseCaseError::Validation(message),
-            DomainError::InfrastructureError(cause) => UseCaseError::Other(cause),
+            DomainError::InfrastructureError(_) => UseCaseError::Other(anyhow::Error::new(err)),
         }
     }
 }
