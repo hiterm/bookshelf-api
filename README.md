@@ -40,3 +40,9 @@ $ vim .env.docker  # Fill your value
 ```
 $ docker-compose up --build
 ```
+
+## Generate GraphQL schema
+
+```
+$ cargo run --bin gen_schema
+```
