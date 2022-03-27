@@ -5,18 +5,18 @@ use crate::domain::error::DomainError;
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct UserId {
     #[validate(length(min = 1))]
-    pub id: String,
+    pub value: String,
 }
 
 impl UserId {
     pub fn new(id: String) -> Result<UserId, DomainError> {
-        let user_id = UserId { id };
+        let user_id = UserId { value: id };
         user_id.validate()?;
         Ok(user_id)
     }
 
     pub fn as_str(&self) -> &str {
-        &self.id
+        &self.value
     }
 }
 
