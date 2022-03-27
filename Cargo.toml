@@ -35,3 +35,4 @@ thiserror = "1.0.30"
 time = "0.2.27"
 tokio = { version = "1.13.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
+validator = { version = "0.14.0", features = ["derive"] }
