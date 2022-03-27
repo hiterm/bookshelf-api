@@ -14,7 +14,11 @@ struct UserRow {
 
 #[derive(Debug, Clone)]
 pub struct PgUserRepository {
-    pub pool: PgPool,
+    pool: PgPool,
+}
+
+impl PgUserRepository {
+    pub fn new(pool: PgPool) -> Self { Self { pool } }
 }
 
 #[async_trait]

@@ -25,9 +25,8 @@ pub async fn dependency_injection() -> Schema<Query<QI>, Mutation<MI>, EmptySubs
         .await
         .unwrap();
 
-    // TODO: newを使う
-    let user_repository = PgUserRepository { pool: pool.clone() };
-    let author_repository = PgAuthorRepository { pool: pool.clone() };
+    let user_repository = PgUserRepository::new(pool.clone());
+    let author_repository = PgAuthorRepository::new(pool.clone());
     let query_use_case = QueryInteractor {
         user_repository: user_repository.clone(),
         author_repository: author_repository.clone(),

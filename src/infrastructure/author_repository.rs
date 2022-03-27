@@ -20,7 +20,11 @@ struct AuthorRow {
 
 #[derive(Debug, Clone)]
 pub struct PgAuthorRepository {
-    pub pool: PgPool,
+    pool: PgPool,
+}
+
+impl PgAuthorRepository {
+    pub fn new(pool: PgPool) -> Self { Self { pool } }
 }
 
 #[async_trait]
