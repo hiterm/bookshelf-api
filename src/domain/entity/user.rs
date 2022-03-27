@@ -1,13 +1,18 @@
+use validator::Validate;
+
 use crate::domain::error::DomainError;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct UserId {
+    #[validate(length(min = 1))]
     pub id: String,
 }
 
 impl UserId {
     pub fn new(id: String) -> Result<UserId, DomainError> {
-        Ok(UserId { id })
+        let user_id = UserId { id };
+        user_id.validate()?;
+        Ok(user_id)
     }
 }
 
@@ -19,5 +24,28 @@ pub struct User {
 impl User {
     pub fn new(id: UserId) -> User {
         User { id }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::error::DomainError;
+
+    use super::UserId;
+
+    #[test]
+    fn validation_success() {
+        assert!(matches!(
+            UserId::new(String::from("user1")),
+            Ok(_)
+        ));
+    }
+
+    #[test]
+    fn validation_failure() {
+        assert!(matches!(
+            UserId::new(String::from("")),
+            Err(DomainError::Validation(_))
+        ));
     }
 }

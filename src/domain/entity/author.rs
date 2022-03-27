@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::domain::error::DomainError;
 
@@ -34,14 +35,17 @@ impl From<Uuid> for AuthorId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct AuthorName {
+    #[validate(length(min = 1))]
     pub name: String,
 }
 
 impl AuthorName {
     pub fn new(name: String) -> Result<AuthorName, DomainError> {
-        Ok(AuthorName { name })
+        let author_name = AuthorName { name };
+        author_name.validate()?;
+        Ok(author_name)
     }
 }
 
@@ -54,5 +58,23 @@ pub struct Author {
 impl Author {
     pub fn new(id: AuthorId, name: AuthorName) -> Result<Author, DomainError> {
         Ok(Author { id, name })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::{entity::author::AuthorName, error::DomainError};
+
+    #[test]
+    fn validation_success() {
+        assert!(matches!(AuthorName::new(String::from("author1")), Ok(_)));
+    }
+
+    #[test]
+    fn validation_failure() {
+        assert!(matches!(
+            AuthorName::new(String::from("")),
+            Err(DomainError::Validation(_))
+        ));
     }
 }
