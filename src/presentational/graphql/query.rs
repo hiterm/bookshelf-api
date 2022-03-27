@@ -1,7 +1,7 @@
 use async_graphql::{Context, Object, ID};
 
 use crate::{
-    extractors::Claims, presentational::error::error::PresentationalError,
+    extractors::Claims, presentational::error::PresentationalError,
     use_case::use_case::query::QueryUseCase,
 };
 
