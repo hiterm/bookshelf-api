@@ -22,7 +22,7 @@ impl<QUC> Query<QUC>
 where
     QUC: QueryUseCase,
 {
-    async fn login_user(&self, ctx: &Context<'_>) -> Result<User, PresentationalError> {
+    async fn logged_in_user(&self, ctx: &Context<'_>) -> Result<User, PresentationalError> {
         let claims = ctx
             .data::<Claims>()
             .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
