@@ -1,6 +1,5 @@
 use actix_cors::Cors;
 use actix_web::http;
-use actix_web::http::header::ContentType;
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use bookshelf_api::dependency_injection::{dependency_injection, MI, QI};
 use bookshelf_api::extractors;
