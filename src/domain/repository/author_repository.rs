@@ -18,8 +18,5 @@ pub trait AuthorRepository: Send + Sync + 'static {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<Option<Author>, DomainError>;
-    async fn find_all(
-        &self,
-        user_id: &UserId,
-    ) -> Result<Vec<Author>, DomainError>;
+    async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError>;
 }

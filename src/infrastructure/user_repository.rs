@@ -18,7 +18,9 @@ pub struct PgUserRepository {
 }
 
 impl PgUserRepository {
-    pub fn new(pool: PgPool) -> Self { Self { pool } }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 #[async_trait]

@@ -20,5 +20,7 @@ pub struct CreateAuthorData {
 }
 
 impl CreateAuthorData {
-    pub fn new(name: String) -> Self { Self { name } }
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
 }
