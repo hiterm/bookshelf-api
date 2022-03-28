@@ -1,6 +1,6 @@
 use validator::Validate;
 
-use crate::domain::error::DomainError;
+use crate::{domain::error::DomainError, impl_string_value_object};
 
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct UserId {
@@ -8,17 +8,7 @@ pub struct UserId {
     pub value: String,
 }
 
-impl UserId {
-    pub fn new(id: String) -> Result<UserId, DomainError> {
-        let user_id = UserId { value: id };
-        user_id.validate()?;
-        Ok(user_id)
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.value
-    }
-}
+impl_string_value_object!(UserId);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
