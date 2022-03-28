@@ -5,7 +5,7 @@ use crate::{domain::error::DomainError, impl_string_value_object};
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct UserId {
     #[validate(length(min = 1))]
-    pub value: String,
+    value: String,
 }
 
 impl_string_value_object!(UserId);

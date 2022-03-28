@@ -32,7 +32,7 @@ where
             entity_id: raw_user_id.to_string(),
             user_id: raw_user_id.to_string(),
         })
-        .map(|user| User::new(user.id.value))
+        .map(|user| User::new(user.id.get_value()))
     }
 
     async fn find_author_by_id(
