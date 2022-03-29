@@ -65,8 +65,6 @@ impl Author {
 
 #[cfg(test)]
 mod tests {
-    use uuid::Uuid;
-
     use crate::domain::{
         entity::author::{AuthorId, AuthorName},
         error::DomainError,
@@ -75,8 +73,7 @@ mod tests {
     #[test]
     fn author_id_to_string() {
         let uuid_str = "c6ea22c8-7b70-470c-a713-c7aade5693bd";
-        let uuid = Uuid::parse_str(uuid_str).unwrap();
-        let author_id = AuthorId::new(uuid);
+        let author_id = AuthorId::try_from(uuid_str).unwrap();
         assert_eq!(author_id.to_string(), uuid_str);
     }
 
