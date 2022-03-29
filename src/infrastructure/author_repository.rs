@@ -60,9 +60,9 @@ impl InternalAuthorRepository {
         conn: &mut PgConnection,
     ) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
-            .bind(author.id.id)
-            .bind(user_id.id.as_str())
-            .bind(author.name.name.as_str())
+            .bind(author.id.as_uuid())
+            .bind(user_id.as_str())
+            .bind(author.name.as_str())
             .execute(conn)
             .await?;
         Ok(())
@@ -75,8 +75,8 @@ impl InternalAuthorRepository {
     ) -> Result<Option<Author>, DomainError> {
         let row: Option<AuthorRow> =
             sqlx::query_as("SELECT * FROM author WHERE id = $1 AND user_id = $2")
-                .bind(author_id.id)
-                .bind(user_id.id.as_str())
+                .bind(author_id.as_uuid())
+                .bind(user_id.as_str())
                 .fetch_optional(conn)
                 .await?;
 
@@ -94,7 +94,7 @@ impl InternalAuthorRepository {
     ) -> Result<Vec<Author>, DomainError> {
         let authors: Result<Vec<Author>, DomainError> =
             sqlx::query_as("SELECT * FROM author WHERE user_id = $1 ORDER BY name ASC")
-                .bind(user_id.id.as_str())
+                .bind(user_id.as_str())
                 .fetch(conn)
                 .map(
                     |row: Result<AuthorRow, sqlx::Error>| -> Result<Author, DomainError> {

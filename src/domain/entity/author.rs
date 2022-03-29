@@ -1,16 +1,24 @@
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::domain::error::DomainError;
+use crate::{domain::error::DomainError, impl_string_value_object};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorId {
-    pub id: Uuid,
+    id: Uuid,
 }
 
 impl AuthorId {
     pub fn new(id: Uuid) -> Self {
         Self { id }
+    }
+
+    pub fn as_uuid(&self) -> Uuid {
+        self.id
+    }
+
+    pub fn to_string(&self) -> String {
+        self.id.to_hyphenated().to_string()
     }
 }
 
@@ -38,16 +46,10 @@ impl From<Uuid> for AuthorId {
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct AuthorName {
     #[validate(length(min = 1))]
-    pub name: String,
+    value: String,
 }
 
-impl AuthorName {
-    pub fn new(name: String) -> Result<AuthorName, DomainError> {
-        let author_name = AuthorName { name };
-        author_name.validate()?;
-        Ok(author_name)
-    }
-}
+impl_string_value_object!(AuthorName);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Author {
@@ -63,7 +65,17 @@ impl Author {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::{entity::author::AuthorName, error::DomainError};
+    use crate::domain::{
+        entity::author::{AuthorId, AuthorName},
+        error::DomainError,
+    };
+
+    #[test]
+    fn author_id_to_string() {
+        let uuid_str = "c6ea22c8-7b70-470c-a713-c7aade5693bd";
+        let author_id = AuthorId::try_from(uuid_str).unwrap();
+        assert_eq!(author_id.to_string(), uuid_str);
+    }
 
     #[test]
     fn validation_success() {

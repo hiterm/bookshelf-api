@@ -12,6 +12,6 @@ impl User {
 
 impl From<DomainUser> for User {
     fn from(user: DomainUser) -> Self {
-        User::new(user.id.id)
+        User::new(user.id.get_value())
     }
 }
