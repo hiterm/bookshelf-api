@@ -5,7 +5,7 @@ use crate::{domain::error::DomainError, impl_string_value_object};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorId {
-    pub id: Uuid,
+    id: Uuid,
 }
 
 impl AuthorId {
