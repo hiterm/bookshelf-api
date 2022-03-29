@@ -10,7 +10,7 @@ impl From<domain::entity::author::Author> for Author {
         let domain::entity::author::Author { id, name } = author;
         Author {
             id: id.to_string(),
-            name: name.name,
+            name: name.value,
         }
     }
 }

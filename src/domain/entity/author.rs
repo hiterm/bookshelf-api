@@ -1,7 +1,7 @@
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::domain::error::DomainError;
+use crate::{domain::error::DomainError, impl_string_value_object};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorId {
@@ -46,16 +46,10 @@ impl From<Uuid> for AuthorId {
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct AuthorName {
     #[validate(length(min = 1))]
-    pub name: String,
+    pub value: String,
 }
 
-impl AuthorName {
-    pub fn new(name: String) -> Result<AuthorName, DomainError> {
-        let author_name = AuthorName { name };
-        author_name.validate()?;
-        Ok(author_name)
-    }
-}
+impl_string_value_object!(AuthorName);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Author {
