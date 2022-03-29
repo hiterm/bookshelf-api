@@ -46,7 +46,7 @@ impl From<Uuid> for AuthorId {
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct AuthorName {
     #[validate(length(min = 1))]
-    pub value: String,
+    value: String,
 }
 
 impl_string_value_object!(AuthorName);

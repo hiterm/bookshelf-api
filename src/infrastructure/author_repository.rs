@@ -62,7 +62,7 @@ impl InternalAuthorRepository {
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
             .bind(author.id.as_uuid())
             .bind(user_id.as_str())
-            .bind(author.name.value.as_str())
+            .bind(author.name.as_str())
             .execute(conn)
             .await?;
         Ok(())
