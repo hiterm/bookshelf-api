@@ -1,5 +1,5 @@
 use async_graphql::{EmptySubscription, Schema};
-use sqlx::postgres::PgPoolOptions;
+use sqlx::{Pool, Postgres};
 
 use crate::{
     infrastructure::{author_repository::PgAuthorRepository, user_repository::PgUserRepository},
@@ -16,15 +16,9 @@ pub type MI = MutationInteractor<
     CreateAuthorInteractor<PgAuthorRepository>,
 >;
 
-pub async fn dependency_injection() -> Schema<Query<QI>, Mutation<MI>, EmptySubscription> {
-    let db_url = fetch_database_url();
-
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&db_url)
-        .await
-        .unwrap();
-
+pub async fn dependency_injection(
+    pool: Pool<Postgres>,
+) -> Schema<Query<QI>, Mutation<MI>, EmptySubscription> {
     let user_repository = PgUserRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
 
@@ -40,14 +34,4 @@ pub async fn dependency_injection() -> Schema<Query<QI>, Mutation<MI>, EmptySubs
     let mutation = Mutation::new(mutation_use_case);
 
     build_schema(query, mutation)
-}
-
-fn fetch_database_url() -> String {
-    use std::env::VarError;
-
-    match std::env::var("DATABASE_URL") {
-        Ok(s) => s,
-        Err(VarError::NotPresent) => panic!("Environment variable DATABASE_URL is required."),
-        Err(VarError::NotUnicode(_)) => panic!("Environment variable DATABASE_URL is not unicode."),
-    }
 }
