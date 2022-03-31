@@ -20,6 +20,11 @@ async fn main() -> std::io::Result<()> {
         .await
         .unwrap();
 
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("Migration failed.");
+
     let schema = dependency_injection(pool).await;
 
     let auth0_config = extractors::Auth0Config::default();
