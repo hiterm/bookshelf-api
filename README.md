@@ -1,6 +1,6 @@
 # Bookshelf API
 
-Backend server for [Bookshelf](https://github.com/hiterm/bookshelf).
+Backend server for [Bookshelf v2](https://github.com/hiterm/bookshelf/tree/v2).
 
 ## How to run server
 
