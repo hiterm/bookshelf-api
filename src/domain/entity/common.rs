@@ -12,7 +12,7 @@ macro_rules! impl_string_value_object {
                 &self.value
             }
 
-            pub fn get_value(self) -> String {
+            pub fn into_string(self) -> String {
                 self.value
             }
         }
