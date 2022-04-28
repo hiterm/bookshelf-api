@@ -13,7 +13,7 @@ impl AuthorId {
         Self { id }
     }
 
-    pub fn as_uuid(&self) -> Uuid {
+    pub fn to_uuid(&self) -> Uuid {
         self.id
     }
 

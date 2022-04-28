@@ -60,7 +60,7 @@ impl InternalAuthorRepository {
         conn: &mut PgConnection,
     ) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
-            .bind(author.id.as_uuid())
+            .bind(author.id.to_uuid())
             .bind(user_id.as_str())
             .bind(author.name.as_str())
             .execute(conn)
@@ -75,7 +75,7 @@ impl InternalAuthorRepository {
     ) -> Result<Option<Author>, DomainError> {
         let row: Option<AuthorRow> =
             sqlx::query_as("SELECT * FROM author WHERE id = $1 AND user_id = $2")
-                .bind(author_id.as_uuid())
+                .bind(author_id.to_uuid())
                 .bind(user_id.as_str())
                 .fetch_optional(conn)
                 .await?;
