@@ -27,6 +27,6 @@ where
         let user_id = UserId::new(user_id.to_string())?;
         let user = DomainUser::new(user_id);
         self.user_repository.create(&user).await?;
-        Ok(User::new(user.id.get_value()))
+        Ok(User::new(user.id.into_string()))
     }
 }
