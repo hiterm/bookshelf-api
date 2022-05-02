@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::use_case::{
     dto::{
         author::{AuthorDto, CreateAuthorDto},
-        user::User,
+        user::UserDto,
     },
     error::UseCaseError,
     use_case::{author::CreateAuthorUseCase, mutation::MutationUseCase, user::RegisterUserUseCase},
@@ -29,7 +29,7 @@ where
     RUUC: RegisterUserUseCase,
     CAUC: CreateAuthorUseCase,
 {
-    async fn register_user(&self, user_id: &str) -> Result<User, UseCaseError> {
+    async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError> {
         let user = self.register_user_use_case.register_user(user_id).await?;
         Ok(user)
     }

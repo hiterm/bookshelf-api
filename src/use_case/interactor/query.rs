@@ -6,7 +6,7 @@ use crate::{
         repository::{author_repository::AuthorRepository, user_repository::UserRepository},
     },
     use_case::{
-        dto::{author::AuthorDto, user::User},
+        dto::{author::AuthorDto, user::UserDto},
         error::UseCaseError,
         use_case::query::QueryUseCase,
     },
@@ -23,7 +23,7 @@ where
     UR: UserRepository,
     AR: AuthorRepository,
 {
-    async fn find_user_by_id(&self, raw_user_id: &str) -> Result<User, UseCaseError> {
+    async fn find_user_by_id(&self, raw_user_id: &str) -> Result<UserDto, UseCaseError> {
         let user_id = UserId::new(raw_user_id.to_string())?;
         let user = self.user_repository.find_by_id(&user_id).await?;
 
@@ -32,7 +32,7 @@ where
             entity_id: raw_user_id.to_string(),
             user_id: raw_user_id.to_string(),
         })
-        .map(|user| User::new(user.id.into_string()))
+        .map(|user| UserDto::new(user.id.into_string()))
     }
 
     async fn find_author_by_id(

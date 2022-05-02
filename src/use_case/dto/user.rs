@@ -1,17 +1,17 @@
 use crate::domain::entity::user::User as DomainUser;
 
-pub struct User {
+pub struct UserDto {
     pub id: String,
 }
 
-impl User {
+impl UserDto {
     pub fn new(id: String) -> Self {
         Self { id }
     }
 }
 
-impl From<DomainUser> for User {
+impl From<DomainUser> for UserDto {
     fn from(user: DomainUser) -> Self {
-        User::new(user.id.into_string())
+        UserDto::new(user.id.into_string())
     }
 }
