@@ -41,6 +41,19 @@ $ vim .env.docker  # Fill your value
 $ docker-compose up --build
 ```
 
+## Test
+
+```
+$ cargo test
+```
+
+With DB
+
+```
+$ docker-compose -f docker-compose-test.yml up -d
+$ cargo test -- --include-ignored
+```
+
 ## Generate GraphQL schema
 
 ```
