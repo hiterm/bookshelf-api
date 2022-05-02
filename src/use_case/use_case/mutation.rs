@@ -3,7 +3,7 @@ use mockall::automock;
 
 use crate::use_case::{
     dto::{
-        author::{Author, CreateAuthorData},
+        author::{AuthorDto, CreateAuthorDto},
         user::User,
     },
     error::UseCaseError,
@@ -16,6 +16,6 @@ pub trait MutationUseCase: Send + Sync + 'static {
     async fn create_author(
         &self,
         user_id: &str,
-        author_data: CreateAuthorData,
-    ) -> Result<Author, UseCaseError>;
+        author_data: CreateAuthorDto,
+    ) -> Result<AuthorDto, UseCaseError>;
 }

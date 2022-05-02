@@ -6,7 +6,7 @@ use crate::{
         repository::{author_repository::AuthorRepository, user_repository::UserRepository},
     },
     use_case::{
-        dto::{author::Author, user::User},
+        dto::{author::AuthorDto, user::User},
         error::UseCaseError,
         use_case::query::QueryUseCase,
     },
@@ -39,7 +39,7 @@ where
         &self,
         user_id: &str,
         author_id: &str,
-    ) -> Result<Author, UseCaseError> {
+    ) -> Result<AuthorDto, UseCaseError> {
         let raw_user_id = user_id;
         let raw_author_id = author_id;
         let user_id = UserId::new(raw_user_id.to_string())?;
@@ -55,15 +55,15 @@ where
                 entity_id: raw_author_id.to_string(),
                 user_id: raw_user_id.to_string(),
             })
-            .map(|author| Author::from(author))
+            .map(|author| AuthorDto::from(author))
     }
 
-    async fn find_all_authors(&self, user_id: &str) -> Result<Vec<Author>, UseCaseError> {
+    async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let authors = self.author_repository.find_all(&user_id).await?;
-        let authors: Vec<Author> = authors
+        let authors: Vec<AuthorDto> = authors
             .into_iter()
-            .map(|author| Author::from(author))
+            .map(|author| AuthorDto::from(author))
             .collect();
         Ok(authors)
     }

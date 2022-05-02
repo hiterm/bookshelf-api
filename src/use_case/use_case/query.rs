@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use mockall::automock;
 
 use crate::use_case::{
-    dto::{author::Author, user::User},
+    dto::{author::AuthorDto, user::User},
     error::UseCaseError,
 };
 
@@ -14,6 +14,6 @@ pub trait QueryUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         author_id: &str,
-    ) -> Result<Author, UseCaseError>;
-    async fn find_all_authors(&self, user_id: &str) -> Result<Vec<Author>, UseCaseError>;
+    ) -> Result<AuthorDto, UseCaseError>;
+    async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError>;
 }

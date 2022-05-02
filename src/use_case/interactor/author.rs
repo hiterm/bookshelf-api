@@ -10,7 +10,7 @@ use crate::{
         repository::author_repository::AuthorRepository,
     },
     use_case::{
-        dto::author::{Author, CreateAuthorData},
+        dto::author::{AuthorDto, CreateAuthorDto},
         error::UseCaseError,
         use_case::author::CreateAuthorUseCase,
     },
@@ -34,8 +34,8 @@ where
     async fn create(
         &self,
         user_id: &str,
-        author_data: CreateAuthorData,
-    ) -> Result<Author, UseCaseError> {
+        author_data: CreateAuthorDto,
+    ) -> Result<AuthorDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let uuid = Uuid::new_v4();
         let author_id = AuthorId::new(uuid);

@@ -22,7 +22,7 @@ mod tests {
         extractors::Claims,
         presentational::graphql::{mutation::Mutation, query::Query},
         use_case::{
-            dto::author::Author,
+            dto::author::AuthorDto,
             use_case::{mutation::MockMutationUseCase, query::MockQueryUseCase},
         },
     };
@@ -41,7 +41,7 @@ mod tests {
             .with(predicate::eq(user_id), predicate::eq(author_id))
             .times(1)
             .returning(|_user_id, author_id| {
-                Ok(Author {
+                Ok(AuthorDto {
                     id: author_id.to_string(),
                     name: author_name.to_string(),
                 })

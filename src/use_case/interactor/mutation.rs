@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::use_case::{
     dto::{
-        author::{Author, CreateAuthorData},
+        author::{AuthorDto, CreateAuthorDto},
         user::User,
     },
     error::UseCaseError,
@@ -37,8 +37,8 @@ where
     async fn create_author(
         &self,
         user_id: &str,
-        author_data: CreateAuthorData,
-    ) -> Result<Author, UseCaseError> {
+        author_data: CreateAuthorDto,
+    ) -> Result<AuthorDto, UseCaseError> {
         let author = self
             .create_author_use_case
             .create(user_id, author_data)
