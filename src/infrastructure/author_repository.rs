@@ -60,9 +60,9 @@ impl InternalAuthorRepository {
         conn: &mut PgConnection,
     ) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
-            .bind(author.id.to_uuid())
+            .bind(author.id().to_uuid())
             .bind(user_id.as_str())
-            .bind(author.name.as_str())
+            .bind(author.name().as_str())
             .execute(conn)
             .await?;
         Ok(())

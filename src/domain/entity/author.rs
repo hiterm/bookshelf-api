@@ -1,3 +1,4 @@
+use getset::Getters;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -51,8 +52,16 @@ pub struct AuthorName {
 
 impl_string_value_object!(AuthorName);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Getters)]
 pub struct Author {
+    #[getset(get = "pub")]
+    id: AuthorId,
+    #[getset(get = "pub")]
+    name: AuthorName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DestructureAuthor {
     pub id: AuthorId,
     pub name: AuthorName,
 }
@@ -60,6 +69,13 @@ pub struct Author {
 impl Author {
     pub fn new(id: AuthorId, name: AuthorName) -> Result<Author, DomainError> {
         Ok(Author { id, name })
+    }
+
+    pub fn destructure(self) -> DestructureAuthor {
+        DestructureAuthor {
+            id: self.id,
+            name: self.name,
+        }
     }
 }
 

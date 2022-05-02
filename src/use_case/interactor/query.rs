@@ -98,10 +98,10 @@ mod tests {
             .expect_find_by_id()
             .with(always(), always())
             .returning(move |_, _| {
-                Ok(Some(domain::entity::author::Author {
-                    id: AuthorId::try_from(author_id).unwrap(),
-                    name: AuthorName::new(author_name.to_string()).unwrap(),
-                }))
+                Ok(Some(domain::entity::author::Author::new(
+                    AuthorId::try_from(author_id).unwrap(),
+                    AuthorName::new(author_name.to_string()).unwrap(),
+                )?))
             });
 
         let query_interactor = QueryInteractor {
