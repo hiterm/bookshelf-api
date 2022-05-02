@@ -23,23 +23,18 @@ where
     UR: UserRepository,
     AR: AuthorRepository,
 {
-    async fn find_user_by_id(&self, raw_user_id: &str) -> Result<UserDto, UseCaseError> {
+    async fn find_user_by_id(&self, raw_user_id: &str) -> Result<Option<UserDto>, UseCaseError> {
         let user_id = UserId::new(raw_user_id.to_string())?;
         let user = self.user_repository.find_by_id(&user_id).await?;
 
-        user.ok_or(UseCaseError::NotFound {
-            entity_type: "user",
-            entity_id: raw_user_id.to_string(),
-            user_id: raw_user_id.to_string(),
-        })
-        .map(|user| UserDto::new(user.id.into_string()))
+        Ok(user.map(|user| UserDto::new(user.id.into_string())))
     }
 
     async fn find_author_by_id(
         &self,
         user_id: &str,
         author_id: &str,
-    ) -> Result<AuthorDto, UseCaseError> {
+    ) -> Result<Option<AuthorDto>, UseCaseError> {
         let raw_user_id = user_id;
         let raw_author_id = author_id;
         let user_id = UserId::new(raw_user_id.to_string())?;
@@ -49,13 +44,7 @@ where
             .find_by_id(&user_id, &author_id)
             .await?;
 
-        author
-            .ok_or(UseCaseError::NotFound {
-                entity_type: "author",
-                entity_id: raw_author_id.to_string(),
-                user_id: raw_user_id.to_string(),
-            })
-            .map(|author| AuthorDto::from(author))
+        Ok(author.map(|author| AuthorDto::from(author)))
     }
 
     async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError> {
@@ -82,7 +71,10 @@ mod tests {
                 author_repository::MockAuthorRepository, user_repository::MockUserRepository,
             },
         },
-        use_case::{interactor::query::QueryInteractor, use_case::query::QueryUseCase},
+        use_case::{
+            dto::author::AuthorDto, interactor::query::QueryInteractor,
+            use_case::query::QueryUseCase,
+        },
     };
 
     #[tokio::test]
@@ -109,12 +101,16 @@ mod tests {
             author_repository,
         };
 
-        let author = query_interactor
+        let actual = query_interactor
             .find_author_by_id(user_id, author_id)
             .await
             .unwrap();
 
-        assert_eq!(author.id, author_id);
-        assert_eq!(author.name, author_name);
+        let expected = Some(AuthorDto {
+            id: author_id.to_owned(),
+            name: author_name.to_owned(),
+        });
+
+        assert_eq!(actual, expected);
     }
 }

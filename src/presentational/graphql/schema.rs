@@ -41,10 +41,10 @@ mod tests {
             .with(predicate::eq(user_id), predicate::eq(author_id))
             .times(1)
             .returning(|_user_id, author_id| {
-                Ok(AuthorDto {
+                Ok(Some(AuthorDto {
                     id: author_id.to_string(),
                     name: author_name.to_string(),
-                })
+                }))
             });
         let query = Query::new(mock_query_use_case);
         let mutation_use_case = MockMutationUseCase::new();

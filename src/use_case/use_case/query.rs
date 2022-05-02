@@ -9,11 +9,11 @@ use crate::use_case::{
 #[automock]
 #[async_trait]
 pub trait QueryUseCase: Send + Sync + 'static {
-    async fn find_user_by_id(&self, user_id: &str) -> Result<UserDto, UseCaseError>;
+    async fn find_user_by_id(&self, user_id: &str) -> Result<Option<UserDto>, UseCaseError>;
     async fn find_author_by_id(
         &self,
         user_id: &str,
         author_id: &str,
-    ) -> Result<AuthorDto, UseCaseError>;
+    ) -> Result<Option<AuthorDto>, UseCaseError>;
     async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError>;
 }
