@@ -1,25 +1,25 @@
-use crate::domain;
+use crate::domain::entity::author::{Author, DestructureAuthor};
 
-pub struct Author {
+pub struct AuthorDto {
     pub id: String,
     pub name: String,
 }
 
-impl From<domain::entity::author::Author> for Author {
-    fn from(author: domain::entity::author::Author) -> Self {
-        let domain::entity::author::DestructureAuthor { id, name } = author.destructure();
-        Author {
+impl From<Author> for AuthorDto {
+    fn from(author: Author) -> Self {
+        let DestructureAuthor { id, name } = author.destructure();
+        AuthorDto {
             id: id.to_string(),
             name: name.into_string(),
         }
     }
 }
 
-pub struct CreateAuthorData {
+pub struct CreateAuthorDto {
     pub name: String,
 }
 
-impl CreateAuthorData {
+impl CreateAuthorDto {
     pub fn new(name: String) -> Self {
         Self { name }
     }

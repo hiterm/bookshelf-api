@@ -1,7 +1,7 @@
 use async_graphql::{InputObject, SimpleObject, ID};
 
-use crate::use_case::dto::author::Author as AuthorDto;
-use crate::use_case::dto::author::CreateAuthorData as UseCaseCreateAuthorData;
+use crate::use_case::dto::author::AuthorDto;
+use crate::use_case::dto::author::CreateAuthorDto;
 
 #[derive(SimpleObject)]
 pub struct User {
@@ -48,18 +48,18 @@ impl From<AuthorDto> for Author {
 }
 
 #[derive(InputObject)]
-pub struct CreateAuthorData {
+pub struct CreateAuthorInput {
     pub name: String,
 }
 
-impl CreateAuthorData {
+impl CreateAuthorInput {
     pub fn new(name: String) -> Self {
         Self { name }
     }
 }
 
-impl Into<UseCaseCreateAuthorData> for CreateAuthorData {
-    fn into(self) -> UseCaseCreateAuthorData {
-        UseCaseCreateAuthorData::new(self.name)
+impl Into<CreateAuthorDto> for CreateAuthorInput {
+    fn into(self) -> CreateAuthorDto {
+        CreateAuthorDto::new(self.name)
     }
 }
