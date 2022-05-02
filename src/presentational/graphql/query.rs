@@ -22,12 +22,12 @@ impl<QUC> Query<QUC>
 where
     QUC: QueryUseCase,
 {
-    async fn logged_in_user(&self, ctx: &Context<'_>) -> Result<User, PresentationalError> {
+    async fn logged_in_user(&self, ctx: &Context<'_>) -> Result<Option<User>, PresentationalError> {
         let claims = ctx
             .data::<Claims>()
             .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
         let user = self.query_use_case.find_user_by_id(&claims.sub).await?;
-        Ok(User::new(ID(user.id)))
+        Ok(user.map(|user| User::new(ID(user.id))))
     }
 
     async fn author(&self, ctx: &Context<'_>, id: ID) -> Result<Author, PresentationalError> {
