@@ -48,17 +48,17 @@ impl From<AuthorDto> for Author {
 }
 
 #[derive(InputObject)]
-pub struct CreateAuthorData {
+pub struct CreateAuthorInput {
     pub name: String,
 }
 
-impl CreateAuthorData {
+impl CreateAuthorInput {
     pub fn new(name: String) -> Self {
         Self { name }
     }
 }
 
-impl Into<CreateAuthorDto> for CreateAuthorData {
+impl Into<CreateAuthorDto> for CreateAuthorInput {
     fn into(self) -> CreateAuthorDto {
         CreateAuthorDto::new(self.name)
     }

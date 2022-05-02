@@ -5,7 +5,7 @@ use crate::{
     use_case::use_case::mutation::MutationUseCase,
 };
 
-use super::object::{Author, CreateAuthorData, User};
+use super::object::{Author, CreateAuthorInput, User};
 
 pub struct Mutation<MUC> {
     mutation_use_case: MUC,
@@ -33,7 +33,7 @@ where
     async fn create_author(
         &self,
         ctx: &Context<'_>,
-        author_data: CreateAuthorData,
+        author_data: CreateAuthorInput,
     ) -> Result<Author, PresentationalError> {
         let claims = ctx
             .data::<Claims>()
