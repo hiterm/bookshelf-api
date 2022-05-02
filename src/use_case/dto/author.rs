@@ -7,7 +7,7 @@ pub struct Author {
 
 impl From<domain::entity::author::Author> for Author {
     fn from(author: domain::entity::author::Author) -> Self {
-        let domain::entity::author::Author { id, name } = author;
+        let domain::entity::author::DestructureAuthor { id, name } = author.destructure();
         Author {
             id: id.to_string(),
             name: name.into_string(),
