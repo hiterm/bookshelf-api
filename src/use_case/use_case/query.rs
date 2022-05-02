@@ -14,6 +14,6 @@ pub trait QueryUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         author_id: &str,
-    ) -> Result<AuthorDto, UseCaseError>;
+    ) -> Result<Option<AuthorDto>, UseCaseError>;
     async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError>;
 }

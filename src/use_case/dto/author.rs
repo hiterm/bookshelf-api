@@ -1,5 +1,6 @@
 use crate::domain::entity::author::{Author, DestructureAuthor};
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct AuthorDto {
     pub id: String,
     pub name: String,

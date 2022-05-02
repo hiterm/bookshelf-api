@@ -30,7 +30,11 @@ where
         Ok(user.map(|user| User::new(ID(user.id))))
     }
 
-    async fn author(&self, ctx: &Context<'_>, id: ID) -> Result<Author, PresentationalError> {
+    async fn author(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+    ) -> Result<Option<Author>, PresentationalError> {
         let claims = ctx
             .data::<Claims>()
             .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
@@ -38,7 +42,7 @@ where
             .query_use_case
             .find_author_by_id(&claims.sub, id.as_str())
             .await?;
-        Ok(Author::new(author.id, author.name))
+        Ok(author.map(|author| Author::new(author.id, author.name)))
     }
 
     async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>, PresentationalError> {
