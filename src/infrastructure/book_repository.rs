@@ -56,8 +56,8 @@ impl InternalBookRepository {
                         let book_id = BookId::new(row.id)?;
                         let title = BookTitle::new(row.title)?;
                         let isbn = Isbn::new(row.isbn)?;
-                        let read = ReadFlag::new(row.read)?;
-                        let owned = OwnedFlag::new(row.owned)?;
+                        let read = ReadFlag::new(row.read);
+                        let owned = OwnedFlag::new(row.owned);
                         let priority = Priority::new(row.priority)?;
                         let format = BookFormat::try_from(row.format.as_str())?;
                         let store = BookStore::try_from(row.store.as_str())?;

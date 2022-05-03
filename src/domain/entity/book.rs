@@ -42,8 +42,8 @@ pub struct ReadFlag {
 }
 
 impl ReadFlag {
-    pub fn new(value: bool) -> Result<ReadFlag, DomainError> {
-        Ok(ReadFlag { value })
+    pub fn new(value: bool) -> ReadFlag {
+        ReadFlag { value }
     }
 }
 
@@ -53,8 +53,8 @@ pub struct OwnedFlag {
 }
 
 impl OwnedFlag {
-    pub fn new(value: bool) -> Result<OwnedFlag, DomainError> {
-        Ok(OwnedFlag { value })
+    pub fn new(value: bool) -> OwnedFlag {
+        OwnedFlag { value }
     }
 }
 
