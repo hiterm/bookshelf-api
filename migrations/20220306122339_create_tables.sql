@@ -5,30 +5,32 @@ CREATE TABLE bookshelf_user (
 );
 
 CREATE TABLE book_format (
-  format text PRIMARY KEY
+  format text NOT NULL PRIMARY KEY
 );
 
 INSERT INTO book_format VALUES
   ('eBook'),
-  ('Printed');
+  ('Printed'),
+  ('Unknown');
 
 CREATE TABLE book_store (
-  store text PRIMARY KEY
+  store text NOT NULL PRIMARY KEY
 );
 
 INSERT INTO book_store VALUES
-  ('Kindle');
+  ('Kindle'),
+  ('Unknown');
 
 CREATE TABLE book (
   id uuid NOT NULL PRIMARY KEY,
   user_id text NOT NULL,
   title text NOT NULL,
-  isbn text,
+  isbn text NOT NULL,
   read boolean NOT NULL,
   owned boolean NOT NULL,
   priority integer NOT NULL,
-  format text,
-  store text,
+  format text NOT NULL,
+  store text NOT NULL,
   created_at timestamp NOT NULL default current_timestamp,
   updated_at timestamp NOT NULL default current_timestamp,
   FOREIGN KEY (user_id) REFERENCES bookshelf_user(id),
@@ -37,17 +39,17 @@ CREATE TABLE book (
 );
 
 CREATE TABLE author (
-  id uuid PRIMARY KEY,
+  id uuid NOT NULL PRIMARY KEY,
   user_id text NOT NULL,
-  name text,
+  name text NOT NULL,
   created_at timestamp NOT NULL default current_timestamp,
   updated_at timestamp NOT NULL default current_timestamp,
   FOREIGN KEY (user_id) REFERENCES bookshelf_user(id)
 );
 
 CREATE TABLE book_author (
-  book_id uuid,
-  author_id uuid,
+  book_id uuid NOT NULL,
+  author_id uuid NOT NULL,
   created_at timestamp NOT NULL default current_timestamp,
   updated_at timestamp NOT NULL default current_timestamp,
   PRIMARY KEY (book_id, author_id),
