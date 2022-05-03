@@ -1,11 +1,30 @@
-// TODO: 消す
-#![allow(warnings, unused)]
-
+use futures_util::{StreamExt, TryStreamExt};
 use sqlx::{PgConnection, PgPool};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
-use crate::domain::entity::book::Book;
+use crate::domain::{
+    entity::{
+        book::{Book, BookId, BookTitle},
+        user::UserId,
+    },
+    error::DomainError,
+};
+
+#[derive(sqlx::FromRow)]
+struct BookRow {
+    id: Uuid,
+    user_id: String,
+    title: String,
+    isbn: String,
+    read: bool,
+    owned: bool,
+    priority: i32,
+    format: String,
+    store: String,
+    created_at: PrimitiveDateTime,
+    updated_at: PrimitiveDateTime,
+}
 
 struct BookRepository {
     pool: PgPool,
@@ -21,18 +40,27 @@ impl BookRepository {
     }
 }
 
-#[derive(sqlx::FromRow)]
-struct BookRow {
-    id: Uuid,
-    user_id: String,
-    isbn: Option<String>,
-    read: bool,
-    owned: bool,
-    priority: i32,
-    format: Option<String>,
-    store: Option<String>,
-    created_at: PrimitiveDateTime,
-    updated_at: PrimitiveDateTime,
+struct InternalBookRepository {}
+
+impl InternalBookRepository {
+    async fn find_all(user_id: &UserId, conn: &mut PgConnection) -> Result<Vec<Book>, DomainError> {
+        let books: Result<Vec<Book>, DomainError> =
+            sqlx::query_as("SELECT * FROM book WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch(conn)
+                .map(
+                    |row: Result<BookRow, sqlx::Error>| -> Result<Book, DomainError> {
+                        let row = row?;
+                        let book_id = BookId::new(row.id)?;
+                        let book_title = BookTitle::new(row.title)?;
+                        todo!()
+                    },
+                )
+                .try_collect()
+                .await;
+
+        Ok(books?)
+    }
 }
 
 #[cfg(test)]

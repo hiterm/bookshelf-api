@@ -6,18 +6,18 @@ use crate::domain::error::DomainError;
 use super::author::Author;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BookId {
+pub struct BookId {
     id: Uuid,
 }
 
-impl BookId {
+pub impl BookId {
     pub fn new(id: Uuid) -> Result<BookId, DomainError> {
         Ok(BookId { id })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BookTitle {
+pub struct BookTitle {
     value: String,
 }
 
@@ -28,7 +28,7 @@ impl BookTitle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Isbn {
+pub struct Isbn {
     value: String,
 }
 
@@ -39,7 +39,7 @@ impl Isbn {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ReadFlag {
+pub struct ReadFlag {
     value: bool,
 }
 
@@ -50,7 +50,7 @@ impl ReadFlag {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct OwnedFlag {
+pub struct OwnedFlag {
     value: bool,
 }
 
@@ -61,7 +61,7 @@ impl OwnedFlag {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Priority {
+pub struct Priority {
     value: i32,
 }
 
