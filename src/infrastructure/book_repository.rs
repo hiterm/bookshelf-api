@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use crate::domain::{
     entity::{
-        book::{Book, BookId, BookTitle},
+        book::{
+            Book, BookFormat, BookId, BookStore, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag,
+        },
         user::UserId,
     },
     error::DomainError,
@@ -52,8 +54,26 @@ impl InternalBookRepository {
                     |row: Result<BookRow, sqlx::Error>| -> Result<Book, DomainError> {
                         let row = row?;
                         let book_id = BookId::new(row.id)?;
-                        let book_title = BookTitle::new(row.title)?;
-                        todo!()
+                        let title = BookTitle::new(row.title)?;
+                        let isbn = Isbn::new(row.isbn)?;
+                        let read = ReadFlag::new(row.read)?;
+                        let owned = OwnedFlag::new(row.owned)?;
+                        let priority = Priority::new(row.priority)?;
+                        let format = BookFormat::try_from(row.format.as_str())?;
+                        let store = BookStore::try_from(row.store.as_str())?;
+
+                        Book::new(
+                            book_id,
+                            title,
+                            isbn,
+                            read,
+                            owned,
+                            priority,
+                            format,
+                            store,
+                            row.created_at,
+                            row.updated_at,
+                        )
                     },
                 )
                 .try_collect()
@@ -72,7 +92,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore] // Depends on PostgreSQL
-    async fn test_find_all() {
+    async fn test_find_all() -> anyhow::Result<()> {
         dotenv::dotenv().ok();
 
         let db_url = fetch_database_url();
@@ -80,15 +100,17 @@ mod tests {
             .max_connections(5)
             .connect_timeout(Duration::from_secs(1))
             .connect(&db_url)
-            .await
-            .unwrap();
-        let mut tx = pool.begin().await.unwrap();
+            .await?;
+        let mut tx = pool.begin().await?;
 
-        let actual = BookRepository::find_all_book_rows(&mut tx).await;
+        let user_id = UserId::new(String::from("user1"))?;
+        let actual = InternalBookRepository::find_all(&user_id, &mut tx).await?;
 
-        tx.rollback().await.unwrap();
+        tx.rollback().await?;
 
         assert_eq!(actual.len(), 0);
+
+        Ok(())
     }
 
     fn fetch_database_url() -> String {
