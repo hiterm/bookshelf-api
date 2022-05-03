@@ -1,6 +1,3 @@
-// TODO: 消す
-#![allow(warnings, unused)]
-
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -16,6 +13,17 @@ struct BookId {
 impl BookId {
     pub fn new(id: Uuid) -> Result<BookId, DomainError> {
         Ok(BookId { id })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BookTitle {
+    value: String,
+}
+
+impl BookTitle {
+    pub fn new(name: String) -> Result<BookTitle, DomainError> {
+        Ok(BookTitle { value: name })
     }
 }
 
@@ -66,22 +74,24 @@ impl Priority {
 pub enum BookFormat {
     EBook,
     Printed,
+    Unknown,
 }
 
 pub enum BookStore {
     Kindle,
+    Unknown,
 }
 
-// TODO: title
 pub struct Book {
     id: BookId,
+    title: BookTitle,
     authors: Vec<Author>,
-    isbn: Option<Isbn>,
+    isbn: Isbn,
     read: ReadFlag,
     owned: OwnedFlag,
     priority: Priority,
-    format: Option<BookFormat>,
-    store: Option<BookStore>,
+    format: BookFormat,
+    store: BookStore,
     created_at: PrimitiveDateTime,
     updated_at: PrimitiveDateTime,
 }
