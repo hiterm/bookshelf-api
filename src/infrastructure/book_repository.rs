@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use sqlx::{PgConnection, PgPool};
 use time::PrimitiveDateTime;
@@ -11,12 +12,12 @@ use crate::domain::{
         user::UserId,
     },
     error::DomainError,
+    repository::book_repository::BookRepository,
 };
 
 #[derive(sqlx::FromRow)]
 struct BookRow {
     id: Uuid,
-    user_id: String,
     title: String,
     isbn: String,
     read: bool,
@@ -28,17 +29,15 @@ struct BookRow {
     updated_at: PrimitiveDateTime,
 }
 
-struct BookRepository {
+struct PgBookRepository {
     pool: PgPool,
 }
 
-impl BookRepository {
-    async fn find_all_book_rows(conn: &mut PgConnection) -> Vec<BookRow> {
-        let book_rows: Vec<BookRow> = sqlx::query_as("SELECT * FROM book")
-            .fetch_all(conn)
-            .await
-            .unwrap();
-        book_rows
+#[async_trait]
+impl BookRepository for PgBookRepository {
+    async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
+        let mut conn = self.pool.acquire().await?;
+        InternalBookRepository::find_all(user_id, &mut conn).await
     }
 }
 
