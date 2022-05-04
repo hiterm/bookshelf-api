@@ -61,9 +61,11 @@ impl InternalBookRepository {
                owned,
                priority,
                format,
-               store
+               store,
+               created_at,
+               updated_at
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);",
         )
         .bind(book.id().to_uuid())
         .bind(user_id.as_str())
@@ -74,6 +76,8 @@ impl InternalBookRepository {
         .bind(book.priority().to_i32())
         .bind(book.format().to_string())
         .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
         .execute(&mut *conn)
         .await?;
 
