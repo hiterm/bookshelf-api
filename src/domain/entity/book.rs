@@ -27,6 +27,21 @@ impl BookId {
     }
 }
 
+impl TryFrom<&str> for BookId {
+    type Error = DomainError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let id = Uuid::parse_str(value).map_err(|err| {
+            DomainError::Validation(format!(
+                r#"Failed to parse id "{}" as uuid. Message from uuid crate: {}"#,
+                value,
+                err.to_string()
+            ))
+        })?;
+        Ok(BookId { id })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct BookTitle {
     value: String,

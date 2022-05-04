@@ -126,12 +126,15 @@ impl InternalBookRepository {
 mod tests {
     use std::time::Duration;
 
+    use crate::{infrastructure::user_repository::InternalUserRepository, domain::entity::user::User};
+
     use super::*;
     use sqlx::postgres::PgPoolOptions;
+    use time::{date, time};
 
     #[tokio::test]
     #[ignore] // Depends on PostgreSQL
-    async fn test_find_all() -> anyhow::Result<()> {
+    async fn test_create_and_find_all() -> anyhow::Result<()> {
         dotenv::dotenv().ok();
 
         let db_url = fetch_database_url();
@@ -143,11 +146,34 @@ mod tests {
         let mut tx = pool.begin().await?;
 
         let user_id = UserId::new(String::from("user1"))?;
-        let actual = InternalBookRepository::find_all(&user_id, &mut tx).await?;
+        let user = User::new(user_id.clone());
+
+        let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
+        assert_eq!(all_books.len(), 0);
+
+        let book_id = BookId::try_from("675bc8d9-3155-42fb-87b0-0a82cb162848")?;
+        let title = BookTitle::new("title1".to_owned())?;
+        let author_ids = vec![];
+        let isbn = Isbn::new("isbn".to_owned())?;
+        let read = ReadFlag::new(false);
+        let owned = OwnedFlag::new(false);
+        let priority = Priority::new(50)?;
+        let format = BookFormat::EBook;
+        let store = BookStore::Kindle;
+        let created_at = PrimitiveDateTime::new(date!(2022-05-05), time!(0:00));
+        let updated_at = PrimitiveDateTime::new(date!(2022-05-05), time!(0:00));
+        let book = Book::new(
+            book_id, title, author_ids, isbn, read, owned, priority, format, store, created_at,
+            updated_at,
+        )?;
+
+        InternalUserRepository::create(&user, &mut tx).await?;
+        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
+
+        let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
+        assert_eq!(all_books.len(), 1);
 
         tx.rollback().await?;
-
-        assert_eq!(actual.len(), 0);
 
         Ok(())
     }

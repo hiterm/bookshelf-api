@@ -34,6 +34,7 @@ sqlx = { version = "0.5", features = [
 ] }
 thiserror = "1.0.30"
 time = "0.2.27"
+time-macros = "0.2.4"
 tokio = { version = "1.13.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
 validator = { version = "0.14.0", features = ["derive"] }

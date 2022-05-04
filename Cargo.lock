@@ -613,6 +613,7 @@ dependencies = [
  "sqlx",
  "thiserror",
  "time 0.2.27",
+ "time-macros 0.2.4",
  "tokio",
  "uuid",
  "validator",
