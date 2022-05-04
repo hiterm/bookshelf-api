@@ -46,6 +46,42 @@ impl BookRepository for PgBookRepository {
 struct InternalBookRepository {}
 
 impl InternalBookRepository {
+    async fn create(
+        user_id: &UserId,
+        book: &Book,
+        conn: &mut PgConnection,
+    ) -> Result<(), DomainError> {
+        sqlx::query(
+            "INSERT INTO book (
+               id,
+               user_id,
+               title,
+               isbn,
+               read,
+               owned,
+               priority,
+               format,
+               store
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);",
+        )
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .execute(conn)
+        .await?;
+
+        // TODO: book_authorにinsert
+
+        Ok(())
+    }
+
     async fn find_all(user_id: &UserId, conn: &mut PgConnection) -> Result<Vec<Book>, DomainError> {
         let books: Result<Vec<Book>, DomainError> =
             sqlx::query_as("SELECT * FROM book LEFT OUTER JOIN (SELECT book_id, array_agg(author_id) FROM book_author GROUP BY book_author.book_id) AS t1 ON book.id = t1.book_id WHERE book.user_id = $1")
