@@ -163,27 +163,12 @@ mod tests {
 
         let user_id = UserId::new(String::from("user1"))?;
         let user = User::new(user_id.clone());
+        InternalUserRepository::create(&user, &mut tx).await?;
 
         let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
         assert_eq!(all_books.len(), 0);
 
-        let book_id = BookId::try_from("675bc8d9-3155-42fb-87b0-0a82cb162848")?;
-        let title = BookTitle::new("title1".to_owned())?;
-        let author_ids = vec![];
-        let isbn = Isbn::new("isbn".to_owned())?;
-        let read = ReadFlag::new(false);
-        let owned = OwnedFlag::new(false);
-        let priority = Priority::new(50)?;
-        let format = BookFormat::EBook;
-        let store = BookStore::Kindle;
-        let created_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
-        let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
-        let book = Book::new(
-            book_id, title, author_ids, isbn, read, owned, priority, format, store, created_at,
-            updated_at,
-        )?;
-
-        InternalUserRepository::create(&user, &mut tx).await?;
+        let book = book_entity()?;
         InternalBookRepository::create(&user_id, &book, &mut tx).await?;
 
         let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
@@ -204,5 +189,26 @@ mod tests {
                 panic!("Environment variable DATABASE_URL is not unicode.")
             }
         }
+    }
+
+    fn book_entity() -> Result<Book, DomainError> {
+        let book_id = BookId::try_from("675bc8d9-3155-42fb-87b0-0a82cb162848")?;
+        let title = BookTitle::new("title1".to_owned())?;
+        let author_ids = vec![];
+        let isbn = Isbn::new("isbn".to_owned())?;
+        let read = ReadFlag::new(false);
+        let owned = OwnedFlag::new(false);
+        let priority = Priority::new(50)?;
+        let format = BookFormat::EBook;
+        let store = BookStore::Kindle;
+        let created_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
+        let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
+
+        let book = Book::new(
+            book_id, title, author_ids, isbn, read, owned, priority, format, store, created_at,
+            updated_at,
+        )?;
+
+        Ok(book)
     }
 }
