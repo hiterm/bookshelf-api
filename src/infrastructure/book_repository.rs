@@ -170,36 +170,21 @@ mod tests {
             author::{Author, AuthorName},
             user::User,
         },
-        infrastructure::{user_repository::InternalUserRepository, author_repository::InternalAuthorRepository},
+        infrastructure::{
+            author_repository::InternalAuthorRepository, user_repository::InternalUserRepository,
+        },
     };
 
     use super::*;
-    use sqlx::postgres::PgPoolOptions;
+    use sqlx::{postgres::PgPoolOptions, Postgres, Transaction};
     use time::{date, time};
 
     #[tokio::test]
     #[ignore] // Depends on PostgreSQL
     async fn test_create_and_find_all() -> anyhow::Result<()> {
-        dotenv::dotenv().ok();
-
-        let db_url = fetch_database_url();
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect_timeout(Duration::from_secs(1))
-            .connect(&db_url)
-            .await?;
-        let mut tx = pool.begin().await?;
-
-        let user_id = UserId::new(String::from("user1"))?;
-        let user = User::new(user_id.clone());
-        let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
-        let author_id2 = AuthorId::try_from("925aaf96-64c7-44be-85f8-767a20b2c20c")?;
-        let author_ids = vec![author_id1.clone(), author_id2.clone()];
-        let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
-        let author2 = Author::new(author_id2, AuthorName::new("author2".to_owned())?)?;
-        InternalUserRepository::create(&user, &mut tx).await?;
-        InternalAuthorRepository::create(&user_id, &author1, &mut tx).await?;
-        InternalAuthorRepository::create(&user_id, &author2, &mut tx).await?;
+        let mut tx = prepare_tx().await?;
+        let user_id = prepare_user(&mut tx).await?;
+        let author_ids = prepare_authors(&user_id, &mut tx).await?;
 
         let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
         assert_eq!(all_books.len(), 0);
@@ -226,6 +211,39 @@ mod tests {
                 panic!("Environment variable DATABASE_URL is not unicode.")
             }
         }
+    }
+
+    async fn prepare_tx() -> Result<Transaction<'static, Postgres>, DomainError> {
+        dotenv::dotenv().ok();
+
+        let db_url = fetch_database_url();
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect_timeout(Duration::from_secs(1))
+            .connect(&db_url)
+            .await?;
+
+        Ok(pool.begin().await?)
+    }
+
+    async fn prepare_user(tx: &mut PgConnection) -> Result<UserId, DomainError> {
+        let user_id = UserId::new(String::from("user1"))?;
+        let user = User::new(user_id.clone());
+        InternalUserRepository::create(&user, tx).await?;
+
+        Ok(user_id)
+    }
+
+    async fn prepare_authors(user_id: &UserId, tx: &mut PgConnection) -> Result<Vec<AuthorId>, DomainError> {
+        let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
+        let author_id2 = AuthorId::try_from("925aaf96-64c7-44be-85f8-767a20b2c20c")?;
+        let author_ids = vec![author_id1.clone(), author_id2.clone()];
+        let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
+        let author2 = Author::new(author_id2, AuthorName::new("author2".to_owned())?)?;
+        InternalAuthorRepository::create(user_id, &author1, tx).await?;
+        InternalAuthorRepository::create(user_id, &author2, tx).await?;
+
+        Ok(author_ids)
     }
 
     fn book_entity(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
