@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::domain::{
     entity::{
+        author::AuthorId,
         book::{
             Book, BookFormat, BookId, BookStore, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag,
         },
@@ -19,6 +20,7 @@ use crate::domain::{
 struct BookRow {
     id: Uuid,
     title: String,
+    author_ids: Vec<Uuid>,
     isbn: String,
     read: bool,
     owned: bool,
@@ -46,7 +48,7 @@ struct InternalBookRepository {}
 impl InternalBookRepository {
     async fn find_all(user_id: &UserId, conn: &mut PgConnection) -> Result<Vec<Book>, DomainError> {
         let books: Result<Vec<Book>, DomainError> =
-            sqlx::query_as("SELECT * FROM book WHERE user_id = $1")
+            sqlx::query_as("SELECT * FROM book LEFT OUTER JOIN (SELECT book_id, array_agg(author_id) FROM book_author GROUP BY book_author.book_id) AS t1 ON book.id = t1.book_id WHERE book.user_id = $1")
                 .bind(user_id.as_str())
                 .fetch(conn)
                 .map(
@@ -54,6 +56,7 @@ impl InternalBookRepository {
                         let row = row?;
                         let book_id = BookId::new(row.id)?;
                         let title = BookTitle::new(row.title)?;
+                        let author_ids: Vec<AuthorId> = row.author_ids.into_iter().map(|uuid| AuthorId::new(uuid)).collect();
                         let isbn = Isbn::new(row.isbn)?;
                         let read = ReadFlag::new(row.read);
                         let owned = OwnedFlag::new(row.owned);
@@ -64,6 +67,7 @@ impl InternalBookRepository {
                         Book::new(
                             book_id,
                             title,
+                            author_ids,
                             isbn,
                             read,
                             owned,

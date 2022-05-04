@@ -3,6 +3,8 @@ use uuid::Uuid;
 
 use crate::domain::error::DomainError;
 
+use super::author::AuthorId;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BookId {
     id: Uuid,
@@ -114,6 +116,7 @@ impl TryFrom<&str> for BookStore {
 pub struct Book {
     id: BookId,
     title: BookTitle,
+    author_ids: Vec<AuthorId>,
     isbn: Isbn,
     read: ReadFlag,
     owned: OwnedFlag,
@@ -128,6 +131,7 @@ impl Book {
     pub fn new(
         id: BookId,
         title: BookTitle,
+        author_ids: Vec<AuthorId>,
         isbn: Isbn,
         read: ReadFlag,
         owned: OwnedFlag,
@@ -140,6 +144,7 @@ impl Book {
         Ok(Self {
             id,
             title,
+            author_ids,
             isbn,
             read,
             owned,
