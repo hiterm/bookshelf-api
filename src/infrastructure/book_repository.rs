@@ -20,7 +20,7 @@ use crate::domain::{
 struct BookRow {
     id: Uuid,
     title: String,
-    author_ids: Vec<Uuid>,
+    author_ids: Option<Vec<Uuid>>,
     isbn: String,
     read: bool,
     owned: bool,
@@ -83,40 +83,54 @@ impl InternalBookRepository {
     }
 
     async fn find_all(user_id: &UserId, conn: &mut PgConnection) -> Result<Vec<Book>, DomainError> {
-        let books: Result<Vec<Book>, DomainError> =
-            sqlx::query_as("SELECT * FROM book LEFT OUTER JOIN (SELECT book_id, array_agg(author_id) FROM book_author GROUP BY book_author.book_id) AS t1 ON book.id = t1.book_id WHERE book.user_id = $1")
-                .bind(user_id.as_str())
-                .fetch(conn)
-                .map(
-                    |row: Result<BookRow, sqlx::Error>| -> Result<Book, DomainError> {
-                        let row = row?;
-                        let book_id = BookId::new(row.id)?;
-                        let title = BookTitle::new(row.title)?;
-                        let author_ids: Vec<AuthorId> = row.author_ids.into_iter().map(|uuid| AuthorId::new(uuid)).collect();
-                        let isbn = Isbn::new(row.isbn)?;
-                        let read = ReadFlag::new(row.read);
-                        let owned = OwnedFlag::new(row.owned);
-                        let priority = Priority::new(row.priority)?;
-                        let format = BookFormat::try_from(row.format.as_str())?;
-                        let store = BookStore::try_from(row.store.as_str())?;
+        let books: Result<Vec<Book>, DomainError> = sqlx::query_as(
+            "SELECT * FROM book
+                           LEFT OUTER JOIN
+                           (SELECT book_id, array_agg(author_id) AS author_ids FROM book_author
+                            GROUP BY book_author.book_id)
+                           AS t1 ON book.id = t1.book_id
+                           WHERE book.user_id = $1",
+        )
+        .bind(user_id.as_str())
+        .fetch(conn)
+        .map(
+            |row: Result<BookRow, sqlx::Error>| -> Result<Book, DomainError> {
+                let row = row?;
+                let book_id = BookId::new(row.id)?;
+                let title = BookTitle::new(row.title)?;
+                let author_ids: Vec<AuthorId> = row
+                    .author_ids
+                    .map(|author_ids| {
+                        author_ids
+                            .into_iter()
+                            .map(|uuid| AuthorId::new(uuid))
+                            .collect()
+                    })
+                    .unwrap_or_else(|| vec![]);
+                let isbn = Isbn::new(row.isbn)?;
+                let read = ReadFlag::new(row.read);
+                let owned = OwnedFlag::new(row.owned);
+                let priority = Priority::new(row.priority)?;
+                let format = BookFormat::try_from(row.format.as_str())?;
+                let store = BookStore::try_from(row.store.as_str())?;
 
-                        Book::new(
-                            book_id,
-                            title,
-                            author_ids,
-                            isbn,
-                            read,
-                            owned,
-                            priority,
-                            format,
-                            store,
-                            row.created_at,
-                            row.updated_at,
-                        )
-                    },
+                Book::new(
+                    book_id,
+                    title,
+                    author_ids,
+                    isbn,
+                    read,
+                    owned,
+                    priority,
+                    format,
+                    store,
+                    row.created_at,
+                    row.updated_at,
                 )
-                .try_collect()
-                .await;
+            },
+        )
+        .try_collect()
+        .await;
 
         Ok(books?)
     }
@@ -126,7 +140,9 @@ impl InternalBookRepository {
 mod tests {
     use std::time::Duration;
 
-    use crate::{infrastructure::user_repository::InternalUserRepository, domain::entity::user::User};
+    use crate::{
+        domain::entity::user::User, infrastructure::user_repository::InternalUserRepository,
+    };
 
     use super::*;
     use sqlx::postgres::PgPoolOptions;
@@ -160,8 +176,8 @@ mod tests {
         let priority = Priority::new(50)?;
         let format = BookFormat::EBook;
         let store = BookStore::Kindle;
-        let created_at = PrimitiveDateTime::new(date!(2022-05-05), time!(0:00));
-        let updated_at = PrimitiveDateTime::new(date!(2022-05-05), time!(0:00));
+        let created_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
+        let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
         let book = Book::new(
             book_id, title, author_ids, isbn, read, owned, priority, format, store, created_at,
             updated_at,
