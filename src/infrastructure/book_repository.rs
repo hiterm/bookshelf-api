@@ -87,6 +87,7 @@ impl InternalBookRepository {
             .map(|author_id| author_id.to_uuid())
             .collect();
 
+        // TODO: Delete from here. Move to update function.
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
         sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
             .bind(book.id().to_uuid())
