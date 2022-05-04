@@ -74,10 +74,30 @@ impl InternalBookRepository {
         .bind(book.priority().to_i32())
         .bind(book.format().to_string())
         .bind(book.store().to_string())
-        .execute(conn)
+        .execute(&mut *conn)
         .await?;
 
-        // TODO: book_authorにinsert
+        let author_ids: Vec<Uuid> = book
+            .author_ids()
+            .iter()
+            .map(|author_id| author_id.to_uuid())
+            .collect();
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
+        sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
+            .bind(book.id().to_uuid())
+            .bind(&author_ids)
+            .execute(&mut *conn)
+            .await?;
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+        sqlx::query(
+            "INSERT INTO book_author (book_id, author_id)
+                    SELECT $1::uuid, * FROM UNNEST($2::uuid[])",
+        )
+        .bind(book.id().to_uuid())
+        .bind(&author_ids)
+        .execute(&mut *conn)
+        .await?;
 
         Ok(())
     }
@@ -141,7 +161,11 @@ mod tests {
     use std::time::Duration;
 
     use crate::{
-        domain::entity::user::User, infrastructure::user_repository::InternalUserRepository,
+        domain::entity::{
+            author::{Author, AuthorName},
+            user::User,
+        },
+        infrastructure::{user_repository::InternalUserRepository, author_repository::InternalAuthorRepository},
     };
 
     use super::*;
@@ -163,16 +187,24 @@ mod tests {
 
         let user_id = UserId::new(String::from("user1"))?;
         let user = User::new(user_id.clone());
+        let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
+        let author_id2 = AuthorId::try_from("925aaf96-64c7-44be-85f8-767a20b2c20c")?;
+        let author_ids = vec![author_id1.clone(), author_id2.clone()];
+        let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
+        let author2 = Author::new(author_id2, AuthorName::new("author2".to_owned())?)?;
         InternalUserRepository::create(&user, &mut tx).await?;
+        InternalAuthorRepository::create(&user_id, &author1, &mut tx).await?;
+        InternalAuthorRepository::create(&user_id, &author2, &mut tx).await?;
 
         let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
         assert_eq!(all_books.len(), 0);
 
-        let book = book_entity()?;
+        let book = book_entity(&author_ids)?;
         InternalBookRepository::create(&user_id, &book, &mut tx).await?;
 
         let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
         assert_eq!(all_books.len(), 1);
+        assert_eq!(all_books[0], book);
 
         tx.rollback().await?;
 
@@ -191,10 +223,9 @@ mod tests {
         }
     }
 
-    fn book_entity() -> Result<Book, DomainError> {
+    fn book_entity(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
         let book_id = BookId::try_from("675bc8d9-3155-42fb-87b0-0a82cb162848")?;
         let title = BookTitle::new("title1".to_owned())?;
-        let author_ids = vec![];
         let isbn = Isbn::new("isbn".to_owned())?;
         let read = ReadFlag::new(false);
         let owned = OwnedFlag::new(false);
@@ -205,7 +236,16 @@ mod tests {
         let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
 
         let book = Book::new(
-            book_id, title, author_ids, isbn, read, owned, priority, format, store, created_at,
+            book_id,
+            title,
+            author_ids.clone(),
+            isbn,
+            read,
+            owned,
+            priority,
+            format,
+            store,
+            created_at,
             updated_at,
         )?;
 
