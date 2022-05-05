@@ -172,6 +172,21 @@ pub struct Book {
     updated_at: PrimitiveDateTime,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DestructureBook {
+    pub id: BookId,
+    pub title: BookTitle,
+    pub author_ids: Vec<AuthorId>,
+    pub isbn: Isbn,
+    pub read: ReadFlag,
+    pub owned: OwnedFlag,
+    pub priority: Priority,
+    pub format: BookFormat,
+    pub store: BookStore,
+    pub created_at: PrimitiveDateTime,
+    pub updated_at: PrimitiveDateTime,
+}
+
 impl Book {
     pub fn new(
         id: BookId,
@@ -199,6 +214,22 @@ impl Book {
             created_at,
             updated_at,
         })
+    }
+
+    pub fn destructure(self) -> DestructureBook {
+        DestructureBook {
+            id: self.id,
+            title: self.title,
+            author_ids: self.author_ids,
+            isbn: self.isbn,
+            read: self.read,
+            owned: self.owned,
+            priority: self.priority,
+            format: self.format,
+            store: self.store,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
     }
 }
 
