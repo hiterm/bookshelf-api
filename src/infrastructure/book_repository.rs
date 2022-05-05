@@ -37,6 +37,10 @@ struct PgBookRepository {
 
 #[async_trait]
 impl BookRepository for PgBookRepository {
+    async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
+        let mut conn = self.pool.acquire().await?;
+        InternalBookRepository::create(user_id, book, &mut conn).await
+    }
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
         let mut conn = self.pool.acquire().await?;
         InternalBookRepository::find_all(user_id, &mut conn).await
