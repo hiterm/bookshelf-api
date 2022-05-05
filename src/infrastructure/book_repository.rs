@@ -92,6 +92,7 @@ impl InternalBookRepository {
             .collect();
 
         // TODO: Delete from here. Move to update function.
+        // TODO: Add user_id constraint.
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
         sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
             .bind(book.id().to_uuid())
@@ -100,9 +101,10 @@ impl InternalBookRepository {
             .await?;
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
-            "INSERT INTO book_author (book_id, author_id)
-                    SELECT $1::uuid, * FROM UNNEST($2::uuid[])",
+            "INSERT INTO book_author (user_id, book_id, author_id)
+                    SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])",
         )
+        .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
         .execute(&mut *conn)
