@@ -6,7 +6,7 @@ use crate::{
         repository::{author_repository::AuthorRepository, user_repository::UserRepository},
     },
     use_case::{
-        dto::{author::AuthorDto, user::UserDto},
+        dto::{author::AuthorDto, user::UserDto, book::BookDto},
         error::UseCaseError,
         use_case::query::QueryUseCase,
     },
@@ -28,6 +28,10 @@ where
         let user = self.user_repository.find_by_id(&user_id).await?;
 
         Ok(user.map(|user| UserDto::new(user.id.into_string())))
+    }
+
+    async fn find_all_books(&self, user_id: &str) -> Result<Vec<BookDto>, UseCaseError> {
+        todo!()
     }
 
     async fn find_author_by_id(
