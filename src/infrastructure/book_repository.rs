@@ -184,17 +184,26 @@ mod tests {
     async fn test_create_and_find_all() -> anyhow::Result<()> {
         let mut tx = prepare_tx().await?;
         let user_id = prepare_user(&mut tx).await?;
-        let author_ids = prepare_authors(&user_id, &mut tx).await?;
+        let author_ids1 = prepare_authors1(&user_id, &mut tx).await?;
+        let author_ids2 = prepare_authors2(&user_id, &mut tx).await?;
 
         let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
         assert_eq!(all_books.len(), 0);
 
-        let book = book_entity(&author_ids)?;
-        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
+        let book1 = book_entity1(&author_ids1)?;
+        let book2 = book_entity2(&author_ids2)?;
+        InternalBookRepository::create(&user_id, &book1, &mut tx).await?;
+        InternalBookRepository::create(&user_id, &book2, &mut tx).await?;
 
         let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
-        assert_eq!(all_books.len(), 1);
-        assert_eq!(all_books[0], book);
+        assert_eq!(all_books.len(), 2);
+        if all_books[0] == book1 {
+            assert_eq!(all_books[0], book1);
+            assert_eq!(all_books[1], book2);
+        } else {
+            assert_eq!(all_books[0], book2);
+            assert_eq!(all_books[1], book1);
+        }
 
         tx.rollback().await?;
 
@@ -234,7 +243,10 @@ mod tests {
         Ok(user_id)
     }
 
-    async fn prepare_authors(user_id: &UserId, tx: &mut PgConnection) -> Result<Vec<AuthorId>, DomainError> {
+    async fn prepare_authors1(
+        user_id: &UserId,
+        tx: &mut PgConnection,
+    ) -> Result<Vec<AuthorId>, DomainError> {
         let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
         let author_id2 = AuthorId::try_from("925aaf96-64c7-44be-85f8-767a20b2c20c")?;
         let author_ids = vec![author_id1.clone(), author_id2.clone()];
@@ -246,9 +258,50 @@ mod tests {
         Ok(author_ids)
     }
 
-    fn book_entity(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
+    async fn prepare_authors2(
+        user_id: &UserId,
+        tx: &mut PgConnection,
+    ) -> Result<Vec<AuthorId>, DomainError> {
+        let author_id1 = AuthorId::try_from("93090e87-b7a1-403c-974c-d74d881e83b9")?;
+        let author_ids = vec![author_id1.clone()];
+        let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
+        InternalAuthorRepository::create(user_id, &author1, tx).await?;
+
+        Ok(author_ids)
+    }
+
+    fn book_entity1(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
         let book_id = BookId::try_from("675bc8d9-3155-42fb-87b0-0a82cb162848")?;
         let title = BookTitle::new("title1".to_owned())?;
+        let isbn = Isbn::new("isbn".to_owned())?;
+        let read = ReadFlag::new(false);
+        let owned = OwnedFlag::new(false);
+        let priority = Priority::new(50)?;
+        let format = BookFormat::EBook;
+        let store = BookStore::Kindle;
+        let created_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
+        let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
+
+        let book = Book::new(
+            book_id,
+            title,
+            author_ids.clone(),
+            isbn,
+            read,
+            owned,
+            priority,
+            format,
+            store,
+            created_at,
+            updated_at,
+        )?;
+
+        Ok(book)
+    }
+
+    fn book_entity2(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
+        let book_id = BookId::try_from("c5a81e57-bc91-40ff-8b57-18cfa7cc7ae8")?;
+        let title = BookTitle::new("title2".to_owned())?;
         let isbn = Isbn::new("isbn".to_owned())?;
         let read = ReadFlag::new(false);
         let owned = OwnedFlag::new(false);
