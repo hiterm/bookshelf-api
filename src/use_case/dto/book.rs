@@ -1,6 +1,6 @@
 use time::PrimitiveDateTime;
 
-use crate::domain::entity::book::{Book, DestructureBook};
+use crate::domain::entity::book::{Book, BookFormat, BookStore, DestructureBook};
 
 #[derive(Debug, Clone)]
 pub struct BookDto {
@@ -11,8 +11,8 @@ pub struct BookDto {
     pub read: bool,
     pub owned: bool,
     pub priority: i32,
-    pub format: String,
-    pub store: String,
+    pub format: BookFormat,
+    pub store: BookStore,
     pub created_at: PrimitiveDateTime,
     pub updated_at: PrimitiveDateTime,
 }
@@ -44,8 +44,8 @@ impl From<Book> for BookDto {
             read: read.to_bool(),
             owned: owned.to_bool(),
             priority: priority.to_i32(),
-            format: format.to_string(),
-            store: store.to_string(),
+            format,
+            store,
             created_at,
             updated_at,
         }
