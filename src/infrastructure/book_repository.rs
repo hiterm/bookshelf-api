@@ -31,8 +31,15 @@ struct BookRow {
     updated_at: PrimitiveDateTime,
 }
 
-struct PgBookRepository {
+#[derive(Debug, Clone)]
+pub struct PgBookRepository {
     pool: PgPool,
+}
+
+impl PgBookRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 #[async_trait]
