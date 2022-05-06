@@ -1,9 +1,10 @@
 use async_graphql::Enum;
 use async_graphql::{InputObject, SimpleObject, ID};
-use time::PrimitiveDateTime;
 
+use crate::domain;
 use crate::use_case::dto::author::AuthorDto;
 use crate::use_case::dto::author::CreateAuthorDto;
+use crate::use_case::dto::book::BookDto;
 
 #[derive(SimpleObject)]
 pub struct User {
@@ -23,10 +24,31 @@ pub enum BookFormat {
     Unknown,
 }
 
+impl From<domain::entity::book::BookFormat> for BookFormat {
+    fn from(book_format: domain::entity::book::BookFormat) -> Self {
+        use domain::entity::book::BookFormat as DomainBookFormat;
+        match book_format {
+            DomainBookFormat::EBook => BookFormat::EBook,
+            DomainBookFormat::Printed => BookFormat::Printed,
+            DomainBookFormat::Unknown => BookFormat::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 pub enum BookStore {
     Kindle,
     Unknown,
+}
+
+impl From<domain::entity::book::BookStore> for BookStore {
+    fn from(book_format: domain::entity::book::BookStore) -> Self {
+        use domain::entity::book::BookStore as DomainBookStore;
+        match book_format {
+            DomainBookStore::Kindle => BookStore::Kindle,
+            DomainBookStore::Unknown => BookStore::Unknown,
+        }
+    }
 }
 
 #[derive(SimpleObject)]
@@ -40,8 +62,8 @@ pub struct Book {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
-    pub created_at: u64,
-    pub updated_at: u64,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 impl Book {
@@ -55,8 +77,8 @@ impl Book {
         priority: i32,
         format: BookFormat,
         store: BookStore,
-        created_at: u64,
-        updated_at: u64,
+        created_at: i64,
+        updated_at: i64,
     ) -> Self {
         Self {
             id,
@@ -70,6 +92,24 @@ impl Book {
             store,
             created_at,
             updated_at,
+        }
+    }
+}
+
+impl From<BookDto> for Book {
+    fn from(book_dto: BookDto) -> Self {
+        Self {
+            id: book_dto.id,
+            title: book_dto.title,
+            author_ids: book_dto.author_ids,
+            isbn: book_dto.isbn,
+            read: book_dto.read,
+            owned: book_dto.owned,
+            priority: book_dto.priority,
+            format: book_dto.format.into(),
+            store: book_dto.store.into(),
+            created_at: book_dto.created_at.timestamp(),
+            updated_at: book_dto.created_at.timestamp(),
         }
     }
 }
