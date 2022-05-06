@@ -115,12 +115,32 @@ impl InternalBookRepository {
 
     async fn find_all(user_id: &UserId, conn: &mut PgConnection) -> Result<Vec<Book>, DomainError> {
         let books: Result<Vec<Book>, DomainError> = sqlx::query_as(
-            "SELECT * FROM book
-                           LEFT OUTER JOIN
-                           (SELECT book_id, array_agg(author_id) AS author_ids FROM book_author
-                            GROUP BY book_author.book_id)
-                           AS t1 ON book.id = t1.book_id
-                           WHERE book.user_id = $1",
+            "WITH book_of_user AS(
+                SELECT
+                    *
+                FROM
+                    book
+                WHERE
+                    book.user_id = $1
+            ),
+            authors_of_book_and_user AS(
+                SELECT
+                    book_id,
+                    array_agg(author_id) AS author_ids
+                FROM
+                    book_author
+                WHERE
+                    book_author.user_id = $1
+                GROUP BY
+                    book_author.book_id
+            )
+            SELECT
+                *
+            FROM
+                book_of_user
+                LEFT OUTER JOIN
+                    authors_of_book_and_user
+                ON  book_of_user.id = authors_of_book_and_user.book_id",
         )
         .bind(user_id.as_str())
         .fetch(conn)
