@@ -1,6 +1,6 @@
 use derive_more::Display;
 use getset::Getters;
-use time::PrimitiveDateTime;
+use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -167,9 +167,9 @@ pub struct Book {
     #[getset(get = "pub")]
     store: BookStore,
     #[getset(get = "pub")]
-    created_at: PrimitiveDateTime,
+    created_at: OffsetDateTime,
     #[getset(get = "pub")]
-    updated_at: PrimitiveDateTime,
+    updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,8 +183,8 @@ pub struct DestructureBook {
     pub priority: Priority,
     pub format: BookFormat,
     pub store: BookStore,
-    pub created_at: PrimitiveDateTime,
-    pub updated_at: PrimitiveDateTime,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 impl Book {
@@ -198,8 +198,8 @@ impl Book {
         priority: Priority,
         format: BookFormat,
         store: BookStore,
-        created_at: PrimitiveDateTime,
-        updated_at: PrimitiveDateTime,
+        created_at: OffsetDateTime,
+        updated_at: OffsetDateTime,
     ) -> Result<Self, DomainError> {
         Ok(Self {
             id,

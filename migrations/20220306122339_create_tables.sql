@@ -1,7 +1,7 @@
 CREATE TABLE bookshelf_user (
   id text NOT NULL PRIMARY KEY,
-  created_at timestamp NOT NULL default current_timestamp,
-  updated_at timestamp NOT NULL default current_timestamp
+  created_at timestamp with time zone NOT NULL default current_timestamp,
+  updated_at timestamp with time zone NOT NULL default current_timestamp
 );
 
 CREATE TABLE book_format (
@@ -31,8 +31,8 @@ CREATE TABLE book (
   priority integer NOT NULL,
   format text NOT NULL,
   store text NOT NULL,
-  created_at timestamp NOT NULL default current_timestamp,
-  updated_at timestamp NOT NULL default current_timestamp,
+  created_at timestamp with time zone NOT NULL default current_timestamp,
+  updated_at timestamp with time zone NOT NULL default current_timestamp,
   PRIMARY KEY (id, user_id),
   FOREIGN KEY (user_id) REFERENCES bookshelf_user(id),
   FOREIGN KEY (format) REFERENCES book_format(format) ON UPDATE CASCADE,
@@ -43,8 +43,8 @@ CREATE TABLE author (
   id uuid NOT NULL,
   user_id text NOT NULL,
   name text NOT NULL,
-  created_at timestamp NOT NULL default current_timestamp,
-  updated_at timestamp NOT NULL default current_timestamp,
+  created_at timestamp with time zone NOT NULL default current_timestamp,
+  updated_at timestamp with time zone NOT NULL default current_timestamp,
   PRIMARY KEY (id, user_id),
   FOREIGN KEY (user_id) REFERENCES bookshelf_user(id)
 );
@@ -53,8 +53,8 @@ CREATE TABLE book_author (
   user_id text NOT NULL,
   book_id uuid NOT NULL,
   author_id uuid NOT NULL,
-  created_at timestamp NOT NULL default current_timestamp,
-  updated_at timestamp NOT NULL default current_timestamp,
+  created_at timestamp with time zone NOT NULL default current_timestamp,
+  updated_at timestamp with time zone NOT NULL default current_timestamp,
   PRIMARY KEY (user_id, book_id, author_id),
   FOREIGN KEY (user_id) REFERENCES bookshelf_user(id),
   FOREIGN KEY (book_id, user_id) REFERENCES book(id, user_id),

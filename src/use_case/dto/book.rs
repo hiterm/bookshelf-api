@@ -1,4 +1,4 @@
-use time::PrimitiveDateTime;
+use time::OffsetDateTime;
 
 use crate::domain::entity::book::{Book, BookFormat, BookStore, DestructureBook};
 
@@ -13,8 +13,8 @@ pub struct BookDto {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
-    pub created_at: PrimitiveDateTime,
-    pub updated_at: PrimitiveDateTime,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 impl From<Book> for BookDto {

@@ -108,8 +108,8 @@ impl From<BookDto> for Book {
             priority: book_dto.priority,
             format: book_dto.format.into(),
             store: book_dto.store.into(),
-            created_at: book_dto.created_at.timestamp(),
-            updated_at: book_dto.created_at.timestamp(),
+            created_at: book_dto.created_at.unix_timestamp(),
+            updated_at: book_dto.created_at.unix_timestamp(),
         }
     }
 }

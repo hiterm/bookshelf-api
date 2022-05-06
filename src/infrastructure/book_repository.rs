@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use sqlx::{PgConnection, PgPool};
-use time::PrimitiveDateTime;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::domain::{
@@ -27,8 +27,8 @@ struct BookRow {
     priority: i32,
     format: String,
     store: String,
-    created_at: PrimitiveDateTime,
-    updated_at: PrimitiveDateTime,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone)]
@@ -210,7 +210,7 @@ mod tests {
 
     use super::*;
     use sqlx::{postgres::PgPoolOptions, Postgres, Transaction};
-    use time::{date, time};
+    use time::{date, time, PrimitiveDateTime};
 
     #[tokio::test]
     #[ignore] // Depends on PostgreSQL
@@ -312,8 +312,8 @@ mod tests {
         let priority = Priority::new(50)?;
         let format = BookFormat::EBook;
         let store = BookStore::Kindle;
-        let created_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
-        let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
+        let created_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc();
+        let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc();
 
         let book = Book::new(
             book_id,
@@ -341,8 +341,8 @@ mod tests {
         let priority = Priority::new(50)?;
         let format = BookFormat::EBook;
         let store = BookStore::Kindle;
-        let created_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
-        let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00));
+        let created_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc();
+        let updated_at = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc();
 
         let book = Book::new(
             book_id,
