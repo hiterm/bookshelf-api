@@ -1,4 +1,6 @@
+use async_graphql::Enum;
 use async_graphql::{InputObject, SimpleObject, ID};
+use time::PrimitiveDateTime;
 
 use crate::use_case::dto::author::AuthorDto;
 use crate::use_case::dto::author::CreateAuthorDto;
@@ -14,17 +16,61 @@ impl User {
     }
 }
 
-// TODO
-#[derive(SimpleObject)]
-pub struct Book {
-    id: String,
-    title: String,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum BookFormat {
+    EBook,
+    Printed,
+    Unknown,
 }
 
-// TODO
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum BookStore {
+    Kindle,
+    Unknown,
+}
+
+#[derive(SimpleObject)]
+pub struct Book {
+    pub id: String,
+    pub title: String,
+    pub author_ids: Vec<String>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
 impl Book {
-    pub fn new(id: String, title: String) -> Self {
-        Book { id, title }
+    pub fn new(
+        id: String,
+        title: String,
+        author_ids: Vec<String>,
+        isbn: String,
+        read: bool,
+        owned: bool,
+        priority: i32,
+        format: BookFormat,
+        store: BookStore,
+        created_at: u64,
+        updated_at: u64,
+    ) -> Self {
+        Self {
+            id,
+            title,
+            author_ids,
+            isbn,
+            read,
+            owned,
+            priority,
+            format,
+            store,
+            created_at,
+            updated_at,
+        }
     }
 }
 
