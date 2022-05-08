@@ -1,10 +1,12 @@
 use async_graphql::Enum;
 use async_graphql::{InputObject, SimpleObject, ID};
+use time::OffsetDateTime;
 
 use crate::domain;
 use crate::use_case::dto::author::AuthorDto;
 use crate::use_case::dto::author::CreateAuthorDto;
-use crate::use_case::dto::book::BookDto;
+use crate::use_case::dto::book::{BookDto, CreateBookDto};
+use domain::entity::book::{BookFormat as DomainBookFormat, BookStore as DomainBookStore};
 
 #[derive(SimpleObject)]
 pub struct User {
@@ -24,13 +26,22 @@ pub enum BookFormat {
     Unknown,
 }
 
-impl From<domain::entity::book::BookFormat> for BookFormat {
-    fn from(book_format: domain::entity::book::BookFormat) -> Self {
-        use domain::entity::book::BookFormat as DomainBookFormat;
+impl From<DomainBookFormat> for BookFormat {
+    fn from(book_format: DomainBookFormat) -> Self {
         match book_format {
             DomainBookFormat::EBook => BookFormat::EBook,
             DomainBookFormat::Printed => BookFormat::Printed,
             DomainBookFormat::Unknown => BookFormat::Unknown,
+        }
+    }
+}
+
+impl From<BookFormat> for DomainBookFormat {
+    fn from(book_format: BookFormat) -> Self {
+        match book_format {
+            BookFormat::EBook => DomainBookFormat::EBook,
+            BookFormat::Printed => DomainBookFormat::Printed,
+            BookFormat::Unknown => DomainBookFormat::Unknown,
         }
     }
 }
@@ -41,12 +52,20 @@ pub enum BookStore {
     Unknown,
 }
 
-impl From<domain::entity::book::BookStore> for BookStore {
-    fn from(book_format: domain::entity::book::BookStore) -> Self {
-        use domain::entity::book::BookStore as DomainBookStore;
+impl From<DomainBookStore> for BookStore {
+    fn from(book_format: DomainBookStore) -> Self {
         match book_format {
             DomainBookStore::Kindle => BookStore::Kindle,
             DomainBookStore::Unknown => BookStore::Unknown,
+        }
+    }
+}
+
+impl From<BookStore> for DomainBookStore {
+    fn from(book_format: BookStore) -> Self {
+        match book_format {
+            BookStore::Kindle => DomainBookStore::Kindle,
+            BookStore::Unknown => DomainBookStore::Unknown,
         }
     }
 }
@@ -111,6 +130,50 @@ impl From<BookDto> for Book {
             created_at: book_dto.created_at.unix_timestamp(),
             updated_at: book_dto.created_at.unix_timestamp(),
         }
+    }
+}
+
+#[derive(InputObject)]
+pub struct CreateBookInput {
+    pub title: String,
+    pub author_ids: Vec<String>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl From<CreateBookInput> for CreateBookDto {
+    fn from(book_input: CreateBookInput) -> Self {
+        let CreateBookInput {
+            title,
+            author_ids,
+            isbn,
+            read,
+            owned,
+            priority,
+            format,
+            store,
+            created_at,
+            updated_at,
+        } = book_input;
+
+        CreateBookDto::new(
+            title,
+            author_ids,
+            isbn,
+            read,
+            owned,
+            priority,
+            format.into(),
+            store.into(),
+            OffsetDateTime::from_unix_timestamp(created_at),
+            OffsetDateTime::from_unix_timestamp(updated_at),
+        )
     }
 }
 
