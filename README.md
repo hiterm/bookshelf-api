@@ -54,6 +54,10 @@ $ docker-compose -f docker-compose-test.yml up -d
 $ cargo test -- --include-ignored
 ```
 
+## GraphQL Playground
+
+Run server and access `/graphql/playground`.
+
 ## Generate GraphQL schema
 
 ```
