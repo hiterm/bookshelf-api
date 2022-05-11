@@ -30,8 +30,12 @@ async fn main() -> std::io::Result<()> {
     let auth0_config = extractors::Auth0Config::default();
 
     HttpServer::new(move || {
+        // TODO: fix for prod
         let cors = Cors::default()
+            // local ui
             .allowed_origin("http://localhost:3000")
+            // local playground
+            .allowed_origin("http://localhost:8080")
             .allowed_methods([http::Method::POST])
             .allowed_headers([
                 http::header::AUTHORIZATION,
