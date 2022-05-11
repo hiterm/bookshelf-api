@@ -57,7 +57,8 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author_ids: &[AuthorId],
     ) -> Result<HashMap<AuthorId, Author>, DomainError> {
-        todo!()
+        let mut conn = self.pool.acquire().await?;
+        InternalAuthorRepository::find_by_ids_as_hash_map(user_id, author_ids, &mut conn).await
     }
 }
 
@@ -162,7 +163,6 @@ mod tests {
     };
 
     use super::*;
-    use serde::de::Expected;
     use sqlx::{postgres::PgPoolOptions, Postgres, Transaction};
 
     #[tokio::test]
