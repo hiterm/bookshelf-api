@@ -126,9 +126,9 @@ impl InternalAuthorRepository {
         author_ids: &[AuthorId],
         conn: &mut PgConnection,
     ) -> Result<HashMap<AuthorId, Author>, DomainError> {
-        let author_ids: Vec<String> = author_ids
+        let author_ids: Vec<Uuid> = author_ids
             .iter()
-            .map(|author_id| author_id.to_string())
+            .map(|author_id| author_id.to_uuid())
             .collect();
 
         let authors_map: HashMap<AuthorId, Author> = sqlx::query_as(
@@ -162,6 +162,7 @@ mod tests {
     };
 
     use super::*;
+    use serde::de::Expected;
     use sqlx::{postgres::PgPoolOptions, Postgres, Transaction};
 
     #[tokio::test]
@@ -206,6 +207,41 @@ mod tests {
         let all_authors = InternalAuthorRepository::find_all(&user_id, &mut tx).await?;
         assert_eq!(all_authors.len(), 2);
         assert_eq!(all_authors, vec![author1, author2]);
+
+        tx.rollback().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore] // Depends on PostgreSQL
+    async fn create_and_find_by_ids_as_hash_map() -> anyhow::Result<()> {
+        let mut tx = prepare_tx().await?;
+
+        let user_id = prepare_user(&mut tx).await?;
+
+        let author_id1 = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author_name = AuthorName::new(String::from("author1"))?;
+        let author1 = Author::new(author_id1.clone(), author_name)?;
+
+        let author_id2 = AuthorId::try_from("e9700384-6217-4152-88c0-7ba38aeee73a")?;
+        let author_name = AuthorName::new(String::from("author2"))?;
+        let author2 = Author::new(author_id2.clone(), author_name)?;
+
+        InternalAuthorRepository::create(&user_id, &author1, &mut tx).await?;
+        InternalAuthorRepository::create(&user_id, &author2, &mut tx).await?;
+
+        let all_authors = InternalAuthorRepository::find_by_ids_as_hash_map(
+            &user_id,
+            &[author_id1.clone(), author_id2.clone()],
+            &mut tx,
+        )
+        .await?;
+        let mut expected = HashMap::new();
+        expected.insert(author_id1, author1);
+        expected.insert(author_id2, author2);
+
+        assert_eq!(all_authors.len(), 2);
+        assert_eq!(all_authors, expected);
 
         tx.rollback().await?;
         Ok(())
