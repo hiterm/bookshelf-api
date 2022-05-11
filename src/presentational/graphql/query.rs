@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_graphql::{Context, Object, ID};
 
 use crate::{
@@ -23,9 +25,7 @@ where
     QUC: QueryUseCase,
 {
     async fn logged_in_user(&self, ctx: &Context<'_>) -> Result<Option<User>, PresentationalError> {
-        let claims = ctx
-            .data::<Claims>()
-            .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
+        let claims = get_claims(ctx)?;
         let user = self.query_use_case.find_user_by_id(&claims.sub).await?;
         Ok(user.map(|user| User::new(ID(user.id))))
     }
@@ -35,9 +35,7 @@ where
         ctx: &Context<'_>,
         id: ID,
     ) -> Result<Option<Author>, PresentationalError> {
-        let claims = ctx
-            .data::<Claims>()
-            .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
+        let claims = get_claims(ctx)?;
         let author = self
             .query_use_case
             .find_author_by_id(&claims.sub, id.as_str())
@@ -46,10 +44,7 @@ where
     }
 
     async fn books(&self, ctx: &Context<'_>) -> Result<Vec<Book>, PresentationalError> {
-        let claims = ctx
-            .data::<Claims>()
-            .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
-
+        let claims = get_claims(ctx)?;
         let books = self.query_use_case.find_all_books(&claims.sub).await?;
         let books: Vec<Book> = books.into_iter().map(|book| Book::from(book)).collect();
 
@@ -57,9 +52,7 @@ where
     }
 
     async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>, PresentationalError> {
-        let claims = ctx
-            .data::<Claims>()
-            .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
+        let claims = get_claims(ctx)?;
         let authors = self.query_use_case.find_all_authors(&claims.sub).await?;
         let authors: Vec<Author> = authors
             .into_iter()
@@ -67,4 +60,9 @@ where
             .collect();
         Ok(authors)
     }
+}
+
+fn get_claims<'a>(ctx: &Context<'a>) -> Result<&'a Claims, PresentationalError> {
+    ctx.data::<Claims>()
+        .map_err(|err| PresentationalError::OtherError(Arc::new(anyhow::anyhow!(err.message))))
 }
