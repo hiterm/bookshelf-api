@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 
 use crate::{
     domain::{
         entity::{author::AuthorId, user::UserId},
+        error::DomainError,
         repository::{
             author_repository::AuthorRepository, book_repository::BookRepository,
             user_repository::UserRepository,
@@ -67,6 +70,28 @@ where
             .map(|author| AuthorDto::from(author))
             .collect();
         Ok(authors)
+    }
+
+    async fn find_author_by_ids_as_hash_map(
+        &self,
+        user_id: &str,
+        author_ids: &[String],
+    ) -> Result<HashMap<String, AuthorDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let author_ids: Vec<AuthorId> = author_ids
+            .iter()
+            .map(|author_id| AuthorId::try_from(author_id.as_str()))
+            .collect::<Result<Vec<AuthorId>, DomainError>>()?;
+        let authors_map = self
+            .author_repository
+            .find_by_ids_as_hash_map(&user_id, &author_ids)
+            .await?;
+        let authors_map = authors_map
+            .into_iter()
+            .map(|(author_id, author)| (author_id.to_string(), author.into()))
+            .collect();
+
+        Ok(authors_map)
     }
 }
 

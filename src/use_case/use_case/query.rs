@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use mockall::automock;
 
@@ -17,4 +19,9 @@ pub trait QueryUseCase: Send + Sync + 'static {
         author_id: &str,
     ) -> Result<Option<AuthorDto>, UseCaseError>;
     async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError>;
+    async fn find_author_by_ids_as_hash_map(
+        &self,
+        user_id: &str,
+        author_ids: &[String],
+    ) -> Result<HashMap<String, AuthorDto>, UseCaseError>;
 }
