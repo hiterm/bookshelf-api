@@ -177,7 +177,7 @@ impl From<CreateBookInput> for CreateBookDto {
     }
 }
 
-#[derive(SimpleObject)]
+#[derive(Debug, Clone, SimpleObject)]
 pub struct Author {
     pub id: ID,
     pub name: String,
