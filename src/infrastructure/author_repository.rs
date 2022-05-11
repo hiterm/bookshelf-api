@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use sqlx::{PgConnection, PgPool};
@@ -48,6 +50,14 @@ impl AuthorRepository for PgAuthorRepository {
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError> {
         let mut conn = self.pool.acquire().await?;
         InternalAuthorRepository::find_all(user_id, &mut conn).await
+    }
+
+    async fn find_by_ids_as_hash_map(
+        &self,
+        user_id: &UserId,
+        author_ids: &[AuthorId],
+    ) -> Result<HashMap<AuthorId, Author>, DomainError> {
+        todo!()
     }
 }
 
@@ -109,6 +119,37 @@ impl InternalAuthorRepository {
                 .await;
 
         Ok(authors?)
+    }
+
+    async fn find_by_ids_as_hash_map(
+        user_id: &UserId,
+        author_ids: &[AuthorId],
+        conn: &mut PgConnection,
+    ) -> Result<HashMap<AuthorId, Author>, DomainError> {
+        let author_ids: Vec<String> = author_ids
+            .iter()
+            .map(|author_id| author_id.to_string())
+            .collect();
+
+        let authors_map: HashMap<AuthorId, Author> = sqlx::query_as(
+            "SELECT * FROM author WHERE user_id = $1 AND id = ANY($2) ORDER BY name ASC",
+        )
+        .bind(user_id.as_str())
+        .bind(author_ids)
+        .fetch(conn)
+        .map(
+            |row: Result<AuthorRow, sqlx::Error>| -> Result<(AuthorId, Author), DomainError> {
+                let row = row?;
+                let author_id = AuthorId::new(row.id);
+                let author_name = AuthorName::new(row.name)?;
+                let author = Author::new(author_id.clone(), author_name)?;
+                Ok((author_id, author))
+            },
+        )
+        .try_collect()
+        .await?;
+
+        Ok(authors_map)
     }
 }
 
