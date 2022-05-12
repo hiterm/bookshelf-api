@@ -10,13 +10,13 @@ use crate::{
 
 use super::object::Author;
 
-struct AuthorLoader<QUC> {
+pub struct AuthorLoader<QUC> {
     claims: Claims,
     query_use_case: QUC,
 }
 
 impl<QUC> AuthorLoader<QUC> {
-    fn new(claims: Claims, query_use_case: QUC) -> Self {
+    pub fn new(claims: Claims, query_use_case: QUC) -> Self {
         Self {
             claims,
             query_use_case,

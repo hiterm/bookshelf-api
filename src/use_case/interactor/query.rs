@@ -18,6 +18,7 @@ use crate::{
     },
 };
 
+#[derive(Debug, Clone)]
 pub struct QueryInteractor<UR, BR, AR> {
     pub user_repository: UR,
     pub book_repository: BR,

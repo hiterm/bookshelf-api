@@ -1,5 +1,6 @@
 use actix_web::{get, web, HttpResponse, Responder};
 use async_graphql::{
+    dataloader::DataLoader,
     http::{playground_source, GraphQLPlaygroundConfig},
     EmptySubscription, Schema,
 };
@@ -7,21 +8,28 @@ use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 
 use crate::{
     extractors::Claims,
-    presentational::graphql::{mutation::Mutation, query::Query},
+    presentational::graphql::{loader::AuthorLoader, mutation::Mutation, query::Query},
     use_case::use_case::{mutation::MutationUseCase, query::QueryUseCase},
 };
 
 pub async fn graphql<QUC, MUC>(
     schema: web::Data<Schema<Query<QUC>, Mutation<MUC>, EmptySubscription>>,
+    query_use_case: web::Data<QUC>,
     request: GraphQLRequest,
     claims: Claims,
 ) -> GraphQLResponse
 where
-    QUC: QueryUseCase,
+    QUC: QueryUseCase + Clone,
     MUC: MutationUseCase,
 {
+    let query_use_case: QUC = query_use_case.as_ref().clone();
+    let author_loader = DataLoader::new(
+        AuthorLoader::new(claims.clone(), query_use_case),
+        actix_web::rt::spawn,
+    );
+
     schema
-        .execute(request.into_inner().data(claims))
+        .execute(request.into_inner().data(claims).data(author_loader))
         .await
         .into()
 }

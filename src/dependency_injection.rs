@@ -20,9 +20,9 @@ pub type MI = MutationInteractor<
     CreateAuthorInteractor<PgAuthorRepository>,
 >;
 
-pub async fn dependency_injection(
+pub fn dependency_injection(
     pool: Pool<Postgres>,
-) -> Schema<Query<QI>, Mutation<MI>, EmptySubscription> {
+) -> (QI, Schema<Query<QI>, Mutation<MI>, EmptySubscription>) {
     let user_repository = PgUserRepository::new(pool.clone());
     let book_repository = PgBookRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
@@ -41,8 +41,10 @@ pub async fn dependency_injection(
         create_author_use_case,
     );
 
-    let query = Query::new(query_use_case);
+    let query = Query::new(query_use_case.clone());
     let mutation = Mutation::new(mutation_use_case);
 
-    build_schema(query, mutation)
+    let schema = build_schema(query, mutation);
+
+    (query_use_case, schema)
 }

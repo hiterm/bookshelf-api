@@ -25,7 +25,7 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Migration failed.");
 
-    let schema = dependency_injection(pool).await;
+    let (query_use_case, schema) = dependency_injection(pool);
 
     let auth0_config = extractors::Auth0Config::default();
 
@@ -43,6 +43,7 @@ async fn main() -> std::io::Result<()> {
                 http::header::CONTENT_TYPE,
             ]);
         App::new()
+            .app_data(web::Data::new(query_use_case.clone()))
             .app_data(web::Data::new(schema.clone()))
             .app_data(auth0_config.clone())
             .wrap(Logger::default())

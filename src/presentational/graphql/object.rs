@@ -1,12 +1,16 @@
-use async_graphql::Enum;
+use async_graphql::dataloader::DataLoader;
+use async_graphql::{ComplexObject, Context, Enum, Result};
 use async_graphql::{InputObject, SimpleObject, ID};
 use time::OffsetDateTime;
 
+use crate::dependency_injection::QI;
 use crate::domain;
 use crate::use_case::dto::author::AuthorDto;
 use crate::use_case::dto::author::CreateAuthorDto;
 use crate::use_case::dto::book::{BookDto, CreateBookDto};
 use domain::entity::book::{BookFormat as DomainBookFormat, BookStore as DomainBookStore};
+
+use super::loader::AuthorLoader;
 
 #[derive(SimpleObject)]
 pub struct User {
@@ -71,6 +75,7 @@ impl From<BookStore> for DomainBookStore {
 }
 
 #[derive(SimpleObject)]
+#[graphql(complex)]
 pub struct Book {
     pub id: String,
     pub title: String,
@@ -112,6 +117,21 @@ impl Book {
             created_at,
             updated_at,
         }
+    }
+}
+
+#[ComplexObject]
+impl Book {
+    async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>> {
+        // QIの型はGenericにできないか
+        let loader = ctx.data_unchecked::<DataLoader<AuthorLoader<QI>>>();
+        let authors: Vec<Author> = loader
+            .load_many(self.author_ids.clone()) // TODO cloneやめる
+            .await?
+            .into_values()
+            .collect();
+
+        Ok(authors)
     }
 }
 
