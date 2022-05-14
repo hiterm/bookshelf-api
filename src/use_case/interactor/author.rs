@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::{
     domain::{
         entity::{
-            author::{Author as DomainAuthor, AuthorId, AuthorName},
+            author::{Author, AuthorId, AuthorName},
             user::UserId,
         },
         repository::author_repository::AuthorRepository,
@@ -40,7 +40,7 @@ where
         let uuid = Uuid::new_v4();
         let author_id = AuthorId::new(uuid);
         let author_name = AuthorName::new(author_data.name)?;
-        let author = DomainAuthor::new(author_id, author_name)?;
+        let author = Author::new(author_id, author_name)?;
         self.author_repository.create(&user_id, &author).await?;
 
         Ok(author.into())

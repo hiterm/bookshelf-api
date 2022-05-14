@@ -25,13 +25,17 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Migration failed.");
 
-    let schema = dependency_injection(pool).await;
+    let (query_use_case, schema) = dependency_injection(pool);
 
     let auth0_config = extractors::Auth0Config::default();
 
     HttpServer::new(move || {
+        // TODO: fix for prod
         let cors = Cors::default()
+            // local ui
             .allowed_origin("http://localhost:3000")
+            // local playground
+            .allowed_origin("http://localhost:8080")
             .allowed_methods([http::Method::POST])
             .allowed_headers([
                 http::header::AUTHORIZATION,
@@ -39,6 +43,7 @@ async fn main() -> std::io::Result<()> {
                 http::header::CONTENT_TYPE,
             ]);
         App::new()
+            .app_data(web::Data::new(query_use_case.clone()))
             .app_data(web::Data::new(schema.clone()))
             .app_data(auth0_config.clone())
             .wrap(Logger::default())

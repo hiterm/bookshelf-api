@@ -80,7 +80,7 @@ impl ResponseError for ClientError {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Claims {
     pub sub: String,
     pub _permissions: Option<HashSet<String>>,

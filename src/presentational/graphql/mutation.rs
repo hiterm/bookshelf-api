@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_graphql::{Context, Object, ID};
 
 use crate::{
@@ -5,7 +7,7 @@ use crate::{
     use_case::use_case::mutation::MutationUseCase,
 };
 
-use super::object::{Author, CreateAuthorInput, User};
+use super::object::{Author, Book, CreateAuthorInput, CreateBookInput, User};
 
 pub struct Mutation<MUC> {
     mutation_use_case: MUC,
@@ -23,11 +25,23 @@ where
     MUC: MutationUseCase,
 {
     async fn register_user(&self, ctx: &Context<'_>) -> Result<User, PresentationalError> {
-        let claims = ctx
-            .data::<Claims>()
-            .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
+        let claims = get_claims(ctx)?;
         let user = self.mutation_use_case.register_user(&claims.sub).await?;
         Ok(User::new(ID(user.id)))
+    }
+
+    async fn create_book(
+        &self,
+        ctx: &Context<'_>,
+        book_data: CreateBookInput,
+    ) -> Result<Book, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let book = self
+            .mutation_use_case
+            .create_book(&claims.sub, book_data.into())
+            .await?;
+
+        Ok(book.into())
     }
 
     async fn create_author(
@@ -35,13 +49,16 @@ where
         ctx: &Context<'_>,
         author_data: CreateAuthorInput,
     ) -> Result<Author, PresentationalError> {
-        let claims = ctx
-            .data::<Claims>()
-            .map_err(|err| PresentationalError::OtherError(anyhow::anyhow!(err.message)))?;
+        let claims = get_claims(ctx)?;
         let author = self
             .mutation_use_case
             .create_author(&claims.sub, author_data.into())
             .await?;
         Ok(author.into())
     }
+}
+
+fn get_claims<'a>(ctx: &Context<'a>) -> Result<&'a Claims, PresentationalError> {
+    ctx.data::<Claims>()
+        .map_err(|err| PresentationalError::OtherError(Arc::new(anyhow::anyhow!(err.message))))
 }

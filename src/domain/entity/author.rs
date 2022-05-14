@@ -4,7 +4,7 @@ use validator::Validate;
 
 use crate::{domain::error::DomainError, impl_string_value_object};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AuthorId {
     id: Uuid,
 }

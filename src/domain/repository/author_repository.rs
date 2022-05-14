@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use mockall::automock;
 
@@ -19,4 +21,9 @@ pub trait AuthorRepository: Send + Sync + 'static {
         author_id: &AuthorId,
     ) -> Result<Option<Author>, DomainError>;
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError>;
+    async fn find_by_ids_as_hash_map(
+        &self,
+        user_id: &UserId,
+        author_ids: &[AuthorId],
+    ) -> Result<HashMap<AuthorId, Author>, DomainError>;
 }
