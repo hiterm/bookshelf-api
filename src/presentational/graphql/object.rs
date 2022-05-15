@@ -1,7 +1,6 @@
 use async_graphql::dataloader::DataLoader;
 use async_graphql::{ComplexObject, Context, Enum, Result};
 use async_graphql::{InputObject, SimpleObject, ID};
-use time::OffsetDateTime;
 
 use crate::dependency_injection::QI;
 use crate::domain;
@@ -163,8 +162,6 @@ pub struct CreateBookInput {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
-    pub created_at: i64,
-    pub updated_at: i64,
 }
 
 impl From<CreateBookInput> for CreateBookDto {
@@ -178,8 +175,6 @@ impl From<CreateBookInput> for CreateBookDto {
             priority,
             format,
             store,
-            created_at,
-            updated_at,
         } = book_input;
 
         CreateBookDto::new(
@@ -191,8 +186,6 @@ impl From<CreateBookInput> for CreateBookDto {
             priority,
             format.into(),
             store.into(),
-            OffsetDateTime::from_unix_timestamp(created_at),
-            OffsetDateTime::from_unix_timestamp(updated_at),
         )
     }
 }
