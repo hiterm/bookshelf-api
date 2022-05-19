@@ -65,6 +65,20 @@ impl From<Book> for BookDto {
     }
 }
 
+pub struct TimeInfo {
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+impl TimeInfo {
+    pub fn new(created_at: OffsetDateTime, updated_at: OffsetDateTime) -> Self {
+        Self {
+            created_at,
+            updated_at,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateBookDto {
     pub title: String,
@@ -75,8 +89,6 @@ pub struct CreateBookDto {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
-    pub created_at: OffsetDateTime,
-    pub updated_at: OffsetDateTime,
 }
 
 impl CreateBookDto {
@@ -89,8 +101,6 @@ impl CreateBookDto {
         priority: i32,
         format: BookFormat,
         store: BookStore,
-        created_at: OffsetDateTime,
-        updated_at: OffsetDateTime,
     ) -> Self {
         Self {
             title,
@@ -101,16 +111,16 @@ impl CreateBookDto {
             priority,
             format,
             store,
-            created_at,
-            updated_at,
         }
     }
 }
 
-impl TryFrom<(Uuid, CreateBookDto)> for Book {
+impl TryFrom<(Uuid, CreateBookDto, TimeInfo)> for Book {
     type Error = UseCaseError;
 
-    fn try_from((uuid, book_data): (Uuid, CreateBookDto)) -> Result<Self, Self::Error> {
+    fn try_from(
+        (uuid, book_data, time_info): (Uuid, CreateBookDto, TimeInfo),
+    ) -> Result<Self, Self::Error> {
         let author_ids: Result<Vec<AuthorId>, DomainError> = book_data
             .author_ids
             .into_iter()
@@ -128,8 +138,8 @@ impl TryFrom<(Uuid, CreateBookDto)> for Book {
             Priority::new(book_data.priority)?,
             book_data.format,
             book_data.store,
-            book_data.created_at,
-            book_data.updated_at,
+            time_info.created_at,
+            time_info.updated_at,
         )?;
 
         Ok(book)

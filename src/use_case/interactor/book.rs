@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
         repository::book_repository::BookRepository,
     },
     use_case::{
-        dto::book::{BookDto, CreateBookDto},
+        dto::book::{BookDto, CreateBookDto, TimeInfo},
         error::UseCaseError,
         use_case::book::CreateBookUseCase,
     },
@@ -35,7 +36,8 @@ where
     ) -> Result<BookDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let uuid = Uuid::new_v4();
-        let book = Book::try_from((uuid, book_data))?;
+        let time_info = TimeInfo::new(OffsetDateTime::now_utc(), OffsetDateTime::now_utc());
+        let book = Book::try_from((uuid, book_data, time_info))?;
 
         self.book_repository.create(&user_id, &book).await?;
 
