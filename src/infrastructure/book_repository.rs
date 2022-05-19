@@ -62,6 +62,10 @@ impl BookRepository for PgBookRepository {
         let mut conn = self.pool.acquire().await?;
         InternalBookRepository::find_all(user_id, &mut conn).await
     }
+
+    async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
+        todo!()
+    }
 }
 
 struct InternalBookRepository {}
