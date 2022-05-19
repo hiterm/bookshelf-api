@@ -48,6 +48,16 @@ impl BookRepository for PgBookRepository {
         let mut conn = self.pool.acquire().await?;
         InternalBookRepository::create(user_id, book, &mut conn).await
     }
+
+    async fn find_by_id(
+        &self,
+        user_id: &UserId,
+        book_id: &BookId,
+    ) -> Result<Option<Book>, DomainError> {
+        let mut conn = self.pool.acquire().await?;
+        InternalBookRepository::find_by_id(user_id, book_id, &mut conn).await
+    }
+
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
         let mut conn = self.pool.acquire().await?;
         InternalBookRepository::find_all(user_id, &mut conn).await
@@ -118,6 +128,83 @@ impl InternalBookRepository {
         .await?;
 
         Ok(())
+    }
+
+    async fn find_by_id(
+        user_id: &UserId,
+        book_id: &BookId,
+        conn: &mut PgConnection,
+    ) -> Result<Option<Book>, DomainError> {
+        let book_row: Option<BookRow> = sqlx::query_as(
+            "WITH book_of_user AS(
+                SELECT
+                    *
+                FROM
+                    book
+                WHERE
+                    book.user_id = $1
+            ),
+            authors_of_book_and_user AS(
+                SELECT
+                    book_id,
+                    array_agg(author_id) AS author_ids
+                FROM
+                    book_author
+                WHERE
+                    book_author.user_id = $1
+                GROUP BY
+                    book_author.book_id
+            )
+            SELECT
+                *
+            FROM
+                book_of_user
+                LEFT OUTER JOIN
+                    authors_of_book_and_user
+                ON  book_of_user.id = authors_of_book_and_user.book_id
+            WHERE book_of_user.id = $2",
+        )
+        .bind(user_id.as_str())
+        .bind(book_id.to_uuid())
+        .fetch_optional(conn)
+        .await?;
+
+        let book = book_row.map(|row| {
+            let book_id = BookId::new(row.id)?;
+            let title = BookTitle::new(row.title)?;
+            let author_ids: Vec<AuthorId> = row
+                .author_ids
+                .map(|author_ids| {
+                    author_ids
+                        .into_iter()
+                        .map(|uuid| AuthorId::new(uuid))
+                        .collect()
+                })
+                .unwrap_or_else(|| vec![]);
+            let isbn = Isbn::new(row.isbn)?;
+            let read = ReadFlag::new(row.read);
+            let owned = OwnedFlag::new(row.owned);
+            let priority = Priority::new(row.priority)?;
+            let format = BookFormat::try_from(row.format.as_str())?;
+            let store = BookStore::try_from(row.store.as_str())?;
+
+            Book::new(
+                book_id,
+                title,
+                author_ids,
+                isbn,
+                read,
+                owned,
+                priority,
+                format,
+                store,
+                row.created_at,
+                row.updated_at,
+            )
+        });
+        let book = book.transpose()?;
+
+        Ok(book)
     }
 
     async fn find_all(user_id: &UserId, conn: &mut PgConnection) -> Result<Vec<Book>, DomainError> {
@@ -211,6 +298,27 @@ mod tests {
     use super::*;
     use sqlx::{postgres::PgPoolOptions, Postgres, Transaction};
     use time::{date, time, PrimitiveDateTime};
+
+    #[tokio::test]
+    #[ignore] // Depends on PostgreSQL
+    async fn test_create_and_find_by_id() -> anyhow::Result<()> {
+        let mut tx = prepare_tx().await?;
+        let user_id = prepare_user(&mut tx).await?;
+        let author_ids = prepare_authors1(&user_id, &mut tx).await?;
+
+        let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
+        assert_eq!(all_books.len(), 0);
+
+        let book = book_entity1(&author_ids)?;
+        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
+
+        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        assert_eq!(actual, Some(book));
+
+        tx.rollback().await?;
+
+        Ok(())
+    }
 
     #[tokio::test]
     #[ignore] // Depends on PostgreSQL
