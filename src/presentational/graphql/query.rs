@@ -30,6 +30,24 @@ where
         Ok(user.map(|user| User::new(ID(user.id))))
     }
 
+    async fn book(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Book>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let book = self
+            .query_use_case
+            .find_book_by_id(&claims.sub, id.as_str())
+            .await?;
+
+        Ok(book.map(|book| Book::from(book)))
+    }
+
+    async fn books(&self, ctx: &Context<'_>) -> Result<Vec<Book>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let books = self.query_use_case.find_all_books(&claims.sub).await?;
+        let books: Vec<Book> = books.into_iter().map(|book| Book::from(book)).collect();
+
+        Ok(books)
+    }
+
     async fn author(
         &self,
         ctx: &Context<'_>,
@@ -41,14 +59,6 @@ where
             .find_author_by_id(&claims.sub, id.as_str())
             .await?;
         Ok(author.map(|author| Author::new(author.id, author.name)))
-    }
-
-    async fn books(&self, ctx: &Context<'_>) -> Result<Vec<Book>, PresentationalError> {
-        let claims = get_claims(ctx)?;
-        let books = self.query_use_case.find_all_books(&claims.sub).await?;
-        let books: Vec<Book> = books.into_iter().map(|book| Book::from(book)).collect();
-
-        Ok(books)
     }
 
     async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>, PresentationalError> {

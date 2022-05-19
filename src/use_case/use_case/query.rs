@@ -12,6 +12,11 @@ use crate::use_case::{
 #[async_trait]
 pub trait QueryUseCase: Send + Sync + 'static {
     async fn find_user_by_id(&self, user_id: &str) -> Result<Option<UserDto>, UseCaseError>;
+    async fn find_book_by_id(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<Option<BookDto>, UseCaseError>;
     async fn find_all_books(&self, user_id: &str) -> Result<Vec<BookDto>, UseCaseError>;
     async fn find_author_by_id(
         &self,

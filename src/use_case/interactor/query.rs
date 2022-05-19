@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::{
     domain::{
-        entity::{author::AuthorId, user::UserId},
+        entity::{author::AuthorId, book::BookId, user::UserId},
         error::DomainError,
         repository::{
             author_repository::AuthorRepository, book_repository::BookRepository,
@@ -37,6 +37,18 @@ where
         let user = self.user_repository.find_by_id(&user_id).await?;
 
         Ok(user.map(|user| UserDto::new(user.id.into_string())))
+    }
+
+    async fn find_book_by_id(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<Option<BookDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let book_id = BookId::try_from(book_id)?;
+        let book = self.book_repository.find_by_id(&user_id, &book_id).await?;
+        let book = book.map(|book| BookDto::from(book));
+        Ok(book)
     }
 
     async fn find_all_books(&self, user_id: &str) -> Result<Vec<BookDto>, UseCaseError> {
