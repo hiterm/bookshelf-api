@@ -145,3 +145,42 @@ impl TryFrom<(Uuid, CreateBookDto, TimeInfo)> for Book {
         Ok(book)
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct UpdateBookDto {
+    pub id: String,
+    pub title: String,
+    pub author_ids: Vec<String>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+}
+
+impl UpdateBookDto {
+    pub fn new(
+        id: String,
+        title: String,
+        author_ids: Vec<String>,
+        isbn: String,
+        read: bool,
+        owned: bool,
+        priority: i32,
+        format: BookFormat,
+        store: BookStore,
+    ) -> Self {
+        Self {
+            id,
+            title,
+            author_ids,
+            isbn,
+            read,
+            owned,
+            priority,
+            format,
+            store,
+        }
+    }
+}
