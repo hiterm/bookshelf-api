@@ -76,6 +76,7 @@ impl InternalBookRepository {
         book: &Book,
         conn: &mut PgConnection,
     ) -> Result<(), DomainError> {
+        // TODO: トランザクション
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -112,14 +113,6 @@ impl InternalBookRepository {
             .map(|author_id| author_id.to_uuid())
             .collect();
 
-        // TODO: Delete from here. Move to update function.
-        // TODO: Add user_id constraint.
-        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
-        sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
-            .bind(book.id().to_uuid())
-            .bind(&author_ids)
-            .execute(&mut *conn)
-            .await?;
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
             "INSERT INTO book_author (user_id, book_id, author_id)
@@ -282,6 +275,66 @@ impl InternalBookRepository {
         .await;
 
         Ok(books?)
+    }
+
+    async fn update(&self, user_id: &UserId, book: &Book, conn: &mut PgConnection) -> Result<(), DomainError> {
+        // TODO: UPDATEにする
+        sqlx::query(
+            "INSERT INTO book (
+               id,
+               user_id,
+               title,
+               isbn,
+               read,
+               owned,
+               priority,
+               format,
+               store,
+               created_at,
+               updated_at
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);",
+        )
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .execute(&mut *conn)
+        .await?;
+
+        let author_ids: Vec<Uuid> = book
+            .author_ids()
+            .iter()
+            .map(|author_id| author_id.to_uuid())
+            .collect();
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
+        sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
+            .bind(book.id().to_uuid())
+            .bind(&author_ids)
+            .execute(&mut *conn)
+            .await?;
+
+        // TODO: コンフリクトしたら
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+        sqlx::query(
+            "INSERT INTO book_author (user_id, book_id, author_id)
+                    SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])",
+        )
+        .bind(user_id.as_str())
+        .bind(book.id().to_uuid())
+        .bind(&author_ids)
+        .execute(&mut *conn)
+        .await?;
+
+        Ok(())
     }
 }
 
