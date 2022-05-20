@@ -1,5 +1,5 @@
 use derive_more::Display;
-use getset::Getters;
+use getset::{Getters, Setters};
 use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
@@ -146,29 +146,29 @@ impl TryFrom<&str> for BookStore {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+#[derive(Debug, Clone, PartialEq, Eq, Getters, Setters)]
 pub struct Book {
     #[getset(get = "pub")]
     id: BookId,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     title: BookTitle,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     author_ids: Vec<AuthorId>,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     isbn: Isbn,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     read: ReadFlag,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     owned: OwnedFlag,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     priority: Priority,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     format: BookFormat,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     store: BookStore,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     created_at: OffsetDateTime,
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     updated_at: OffsetDateTime,
 }
 

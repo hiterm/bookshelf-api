@@ -64,7 +64,8 @@ impl BookRepository for PgBookRepository {
     }
 
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        todo!()
+        let mut conn = self.pool.acquire().await?;
+        InternalBookRepository::update(user_id, book, &mut conn).await
     }
 }
 
@@ -277,25 +278,25 @@ impl InternalBookRepository {
         Ok(books?)
     }
 
-    async fn update(&self, user_id: &UserId, book: &Book, conn: &mut PgConnection) -> Result<(), DomainError> {
-        // TODO: UPDATEにする
+    async fn update(
+        user_id: &UserId,
+        book: &Book,
+        conn: &mut PgConnection,
+    ) -> Result<(), DomainError> {
         sqlx::query(
-            "INSERT INTO book (
-               id,
-               user_id,
-               title,
-               isbn,
-               read,
-               owned,
-               priority,
-               format,
-               store,
-               created_at,
-               updated_at
-             )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);",
+            "UPDATE book SET
+               user_id = $1,
+               title = $2,
+               isbn = $3,
+               read = $4,
+               owned = $5,
+               priority = $6,
+               format = $7,
+               store = $8,
+               created_at = $9,
+               updated_at = $10
+            WHERE id = $11",
         )
-        .bind(book.id().to_uuid())
         .bind(user_id.as_str())
         .bind(book.title().as_str())
         .bind(book.isbn().as_str())
@@ -306,6 +307,7 @@ impl InternalBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
+        .bind(book.id().to_uuid())
         .execute(&mut *conn)
         .await?;
 
@@ -322,11 +324,11 @@ impl InternalBookRepository {
             .execute(&mut *conn)
             .await?;
 
-        // TODO: コンフリクトしたら
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
             "INSERT INTO book_author (user_id, book_id, author_id)
-                    SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])",
+                    SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
+            ON CONFLICT DO NOTHING",
         )
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
@@ -402,6 +404,39 @@ mod tests {
             assert_eq!(all_books[0], book2);
             assert_eq!(all_books[1], book1);
         }
+
+        tx.rollback().await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore] // Depends on PostgreSQL
+    async fn test_update() -> anyhow::Result<()> {
+        // setup
+        let mut tx = prepare_tx().await?;
+        let user_id = prepare_user(&mut tx).await?;
+        let mut author_ids = prepare_authors1(&user_id, &mut tx).await?;
+        let mut book = book_entity1(&author_ids)?;
+        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
+        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        assert_eq!(actual, Some(book.clone()));
+
+        // update
+        book.set_title(BookTitle::new("another_title".to_owned())?);
+        author_ids.pop();
+        let another_author_id = AuthorId::try_from("e30ce456-d34a-4c42-831c-b08d5f9ed81f")?;
+        let another_author = Author::new(
+            another_author_id.clone(),
+            AuthorName::new("another_author1".to_owned())?,
+        )?;
+        InternalAuthorRepository::create(&user_id, &another_author, &mut tx).await?;
+        author_ids.push(another_author_id);
+        book.set_author_ids(author_ids);
+        InternalBookRepository::update(&user_id, &book, &mut tx).await?;
+
+        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        assert_eq!(actual, Some(book.clone()));
 
         tx.rollback().await?;
 
