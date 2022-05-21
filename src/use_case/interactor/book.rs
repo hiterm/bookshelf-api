@@ -108,7 +108,7 @@ where
         book.set_store(store);
         book.set_updated_at(OffsetDateTime::now_utc());
 
-        self.book_repository.create(&user_id, &book).await?;
+        self.book_repository.update(&user_id, &book).await?;
 
         Ok(book.into())
     }
