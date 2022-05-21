@@ -332,13 +332,6 @@ impl InternalBookRepository {
                 )))
             }
         }
-        if rows_affected == 0 {
-            return Err(DomainError::NotFound {
-                entity_type: "book",
-                entity_id: book.id().to_string(),
-                user_id: user_id.to_owned().into_string(),
-            });
-        }
 
         let author_ids: Vec<Uuid> = book
             .author_ids()
