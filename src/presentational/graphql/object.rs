@@ -6,7 +6,7 @@ use crate::dependency_injection::QI;
 use crate::domain;
 use crate::use_case::dto::author::AuthorDto;
 use crate::use_case::dto::author::CreateAuthorDto;
-use crate::use_case::dto::book::{BookDto, CreateBookDto};
+use crate::use_case::dto::book::{BookDto, CreateBookDto, UpdateBookDto};
 use domain::entity::book::{BookFormat as DomainBookFormat, BookStore as DomainBookStore};
 
 use super::loader::AuthorLoader;
@@ -178,6 +178,47 @@ impl From<CreateBookInput> for CreateBookDto {
         } = book_input;
 
         CreateBookDto::new(
+            title,
+            author_ids,
+            isbn,
+            read,
+            owned,
+            priority,
+            format.into(),
+            store.into(),
+        )
+    }
+}
+
+#[derive(InputObject)]
+pub struct UpdateBookInput {
+    pub id: String,
+    pub title: String,
+    pub author_ids: Vec<String>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+}
+
+impl From<UpdateBookInput> for UpdateBookDto {
+    fn from(book_input: UpdateBookInput) -> Self {
+        let UpdateBookInput {
+            id,
+            title,
+            author_ids,
+            isbn,
+            read,
+            owned,
+            priority,
+            format,
+            store,
+        } = book_input;
+
+        UpdateBookDto::new(
+            id,
             title,
             author_ids,
             isbn,
