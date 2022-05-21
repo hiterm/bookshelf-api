@@ -147,7 +147,7 @@ impl From<BookDto> for Book {
             format: book_dto.format.into(),
             store: book_dto.store.into(),
             created_at: book_dto.created_at.unix_timestamp(),
-            updated_at: book_dto.created_at.unix_timestamp(),
+            updated_at: book_dto.updated_at.unix_timestamp(),
         }
     }
 }
