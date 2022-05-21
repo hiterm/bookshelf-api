@@ -9,6 +9,8 @@ RUN cargo build --release
 RUN rm src/*.rs
 
 COPY ./src ./src
+COPY ./migrations ./migrations
+COPY ./build.rs ./build.rs
 RUN touch src/main.rs
 RUN cargo build --release
 
