@@ -12,6 +12,8 @@ pub enum PresentationalError {
     Validation(String),
     #[error(transparent)]
     OtherError(Arc<anyhow::Error>),
+    #[error("{0}")]
+    Unexpected(String),
 }
 
 impl From<UseCaseError> for PresentationalError {
@@ -19,7 +21,10 @@ impl From<UseCaseError> for PresentationalError {
         match err {
             UseCaseError::NotFound { .. } => PresentationalError::NotFound(err.to_string()),
             UseCaseError::Validation(_) => PresentationalError::Validation(err.to_string()),
-            UseCaseError::Other(_) => PresentationalError::OtherError(Arc::new(anyhow::Error::new(err))),
+            UseCaseError::Other(_) => {
+                PresentationalError::OtherError(Arc::new(anyhow::Error::new(err)))
+            }
+            UseCaseError::Unexpected(message) => PresentationalError::Unexpected(message),
         }
     }
 }

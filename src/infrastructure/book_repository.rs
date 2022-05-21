@@ -45,8 +45,11 @@ impl PgBookRepository {
 #[async_trait]
 impl BookRepository for PgBookRepository {
     async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalBookRepository::create(user_id, book, &mut conn).await
+        let mut tx = self.pool.begin().await?;
+        InternalBookRepository::create(user_id, book, &mut tx).await?;
+        tx.commit().await?;
+
+        Ok(())
     }
 
     async fn find_by_id(
@@ -61,6 +64,14 @@ impl BookRepository for PgBookRepository {
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
         let mut conn = self.pool.acquire().await?;
         InternalBookRepository::find_all(user_id, &mut conn).await
+    }
+
+    async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+        InternalBookRepository::update(user_id, book, &mut tx).await?;
+        tx.commit().await?;
+
+        Ok(())
     }
 }
 
@@ -108,14 +119,6 @@ impl InternalBookRepository {
             .map(|author_id| author_id.to_uuid())
             .collect();
 
-        // TODO: Delete from here. Move to update function.
-        // TODO: Add user_id constraint.
-        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
-        sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
-            .bind(book.id().to_uuid())
-            .bind(&author_ids)
-            .execute(&mut *conn)
-            .await?;
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
             "INSERT INTO book_author (user_id, book_id, author_id)
@@ -279,6 +282,84 @@ impl InternalBookRepository {
 
         Ok(books?)
     }
+
+    async fn update(
+        user_id: &UserId,
+        book: &Book,
+        conn: &mut PgConnection,
+    ) -> Result<(), DomainError> {
+        let result = sqlx::query(
+            "UPDATE book SET
+               user_id = $1,
+               title = $2,
+               isbn = $3,
+               read = $4,
+               owned = $5,
+               priority = $6,
+               format = $7,
+               store = $8,
+               created_at = $9,
+               updated_at = $10
+            WHERE id = $11",
+        )
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .bind(book.id().to_uuid())
+        .execute(&mut *conn)
+        .await?;
+
+        let rows_affected = result.rows_affected();
+        match rows_affected {
+            0 => {
+                return Err(DomainError::NotFound {
+                    entity_type: "book",
+                    entity_id: book.id().to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
+            }
+            1 => {}
+            _ => {
+                return Err(DomainError::Unexpected(String::from(
+                    "rows_affected is greater than 1.",
+                )))
+            }
+        }
+
+        let author_ids: Vec<Uuid> = book
+            .author_ids()
+            .iter()
+            .map(|author_id| author_id.to_uuid())
+            .collect();
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
+        sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
+            .bind(book.id().to_uuid())
+            .bind(&author_ids)
+            .execute(&mut *conn)
+            .await?;
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+        sqlx::query(
+            "INSERT INTO book_author (user_id, book_id, author_id)
+                    SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
+            ON CONFLICT DO NOTHING",
+        )
+        .bind(user_id.as_str())
+        .bind(book.id().to_uuid())
+        .bind(&author_ids)
+        .execute(&mut *conn)
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -345,6 +426,39 @@ mod tests {
             assert_eq!(all_books[0], book2);
             assert_eq!(all_books[1], book1);
         }
+
+        tx.rollback().await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore] // Depends on PostgreSQL
+    async fn test_update() -> anyhow::Result<()> {
+        // setup
+        let mut tx = prepare_tx().await?;
+        let user_id = prepare_user(&mut tx).await?;
+        let mut author_ids = prepare_authors1(&user_id, &mut tx).await?;
+        let mut book = book_entity1(&author_ids)?;
+        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
+        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        assert_eq!(actual, Some(book.clone()));
+
+        // update
+        book.set_title(BookTitle::new("another_title".to_owned())?);
+        author_ids.pop();
+        let another_author_id = AuthorId::try_from("e30ce456-d34a-4c42-831c-b08d5f9ed81f")?;
+        let another_author = Author::new(
+            another_author_id.clone(),
+            AuthorName::new("another_author1".to_owned())?,
+        )?;
+        InternalAuthorRepository::create(&user_id, &another_author, &mut tx).await?;
+        author_ids.push(another_author_id);
+        book.set_author_ids(author_ids);
+        InternalBookRepository::update(&user_id, &book, &mut tx).await?;
+
+        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        assert_eq!(actual, Some(book.clone()));
 
         tx.rollback().await?;
 

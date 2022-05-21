@@ -7,7 +7,7 @@ use crate::{
     use_case::use_case::mutation::MutationUseCase,
 };
 
-use super::object::{Author, Book, CreateAuthorInput, CreateBookInput, User};
+use super::object::{Author, Book, CreateAuthorInput, CreateBookInput, UpdateBookInput, User};
 
 pub struct Mutation<MUC> {
     mutation_use_case: MUC,
@@ -39,6 +39,20 @@ where
         let book = self
             .mutation_use_case
             .create_book(&claims.sub, book_data.into())
+            .await?;
+
+        Ok(book.into())
+    }
+
+    async fn update_book(
+        &self,
+        ctx: &Context<'_>,
+        book_data: UpdateBookInput,
+    ) -> Result<Book, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let book = self
+            .mutation_use_case
+            .update_book(&claims.sub, book_data.into())
             .await?;
 
         Ok(book.into())
