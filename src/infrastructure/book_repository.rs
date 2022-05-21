@@ -288,7 +288,7 @@ impl InternalBookRepository {
         book: &Book,
         conn: &mut PgConnection,
     ) -> Result<(), DomainError> {
-        sqlx::query(
+        let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
                title = $2,
@@ -315,6 +315,30 @@ impl InternalBookRepository {
         .bind(book.id().to_uuid())
         .execute(&mut *conn)
         .await?;
+
+        let rows_affected = result.rows_affected();
+        match rows_affected {
+            0 => {
+                return Err(DomainError::NotFound {
+                    entity_type: "book",
+                    entity_id: book.id().to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
+            }
+            1 => {}
+            _ => {
+                return Err(DomainError::Unexpected(String::from(
+                    "rows_affected is greater than 1.",
+                )))
+            }
+        }
+        if rows_affected == 0 {
+            return Err(DomainError::NotFound {
+                entity_type: "book",
+                entity_id: book.id().to_string(),
+                user_id: user_id.to_owned().into_string(),
+            });
+        }
 
         let author_ids: Vec<Uuid> = book
             .author_ids()
