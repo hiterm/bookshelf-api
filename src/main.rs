@@ -29,13 +29,14 @@ async fn main() -> std::io::Result<()> {
 
     let auth0_config = extractors::Auth0Config::default();
 
+    let allowed_origins = fetch_allowed_origins();
+
     HttpServer::new(move || {
-        // TODO: fix for prod
-        let cors = Cors::default()
-            // local ui
-            .allowed_origin("http://localhost:3000")
-            // local playground
-            .allowed_origin("http://localhost:8080")
+        let mut cors = Cors::default();
+        for allowed_origin in allowed_origins.iter() {
+            cors = cors.allowed_origin(allowed_origin);
+        }
+        cors = cors
             .allowed_methods([http::Method::POST])
             .allowed_headers([
                 http::header::AUTHORIZATION,
@@ -81,5 +82,17 @@ fn fetch_database_url() -> String {
         Ok(s) => s,
         Err(VarError::NotPresent) => panic!("Environment variable DATABASE_URL is required."),
         Err(VarError::NotUnicode(_)) => panic!("Environment variable DATABASE_URL is not unicode."),
+    }
+}
+
+fn fetch_allowed_origins() -> Vec<String> {
+    use std::env::VarError;
+
+    match std::env::var("ALLOWED_ORIGINS") {
+        Ok(s) => s.split(',').map(|s| s.to_owned()).collect(),
+        Err(VarError::NotPresent) => panic!("Environment variable ALLOWED_ORIGINS is required."),
+        Err(VarError::NotUnicode(_)) => {
+            panic!("Environment variable ALLOWED_ORIGINS is not unicode.")
+        }
     }
 }
