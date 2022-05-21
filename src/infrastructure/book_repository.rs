@@ -45,8 +45,11 @@ impl PgBookRepository {
 #[async_trait]
 impl BookRepository for PgBookRepository {
     async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalBookRepository::create(user_id, book, &mut conn).await
+        let mut tx = self.pool.begin().await?;
+        InternalBookRepository::create(user_id, book, &mut tx).await?;
+        tx.commit().await?;
+
+        Ok(())
     }
 
     async fn find_by_id(
@@ -64,8 +67,11 @@ impl BookRepository for PgBookRepository {
     }
 
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalBookRepository::update(user_id, book, &mut conn).await
+        let mut tx = self.pool.begin().await?;
+        InternalBookRepository::update(user_id, book, &mut tx).await?;
+        tx.commit().await?;
+
+        Ok(())
     }
 }
 
@@ -77,7 +83,6 @@ impl InternalBookRepository {
         book: &Book,
         conn: &mut PgConnection,
     ) -> Result<(), DomainError> {
-        // TODO: トランザクション
         sqlx::query(
             "INSERT INTO book (
                id,
