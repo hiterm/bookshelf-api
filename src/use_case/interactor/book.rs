@@ -106,6 +106,7 @@ where
         book.set_priority(priority);
         book.set_format(format);
         book.set_store(store);
+        book.set_updated_at(OffsetDateTime::now_utc());
 
         self.book_repository.create(&user_id, &book).await?;
 
