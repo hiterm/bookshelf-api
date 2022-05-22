@@ -19,7 +19,7 @@ use uuid::Uuid;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
-    env_logger::init();
+    // env_logger::init();
 
     let args: Vec<String> = env::args().collect();
 
@@ -103,7 +103,9 @@ async fn main() -> anyhow::Result<()> {
         InternalBookRepository::create(&user_id, &book, &mut tx).await?;
     }
 
-    tx.rollback().await?;
+    // tx.rollback().await?;
+    tx.commit().await?;
+    println!("finished");
 
     Ok(())
 }
