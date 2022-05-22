@@ -1,25 +1,42 @@
-use std::{collections::HashMap, env, fs::File, io::Read, path::Path};
-
-use bookshelf_api::domain::{
-    entity::{
-        author::AuthorId,
+use bookshelf_api::{
+    domain::entity::{
+        author::{Author, AuthorId, AuthorName},
         book::{
             Book, BookFormat, BookId, BookStore, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag,
         },
+        user::UserId,
     },
-    error::DomainError,
+    infrastructure::{
+        author_repository::InternalAuthorRepository, book_repository::InternalBookRepository,
+    },
 };
 use serde::{Deserialize, Serialize};
+use sqlx::{postgres::PgPoolOptions, PgConnection};
+use std::{collections::HashMap, env, fs::File, io::Read, path::Path, time::Duration};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenv::dotenv().ok();
+    env_logger::init();
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() == 1 {
         println!("Usage: command <user> <data.json>");
         return Ok(());
     }
+
+    let db_url = fetch_database_url();
+
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect_timeout(Duration::from_secs(1))
+        .connect(&db_url)
+        .await
+        .unwrap();
+    let mut tx = pool.begin().await?;
 
     let user = args[1].clone();
     let data_file = args[2].clone();
@@ -36,12 +53,12 @@ fn main() -> anyhow::Result<()> {
     file.read_to_string(&mut json)?;
     let backup: BookshelfBackup = serde_json::from_str(&json)?;
 
-    for (id, book) in backup.books {
+    let user_id = UserId::new(user)?;
+
+    for (_id, book) in backup.books {
         let uuid = Uuid::new_v4();
 
-        // TODO: author
-
-        let author_ids = find_or_create_authors(book.authors);
+        let author_ids = find_or_create_authors(&user_id, book.authors, &mut tx).await?;
         let created_at = book.created_at.map_or_else(
             || OffsetDateTime::now_utc(),
             |time| OffsetDateTime::from_unix_timestamp(time.seconds),
@@ -64,13 +81,36 @@ fn main() -> anyhow::Result<()> {
             created_at,
             updated_at,
         )?;
+        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
     }
 
     Ok(())
 }
 
-fn find_or_create_authors(authors: Vec<String>) -> Vec<AuthorId> {
-    todo!()
+async fn find_or_create_authors(
+    user_id: &UserId,
+    authors: Vec<String>,
+    conn: &mut PgConnection,
+) -> anyhow::Result<Vec<AuthorId>> {
+    let mut author_ids = vec![];
+
+    for author in authors {
+        let author_name = AuthorName::new(author)?;
+
+        let author = find_author_by_name(user_id, &author_name, conn).await?;
+        if let Some(author) = author {
+            author_ids.push(author.id().to_owned());
+            continue;
+        }
+
+        let author_id = AuthorId::new(Uuid::new_v4());
+        author_ids.push(author_id.clone());
+        let author = Author::new(author_id, author_name)?;
+
+        InternalAuthorRepository::create(user_id, &author, conn).await?;
+    }
+
+    Ok(author_ids)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,4 +138,39 @@ struct Time {
     seconds: i64,
     #[serde(rename(serialize = "_nanoseconds"))]
     nanoseconds: i64,
+}
+fn fetch_database_url() -> String {
+    use std::env::VarError;
+
+    match std::env::var("DATABASE_URL") {
+        Ok(s) => s,
+        Err(VarError::NotPresent) => panic!("Environment variable DATABASE_URL is required."),
+        Err(VarError::NotUnicode(_)) => panic!("Environment variable DATABASE_URL is not unicode."),
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct AuthorRow {
+    id: Uuid,
+    name: String,
+}
+
+pub async fn find_author_by_name(
+    user_id: &UserId,
+    author_name: &AuthorName,
+    conn: &mut PgConnection,
+) -> anyhow::Result<Option<Author>> {
+    let row: Option<AuthorRow> =
+        sqlx::query_as("SELECT * FROM author WHERE name = $1 AND user_id = $2")
+            .bind(author_name.as_str())
+            .bind(user_id.as_str())
+            .fetch_optional(conn)
+            .await?;
+
+    row.map(|row| -> anyhow::Result<Author> {
+        let author_id: AuthorId = row.id.into();
+        let author_name = AuthorName::new(row.name)?;
+        Ok(Author::new(author_id, author_name)?)
+    })
+    .transpose()
 }

@@ -75,10 +75,10 @@ impl BookRepository for PgBookRepository {
     }
 }
 
-struct InternalBookRepository {}
+pub struct InternalBookRepository {}
 
 impl InternalBookRepository {
-    async fn create(
+    pub async fn create(
         user_id: &UserId,
         book: &Book,
         conn: &mut PgConnection,
