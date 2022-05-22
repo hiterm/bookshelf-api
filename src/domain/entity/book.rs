@@ -1,5 +1,7 @@
 use derive_more::Display;
 use getset::{Getters, Setters};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
@@ -50,8 +52,12 @@ pub struct BookTitle {
 
 impl_string_value_object!(BookTitle);
 
+static ISBN_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(^$|^(\d-?){12}\d$)").unwrap());
+
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct Isbn {
+    // TODO: Validate check digit
+    #[validate(regex = "ISBN_REGEX")]
     value: String,
 }
 
@@ -237,6 +243,32 @@ impl Book {
 #[cfg(test)]
 mod test {
     use crate::domain::entity::book::{BookFormat, BookStore};
+
+    use super::Isbn;
+
+    #[test]
+    fn valid_isbn_with_hyphen() {
+        let isbn = Isbn::new("978-4062758574".to_owned());
+        assert!(matches!(isbn, Ok(_)));
+    }
+
+    #[test]
+    fn valid_isbn_without_hyphen() {
+        let isbn = Isbn::new("9784062758574".to_owned());
+        assert!(matches!(isbn, Ok(_)));
+    }
+
+    #[test]
+    fn empty_isbn_is_valid() {
+        let isbn = Isbn::new("".to_owned());
+        assert!(matches!(isbn, Ok(_)));
+    }
+
+    #[test]
+    fn isbn_too_short() {
+        let isbn = Isbn::new("1".to_owned());
+        assert!(matches!(isbn, Err(_)));
+    }
 
     #[test]
     fn book_format_ebook_to_string() {
