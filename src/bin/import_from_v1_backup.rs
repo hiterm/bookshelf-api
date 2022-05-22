@@ -1,5 +1,7 @@
 use std::{env, fs::File, io::Read, path::Path};
 
+use serde::{Deserialize, Serialize};
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() == 1 {
@@ -17,9 +19,12 @@ fn main() {
         Ok(file) => file,
     };
 
-    let mut s = String::new();
-    match file.read_to_string(&mut s) {
+    let mut json = String::new();
+    match file.read_to_string(&mut json) {
         Err(why) => panic!("couldn't read {}: {}", display, why),
-        Ok(_) => print!("{} contains:\n{}", display, s),
+        Ok(_) => print!("{} contains:\n{}", display, json),
     }
 }
+
+#[derive(Serialize, Deserialize)]
+struct BookshelfBackup {}
