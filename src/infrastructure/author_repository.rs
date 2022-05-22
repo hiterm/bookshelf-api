@@ -62,10 +62,10 @@ impl AuthorRepository for PgAuthorRepository {
     }
 }
 
-pub(in crate::infrastructure) struct InternalAuthorRepository {}
+pub struct InternalAuthorRepository {}
 
 impl InternalAuthorRepository {
-    pub(in crate::infrastructure) async fn create(
+    pub async fn create(
         user_id: &UserId,
         author: &Author,
         conn: &mut PgConnection,
@@ -79,7 +79,7 @@ impl InternalAuthorRepository {
         Ok(())
     }
 
-    async fn find_by_id(
+    pub async fn find_by_id(
         user_id: &UserId,
         author_id: &AuthorId,
         conn: &mut PgConnection,
