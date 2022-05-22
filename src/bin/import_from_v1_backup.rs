@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect_timeout(Duration::from_secs(1))
+        .connect_timeout(Duration::from_secs(10))
         .connect(&db_url)
         .await
         .unwrap();
