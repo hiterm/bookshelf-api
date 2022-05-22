@@ -93,14 +93,17 @@ impl OwnedFlag {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct Priority {
+    #[validate(range(min = 0, max = 100))]
     value: i32,
 }
 
 impl Priority {
     pub fn new(value: i32) -> Result<Priority, DomainError> {
-        Ok(Priority { value })
+        let priority = Self { value };
+        priority.validate()?;
+        Ok(priority)
     }
 
     pub fn to_i32(&self) -> i32 {
@@ -244,7 +247,7 @@ impl Book {
 mod test {
     use crate::domain::entity::book::{BookFormat, BookStore};
 
-    use super::Isbn;
+    use super::{Isbn, Priority};
 
     #[test]
     fn valid_isbn_with_hyphen() {
@@ -268,6 +271,30 @@ mod test {
     fn isbn_too_short() {
         let isbn = Isbn::new("1".to_owned());
         assert!(matches!(isbn, Err(_)));
+    }
+
+    #[test]
+    fn priority_0_is_valid() {
+        let priority = Priority::new(0);
+        assert!(matches!(priority, Ok(_)));
+    }
+
+    #[test]
+    fn priority_100_is_valid() {
+        let priority = Priority::new(100);
+        assert!(matches!(priority, Ok(_)));
+    }
+
+    #[test]
+    fn priority_negative1_is_invalid() {
+        let priority = Priority::new(-1);
+        assert!(matches!(priority, Err(_)));
+    }
+
+    #[test]
+    fn priority_101_is_invalid() {
+        let priority = Priority::new(101);
+        assert!(matches!(priority, Err(_)));
     }
 
     #[test]
