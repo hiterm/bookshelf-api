@@ -528,7 +528,7 @@ mod tests {
     fn book_entity1(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
         let book_id = BookId::try_from("675bc8d9-3155-42fb-87b0-0a82cb162848")?;
         let title = BookTitle::new("title1".to_owned())?;
-        let isbn = Isbn::new("isbn".to_owned())?;
+        let isbn = Isbn::new("1111111111116".to_owned())?;
         let read = ReadFlag::new(false);
         let owned = OwnedFlag::new(false);
         let priority = Priority::new(50)?;
@@ -557,7 +557,7 @@ mod tests {
     fn book_entity2(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
         let book_id = BookId::try_from("c5a81e57-bc91-40ff-8b57-18cfa7cc7ae8")?;
         let title = BookTitle::new("title2".to_owned())?;
-        let isbn = Isbn::new("isbn".to_owned())?;
+        let isbn = Isbn::new("2222222222222".to_owned())?;
         let read = ReadFlag::new(false);
         let owned = OwnedFlag::new(false);
         let priority = Priority::new(50)?;

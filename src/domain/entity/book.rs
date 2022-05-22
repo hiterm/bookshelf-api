@@ -1,5 +1,7 @@
 use derive_more::Display;
 use getset::{Getters, Setters};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
@@ -44,13 +46,18 @@ impl TryFrom<&str> for BookId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct BookTitle {
+    #[validate(length(min = 1))]
     value: String,
 }
 
 impl_string_value_object!(BookTitle);
 
+static ISBN_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(^$|^(\d-?){12}\d$)").unwrap());
+
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct Isbn {
+    // TODO: Validate check digit
+    #[validate(regex = "ISBN_REGEX")]
     value: String,
 }
 
@@ -86,14 +93,17 @@ impl OwnedFlag {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct Priority {
+    #[validate(range(min = 0, max = 100))]
     value: i32,
 }
 
 impl Priority {
     pub fn new(value: i32) -> Result<Priority, DomainError> {
-        Ok(Priority { value })
+        let priority = Self { value };
+        priority.validate()?;
+        Ok(priority)
     }
 
     pub fn to_i32(&self) -> i32 {
@@ -236,6 +246,56 @@ impl Book {
 #[cfg(test)]
 mod test {
     use crate::domain::entity::book::{BookFormat, BookStore};
+
+    use super::{Isbn, Priority};
+
+    #[test]
+    fn valid_isbn_with_hyphen() {
+        let isbn = Isbn::new("978-4062758574".to_owned());
+        assert!(matches!(isbn, Ok(_)));
+    }
+
+    #[test]
+    fn valid_isbn_without_hyphen() {
+        let isbn = Isbn::new("9784062758574".to_owned());
+        assert!(matches!(isbn, Ok(_)));
+    }
+
+    #[test]
+    fn empty_isbn_is_valid() {
+        let isbn = Isbn::new("".to_owned());
+        assert!(matches!(isbn, Ok(_)));
+    }
+
+    #[test]
+    fn isbn_too_short() {
+        let isbn = Isbn::new("1".to_owned());
+        assert!(matches!(isbn, Err(_)));
+    }
+
+    #[test]
+    fn priority_0_is_valid() {
+        let priority = Priority::new(0);
+        assert!(matches!(priority, Ok(_)));
+    }
+
+    #[test]
+    fn priority_100_is_valid() {
+        let priority = Priority::new(100);
+        assert!(matches!(priority, Ok(_)));
+    }
+
+    #[test]
+    fn priority_negative1_is_invalid() {
+        let priority = Priority::new(-1);
+        assert!(matches!(priority, Err(_)));
+    }
+
+    #[test]
+    fn priority_101_is_invalid() {
+        let priority = Priority::new(101);
+        assert!(matches!(priority, Err(_)));
+    }
 
     #[test]
     fn book_format_ebook_to_string() {
