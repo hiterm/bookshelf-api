@@ -151,15 +151,17 @@ struct BackupBook {
     priority: Option<i32>,
     format: Option<String>,
     store: Option<String>,
+    #[serde(rename(deserialize = "createdAt"))]
     created_at: Option<Time>,
+    #[serde(rename(deserialize = "updatedAt"))]
     updated_at: Option<Time>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Time {
-    #[serde(rename(serialize = "_seconds"))]
+    #[serde(rename(deserialize = "_seconds"))]
     seconds: i64,
-    #[serde(rename(serialize = "_nanoseconds"))]
+    #[serde(rename(deserialize = "_nanoseconds"))]
     nanoseconds: i64,
 }
 fn fetch_database_url() -> String {
