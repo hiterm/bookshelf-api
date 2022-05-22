@@ -44,6 +44,7 @@ impl TryFrom<&str> for BookId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct BookTitle {
+    #[validate(length(min = 1))]
     value: String,
 }
 
