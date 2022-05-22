@@ -26,7 +26,7 @@ VALUES (
   'd85f0e56-f632-4d50-b057-bab5af3d0159',
   'testuser1',
   'title1',
-  'isbn1',
+  '2222222222222',
   false,
   false,
   50,
