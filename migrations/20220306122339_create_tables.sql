@@ -43,6 +43,7 @@ CREATE TABLE author (
   id uuid NOT NULL,
   user_id text NOT NULL,
   name text NOT NULL,
+  yomi text NOT NULL default '',
   created_at timestamp with time zone NOT NULL default current_timestamp,
   updated_at timestamp with time zone NOT NULL default current_timestamp,
   PRIMARY KEY (id, user_id),
