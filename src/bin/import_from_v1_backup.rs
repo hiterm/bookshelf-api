@@ -54,11 +54,30 @@ async fn main() -> anyhow::Result<()> {
     let backup: BookshelfBackup = serde_json::from_str(&json)?;
 
     let user_id = UserId::new(user)?;
-
-    for (_id, book) in backup.books {
+    for (original_id, book) in backup.books {
         let uuid = Uuid::new_v4();
 
         let author_ids = find_or_create_authors(&user_id, book.authors, &mut tx).await?;
+
+        let format = match BookFormat::try_from(
+            book.format.unwrap_or_else(|| "Unknown".to_owned()).as_str(),
+        ) {
+            Ok(format) => format,
+            Err(err) => {
+                println!("id: {},\n{}", original_id, err);
+                BookFormat::Unknown
+            }
+        };
+        let store = match BookStore::try_from(
+            book.store.unwrap_or_else(|| "Unknown".to_owned()).as_str(),
+        ) {
+            Ok(store) => store,
+            Err(err) => {
+                println!("id: {},\n{}", original_id, err);
+                BookStore::Unknown
+            }
+        };
+
         let created_at = book.created_at.map_or_else(
             || OffsetDateTime::now_utc(),
             |time| OffsetDateTime::from_unix_timestamp(time.seconds),
@@ -76,13 +95,15 @@ async fn main() -> anyhow::Result<()> {
             ReadFlag::new(book.read.unwrap_or(false)),
             OwnedFlag::new(book.owned.unwrap_or(false)),
             Priority::new(book.priority.unwrap_or(50))?,
-            BookFormat::try_from(book.format.unwrap_or_else(|| "".to_owned()).as_str())?,
-            BookStore::try_from(book.store.unwrap_or_else(|| "".to_owned()).as_str())?,
+            format,
+            store,
             created_at,
             updated_at,
         )?;
         InternalBookRepository::create(&user_id, &book, &mut tx).await?;
     }
+
+    tx.rollback().await?;
 
     Ok(())
 }
