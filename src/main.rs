@@ -36,13 +36,11 @@ async fn main() -> std::io::Result<()> {
         for allowed_origin in allowed_origins.iter() {
             cors = cors.allowed_origin(allowed_origin);
         }
-        cors = cors
-            .allowed_methods([http::Method::POST])
-            .allowed_headers([
-                http::header::AUTHORIZATION,
-                http::header::ACCEPT,
-                http::header::CONTENT_TYPE,
-            ]);
+        cors = cors.allowed_methods([http::Method::POST]).allowed_headers([
+            http::header::AUTHORIZATION,
+            http::header::ACCEPT,
+            http::header::CONTENT_TYPE,
+        ]);
         App::new()
             .app_data(web::Data::new(query_use_case.clone()))
             .app_data(web::Data::new(schema.clone()))
