@@ -262,8 +262,8 @@ impl CreateAuthorInput {
     }
 }
 
-impl Into<CreateAuthorDto> for CreateAuthorInput {
-    fn into(self) -> CreateAuthorDto {
-        CreateAuthorDto::new(self.name)
+impl From<CreateAuthorInput> for CreateAuthorDto {
+    fn from(val: CreateAuthorInput) -> Self {
+        CreateAuthorDto::new(val.name)
     }
 }
