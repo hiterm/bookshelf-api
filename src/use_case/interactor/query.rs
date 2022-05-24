@@ -47,14 +47,14 @@ where
         let user_id = UserId::new(user_id.to_string())?;
         let book_id = BookId::try_from(book_id)?;
         let book = self.book_repository.find_by_id(&user_id, &book_id).await?;
-        let book = book.map(|book| BookDto::from(book));
+        let book = book.map(BookDto::from);
         Ok(book)
     }
 
     async fn find_all_books(&self, user_id: &str) -> Result<Vec<BookDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let books = self.book_repository.find_all(&user_id).await?;
-        let books: Vec<BookDto> = books.into_iter().map(|book| BookDto::from(book)).collect();
+        let books: Vec<BookDto> = books.into_iter().map(BookDto::from).collect();
         Ok(books)
     }
 
@@ -72,7 +72,7 @@ where
             .find_by_id(&user_id, &author_id)
             .await?;
 
-        Ok(author.map(|author| AuthorDto::from(author)))
+        Ok(author.map(AuthorDto::from))
     }
 
     async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError> {
@@ -80,7 +80,7 @@ where
         let authors = self.author_repository.find_all(&user_id).await?;
         let authors: Vec<AuthorDto> = authors
             .into_iter()
-            .map(|author| AuthorDto::from(author))
+            .map(AuthorDto::from)
             .collect();
         Ok(authors)
     }

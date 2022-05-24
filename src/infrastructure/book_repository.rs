@@ -180,10 +180,10 @@ impl InternalBookRepository {
                 .map(|author_ids| {
                     author_ids
                         .into_iter()
-                        .map(|uuid| AuthorId::new(uuid))
+                        .map(AuthorId::new)
                         .collect()
                 })
-                .unwrap_or_else(|| vec![]);
+                .unwrap_or_else(std::vec::Vec::new);
             let isbn = Isbn::new(row.isbn)?;
             let read = ReadFlag::new(row.read);
             let owned = OwnedFlag::new(row.owned);
@@ -251,10 +251,10 @@ impl InternalBookRepository {
                     .map(|author_ids| {
                         author_ids
                             .into_iter()
-                            .map(|uuid| AuthorId::new(uuid))
+                            .map(AuthorId::new)
                             .collect()
                     })
-                    .unwrap_or_else(|| vec![]);
+                    .unwrap_or_else(std::vec::Vec::new);
                 let isbn = Isbn::new(row.isbn)?;
                 let read = ReadFlag::new(row.read);
                 let owned = OwnedFlag::new(row.owned);
@@ -280,7 +280,7 @@ impl InternalBookRepository {
         .try_collect()
         .await;
 
-        Ok(books?)
+        books
     }
 
     async fn update(

@@ -59,7 +59,7 @@ impl InternalUserRepository {
             .await?;
 
         let id = row.map(|row| UserId::new(row.id)).transpose()?;
-        Ok(id.map(|id| User::new(id)))
+        Ok(id.map(User::new))
     }
 }
 

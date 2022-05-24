@@ -37,7 +37,7 @@ impl TryFrom<&str> for BookId {
             DomainError::Validation(format!(
                 r#"Failed to parse id "{}" as uuid. Message from uuid crate: {}"#,
                 value,
-                err.to_string()
+                err
             ))
         })?;
         Ok(BookId { id })

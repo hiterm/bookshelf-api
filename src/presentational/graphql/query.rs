@@ -37,13 +37,13 @@ where
             .find_book_by_id(&claims.sub, id.as_str())
             .await?;
 
-        Ok(book.map(|book| Book::from(book)))
+        Ok(book.map(Book::from))
     }
 
     async fn books(&self, ctx: &Context<'_>) -> Result<Vec<Book>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let books = self.query_use_case.find_all_books(&claims.sub).await?;
-        let books: Vec<Book> = books.into_iter().map(|book| Book::from(book)).collect();
+        let books: Vec<Book> = books.into_iter().map(Book::from).collect();
 
         Ok(books)
     }
@@ -66,7 +66,7 @@ where
         let authors = self.query_use_case.find_all_authors(&claims.sub).await?;
         let authors: Vec<Author> = authors
             .into_iter()
-            .map(|author| Author::from(author))
+            .map(Author::from)
             .collect();
         Ok(authors)
     }

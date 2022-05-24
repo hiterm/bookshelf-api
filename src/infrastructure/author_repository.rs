@@ -119,7 +119,7 @@ impl InternalAuthorRepository {
                 .try_collect()
                 .await;
 
-        Ok(authors?)
+        authors
     }
 
     async fn find_by_ids_as_hash_map(

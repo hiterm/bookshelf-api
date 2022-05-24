@@ -31,7 +31,7 @@ impl TryFrom<&str> for AuthorId {
             DomainError::Validation(format!(
                 r#"Failed to parse id "{}" as uuid. Message from uuid crate: {}"#,
                 value,
-                err.to_string()
+                err
             ))
         })?;
         Ok(AuthorId { id })

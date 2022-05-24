@@ -29,7 +29,7 @@ pub fn dependency_injection(
 ) -> (QI, Schema<Query<QI>, Mutation<MI>, EmptySubscription>) {
     let user_repository = PgUserRepository::new(pool.clone());
     let book_repository = PgBookRepository::new(pool.clone());
-    let author_repository = PgAuthorRepository::new(pool.clone());
+    let author_repository = PgAuthorRepository::new(pool);
 
     let query_use_case = QueryInteractor {
         user_repository: user_repository.clone(),
