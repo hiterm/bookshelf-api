@@ -23,9 +23,11 @@ impl BookId {
     pub fn to_uuid(&self) -> Uuid {
         self.id
     }
+}
 
-    pub fn to_string(&self) -> String {
-        self.id.to_hyphenated().to_string()
+impl std::fmt::Display for BookId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.id.to_hyphenated())
     }
 }
 
