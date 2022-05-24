@@ -78,10 +78,7 @@ where
     async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let authors = self.author_repository.find_all(&user_id).await?;
-        let authors: Vec<AuthorDto> = authors
-            .into_iter()
-            .map(AuthorDto::from)
-            .collect();
+        let authors: Vec<AuthorDto> = authors.into_iter().map(AuthorDto::from).collect();
         Ok(authors)
     }
 

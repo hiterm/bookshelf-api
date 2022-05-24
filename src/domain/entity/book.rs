@@ -36,8 +36,7 @@ impl TryFrom<&str> for BookId {
         let id = Uuid::parse_str(value).map_err(|err| {
             DomainError::Validation(format!(
                 r#"Failed to parse id "{}" as uuid. Message from uuid crate: {}"#,
-                value,
-                err
+                value, err
             ))
         })?;
         Ok(BookId { id })

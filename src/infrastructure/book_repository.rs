@@ -177,12 +177,7 @@ impl InternalBookRepository {
             let title = BookTitle::new(row.title)?;
             let author_ids: Vec<AuthorId> = row
                 .author_ids
-                .map(|author_ids| {
-                    author_ids
-                        .into_iter()
-                        .map(AuthorId::new)
-                        .collect()
-                })
+                .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
                 .unwrap_or_else(std::vec::Vec::new);
             let isbn = Isbn::new(row.isbn)?;
             let read = ReadFlag::new(row.read);
@@ -248,12 +243,7 @@ impl InternalBookRepository {
                 let title = BookTitle::new(row.title)?;
                 let author_ids: Vec<AuthorId> = row
                     .author_ids
-                    .map(|author_ids| {
-                        author_ids
-                            .into_iter()
-                            .map(AuthorId::new)
-                            .collect()
-                    })
+                    .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
                     .unwrap_or_else(std::vec::Vec::new);
                 let isbn = Isbn::new(row.isbn)?;
                 let read = ReadFlag::new(row.read);

@@ -64,10 +64,7 @@ where
     async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let authors = self.query_use_case.find_all_authors(&claims.sub).await?;
-        let authors: Vec<Author> = authors
-            .into_iter()
-            .map(Author::from)
-            .collect();
+        let authors: Vec<Author> = authors.into_iter().map(Author::from).collect();
         Ok(authors)
     }
 }
