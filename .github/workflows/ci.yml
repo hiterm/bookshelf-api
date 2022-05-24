@@ -20,6 +20,8 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://postgres:password@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
