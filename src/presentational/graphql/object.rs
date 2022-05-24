@@ -90,6 +90,7 @@ pub struct Book {
 }
 
 impl Book {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         title: String,

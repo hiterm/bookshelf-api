@@ -199,6 +199,7 @@ pub struct DestructureBook {
 }
 
 impl Book {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: BookId,
         title: BookTitle,

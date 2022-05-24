@@ -92,6 +92,7 @@ pub struct CreateBookDto {
 }
 
 impl CreateBookDto {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         title: String,
         author_ids: Vec<String>,
@@ -160,6 +161,7 @@ pub struct UpdateBookDto {
 }
 
 impl UpdateBookDto {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         title: String,
