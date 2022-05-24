@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use getset::Getters;
 use uuid::Uuid;
 use validator::Validate;
@@ -17,9 +19,11 @@ impl AuthorId {
     pub fn to_uuid(&self) -> Uuid {
         self.id
     }
+}
 
-    pub fn to_string(&self) -> String {
-        self.id.to_hyphenated().to_string()
+impl Display for AuthorId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.id.to_hyphenated())
     }
 }
 
