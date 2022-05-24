@@ -30,7 +30,8 @@ jobs:
       - run: docker-compose -f docker-compose-test.yml up -d
       - uses: actions-rs/cargo@v1
         with:
-          command: test -- --include-ignored
+          command: test
+          args: --include-ignored
 
   fmt:
     name: Rustfmt
