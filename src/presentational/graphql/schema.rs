@@ -1,4 +1,4 @@
-use crate::use_case::use_case::{mutation::MutationUseCase, query::QueryUseCase};
+use crate::use_case::traits::{mutation::MutationUseCase, query::QueryUseCase};
 
 use super::{mutation::Mutation, query::Query};
 use async_graphql::{EmptySubscription, Schema};
@@ -23,7 +23,7 @@ mod tests {
         presentational::graphql::{mutation::Mutation, query::Query},
         use_case::{
             dto::author::AuthorDto,
-            use_case::{mutation::MockMutationUseCase, query::MockQueryUseCase},
+            traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},
         },
     };
 

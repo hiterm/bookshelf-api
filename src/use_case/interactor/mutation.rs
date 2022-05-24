@@ -7,7 +7,7 @@ use crate::use_case::{
         user::UserDto,
     },
     error::UseCaseError,
-    use_case::{
+    traits::{
         author::CreateAuthorUseCase,
         book::{CreateBookUseCase, UpdateBookUseCase},
         mutation::MutationUseCase,

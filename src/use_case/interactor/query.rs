@@ -14,7 +14,7 @@ use crate::{
     use_case::{
         dto::{author::AuthorDto, book::BookDto, user::UserDto},
         error::UseCaseError,
-        use_case::query::QueryUseCase,
+        traits::query::QueryUseCase,
     },
 };
 
@@ -120,8 +120,7 @@ mod tests {
             },
         },
         use_case::{
-            dto::author::AuthorDto, interactor::query::QueryInteractor,
-            use_case::query::QueryUseCase,
+            dto::author::AuthorDto, interactor::query::QueryInteractor, traits::query::QueryUseCase,
         },
     };
 
