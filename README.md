@@ -1,3 +1,5 @@
+![ci](https://github.com/hiterm/bookshelf-api/actions/workflows/ci.yml/badge.svg)
+
 # Bookshelf API
 
 Backend server for [Bookshelf](https://github.com/hiterm/bookshelf/).
