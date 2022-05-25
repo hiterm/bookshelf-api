@@ -12,7 +12,7 @@ use crate::{
     use_case::{
         dto::author::{AuthorDto, CreateAuthorDto},
         error::UseCaseError,
-        use_case::author::CreateAuthorUseCase,
+        traits::author::CreateAuthorUseCase,
     },
 };
 

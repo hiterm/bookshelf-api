@@ -15,7 +15,7 @@ use crate::{
     use_case::{
         dto::book::{BookDto, CreateBookDto, TimeInfo, UpdateBookDto},
         error::UseCaseError,
-        use_case::book::{CreateBookUseCase, UpdateBookUseCase},
+        traits::book::{CreateBookUseCase, UpdateBookUseCase},
     },
 };
 

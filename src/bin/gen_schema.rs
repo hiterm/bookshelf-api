@@ -1,6 +1,6 @@
 use bookshelf_api::{
     presentational::graphql::{mutation::Mutation, query::Query, schema::build_schema},
-    use_case::use_case::{mutation::MockMutationUseCase, query::MockQueryUseCase},
+    use_case::traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},
 };
 
 #[tokio::main]

@@ -177,13 +177,8 @@ impl InternalBookRepository {
             let title = BookTitle::new(row.title)?;
             let author_ids: Vec<AuthorId> = row
                 .author_ids
-                .map(|author_ids| {
-                    author_ids
-                        .into_iter()
-                        .map(|uuid| AuthorId::new(uuid))
-                        .collect()
-                })
-                .unwrap_or_else(|| vec![]);
+                .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
+                .unwrap_or_else(std::vec::Vec::new);
             let isbn = Isbn::new(row.isbn)?;
             let read = ReadFlag::new(row.read);
             let owned = OwnedFlag::new(row.owned);
@@ -248,13 +243,8 @@ impl InternalBookRepository {
                 let title = BookTitle::new(row.title)?;
                 let author_ids: Vec<AuthorId> = row
                     .author_ids
-                    .map(|author_ids| {
-                        author_ids
-                            .into_iter()
-                            .map(|uuid| AuthorId::new(uuid))
-                            .collect()
-                    })
-                    .unwrap_or_else(|| vec![]);
+                    .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
+                    .unwrap_or_else(std::vec::Vec::new);
                 let isbn = Isbn::new(row.isbn)?;
                 let read = ReadFlag::new(row.read);
                 let owned = OwnedFlag::new(row.owned);
@@ -280,7 +270,7 @@ impl InternalBookRepository {
         .try_collect()
         .await;
 
-        Ok(books?)
+        books
     }
 
     async fn update(
@@ -525,7 +515,7 @@ mod tests {
         Ok(author_ids)
     }
 
-    fn book_entity1(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
+    fn book_entity1(author_ids: &[AuthorId]) -> Result<Book, DomainError> {
         let book_id = BookId::try_from("675bc8d9-3155-42fb-87b0-0a82cb162848")?;
         let title = BookTitle::new("title1".to_owned())?;
         let isbn = Isbn::new("1111111111116".to_owned())?;
@@ -540,7 +530,7 @@ mod tests {
         let book = Book::new(
             book_id,
             title,
-            author_ids.clone(),
+            author_ids.to_owned(),
             isbn,
             read,
             owned,
@@ -554,7 +544,7 @@ mod tests {
         Ok(book)
     }
 
-    fn book_entity2(author_ids: &Vec<AuthorId>) -> Result<Book, DomainError> {
+    fn book_entity2(author_ids: &[AuthorId]) -> Result<Book, DomainError> {
         let book_id = BookId::try_from("c5a81e57-bc91-40ff-8b57-18cfa7cc7ae8")?;
         let title = BookTitle::new("title2".to_owned())?;
         let isbn = Isbn::new("2222222222222".to_owned())?;
@@ -569,7 +559,7 @@ mod tests {
         let book = Book::new(
             book_id,
             title,
-            author_ids.clone(),
+            author_ids.to_owned(),
             isbn,
             read,
             owned,

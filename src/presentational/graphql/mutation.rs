@@ -4,7 +4,7 @@ use async_graphql::{Context, Object, ID};
 
 use crate::{
     extractors::Claims, presentational::error::PresentationalError,
-    use_case::use_case::mutation::MutationUseCase,
+    use_case::traits::mutation::MutationUseCase,
 };
 
 use super::object::{Author, Book, CreateAuthorInput, CreateBookInput, UpdateBookInput, User};

@@ -4,7 +4,7 @@ use async_graphql::{Context, Object, ID};
 
 use crate::{
     extractors::Claims, presentational::error::PresentationalError,
-    use_case::use_case::query::QueryUseCase,
+    use_case::traits::query::QueryUseCase,
 };
 
 use super::object::{Author, Book, User};
@@ -37,13 +37,13 @@ where
             .find_book_by_id(&claims.sub, id.as_str())
             .await?;
 
-        Ok(book.map(|book| Book::from(book)))
+        Ok(book.map(Book::from))
     }
 
     async fn books(&self, ctx: &Context<'_>) -> Result<Vec<Book>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let books = self.query_use_case.find_all_books(&claims.sub).await?;
-        let books: Vec<Book> = books.into_iter().map(|book| Book::from(book)).collect();
+        let books: Vec<Book> = books.into_iter().map(Book::from).collect();
 
         Ok(books)
     }
@@ -64,10 +64,7 @@ where
     async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let authors = self.query_use_case.find_all_authors(&claims.sub).await?;
-        let authors: Vec<Author> = authors
-            .into_iter()
-            .map(|author| Author::from(author))
-            .collect();
+        let authors: Vec<Author> = authors.into_iter().map(Author::from).collect();
         Ok(authors)
     }
 }

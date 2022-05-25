@@ -23,9 +23,11 @@ impl BookId {
     pub fn to_uuid(&self) -> Uuid {
         self.id
     }
+}
 
-    pub fn to_string(&self) -> String {
-        self.id.to_hyphenated().to_string()
+impl std::fmt::Display for BookId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.id.to_hyphenated())
     }
 }
 
@@ -36,8 +38,7 @@ impl TryFrom<&str> for BookId {
         let id = Uuid::parse_str(value).map_err(|err| {
             DomainError::Validation(format!(
                 r#"Failed to parse id "{}" as uuid. Message from uuid crate: {}"#,
-                value,
-                err.to_string()
+                value, err
             ))
         })?;
         Ok(BookId { id })
@@ -198,6 +199,7 @@ pub struct DestructureBook {
 }
 
 impl Book {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: BookId,
         title: BookTitle,

@@ -90,6 +90,7 @@ pub struct Book {
 }
 
 impl Book {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         title: String,
@@ -261,8 +262,8 @@ impl CreateAuthorInput {
     }
 }
 
-impl Into<CreateAuthorDto> for CreateAuthorInput {
-    fn into(self) -> CreateAuthorDto {
-        CreateAuthorDto::new(self.name)
+impl From<CreateAuthorInput> for CreateAuthorDto {
+    fn from(val: CreateAuthorInput) -> Self {
+        CreateAuthorDto::new(val.name)
     }
 }

@@ -78,14 +78,16 @@ async fn main() -> anyhow::Result<()> {
             }
         };
 
-        let created_at = book.created_at.map_or_else(
-            || OffsetDateTime::now_utc(),
-            |time| OffsetDateTime::from_unix_timestamp(time.seconds),
-        );
-        let updated_at = book.updated_at.map_or_else(
-            || OffsetDateTime::now_utc(),
-            |time| OffsetDateTime::from_unix_timestamp(time.seconds),
-        );
+        let created_at = book
+            .created_at
+            .map_or_else(OffsetDateTime::now_utc, |time| {
+                OffsetDateTime::from_unix_timestamp(time.seconds)
+            });
+        let updated_at = book
+            .updated_at
+            .map_or_else(OffsetDateTime::now_utc, |time| {
+                OffsetDateTime::from_unix_timestamp(time.seconds)
+            });
 
         let book = Book::new(
             BookId::new(uuid)?,

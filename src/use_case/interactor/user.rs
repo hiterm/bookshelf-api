@@ -5,7 +5,7 @@ use crate::{
         entity::user::{User as DomainUser, UserId},
         repository::user_repository::UserRepository,
     },
-    use_case::{dto::user::UserDto, error::UseCaseError, use_case::user::RegisterUserUseCase},
+    use_case::{dto::user::UserDto, error::UseCaseError, traits::user::RegisterUserUseCase},
 };
 
 pub struct RegisterUserInteractor<UR> {
