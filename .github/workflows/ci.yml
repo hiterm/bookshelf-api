@@ -25,7 +25,7 @@ jobs:
     name: Test Suite
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: postgres://postgres:@localhost:5432/bookshelf
+      DATABASE_URL: postgres://postgres:@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v2
       - uses: actions/cache@v3
@@ -44,7 +44,8 @@ jobs:
           override: true
       - run: sudo systemctl start postgresql.service
       - run: pg_isready
-      - run: createdb --owner=postgres bookshelf
+      # - run: psql --command="CREATE USER bookshelf PASSWORD 'password'" --command="\du" postgres
+      # - run: createdb --owner=postgres bookshelf
       - run: if ! (type sqlx > /dev/null 2>&1); then cargo install sqlx-cli; fi
       - run: sqlx migrate run
       - uses: actions-rs/cargo@v1
