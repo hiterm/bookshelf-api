@@ -43,10 +43,7 @@ jobs:
           toolchain: stable
           override: true
       - run: docker-compose -f docker-compose-test.yml up -d
-      - uses: actions-rs/install@v0.1
-        with:
-          crate: sqlx-cli
-          version: latest
+      - run: if ! (type sqlx > /dev/null 2>&1); then cargo install sqlx-cli; fi
       - run: sqlx migrate run
       - uses: actions-rs/cargo@v1
         with:
