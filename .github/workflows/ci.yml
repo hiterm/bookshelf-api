@@ -44,7 +44,7 @@ jobs:
           override: true
       - run: sudo systemctl start postgresql.service
       - run: pg_isready
-      - run: createdb bookshelf
+      - run: createdb --owner=postgres bookshelf
       - run: if ! (type sqlx > /dev/null 2>&1); then cargo install sqlx-cli; fi
       - run: sqlx migrate run
       - uses: actions-rs/cargo@v1
