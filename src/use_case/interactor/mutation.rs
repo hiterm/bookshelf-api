@@ -69,6 +69,14 @@ where
         Ok(book)
     }
 
+    async fn delete_book(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<(), UseCaseError> {
+        todo!()
+    }
+
     async fn create_author(
         &self,
         user_id: &str,
