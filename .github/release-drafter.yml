@@ -1,5 +1,17 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
+categories:
+- title: 'Features'
+  labels:
+    - 'feature'
+    - 'enhancement'
+- title: 'Bug Fixes'
+  labels:
+    - 'fix'
+    - 'bugfix'
+    - 'bug'
+- title: 'Maintenance'
+  label: 'chore'
 version-resolver:
   major:
     labels:
@@ -12,6 +24,4 @@ version-resolver:
       - 'patch'
   default: patch
 template: |
-  ## What’s Changed
-
   $CHANGES
