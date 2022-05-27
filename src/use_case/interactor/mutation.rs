@@ -9,41 +9,46 @@ use crate::use_case::{
     error::UseCaseError,
     traits::{
         author::CreateAuthorUseCase,
-        book::{CreateBookUseCase, UpdateBookUseCase},
+        book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
         mutation::MutationUseCase,
         user::RegisterUserUseCase,
     },
 };
 
-pub struct MutationInteractor<RUUC, CBUC, UBUC, CAUC> {
+pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC> {
     register_user_use_case: RUUC,
     create_book_use_case: CBUC,
     update_book_use_case: UBUC,
+    delete_book_use_case: DBUC,
     create_author_use_case: CAUC,
 }
 
-impl<RUUC, CBUC, UBUC, CAUC> MutationInteractor<RUUC, CBUC, UBUC, CAUC> {
+impl<RUUC, CBUC, UBUC, DBUC, CAUC> MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC> {
     pub fn new(
         register_user_use_case: RUUC,
         create_book_use_case: CBUC,
         update_book_use_case: UBUC,
+        delete_book_use_case: DBUC,
         create_author_use_case: CAUC,
     ) -> Self {
         Self {
             register_user_use_case,
             create_book_use_case,
             update_book_use_case,
+            delete_book_use_case,
             create_author_use_case,
         }
     }
 }
 
 #[async_trait]
-impl<RUUC, CBUC, UBUC, CAUC> MutationUseCase for MutationInteractor<RUUC, CBUC, UBUC, CAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC> MutationUseCase
+    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC>
 where
     RUUC: RegisterUserUseCase,
     CBUC: CreateBookUseCase,
     UBUC: UpdateBookUseCase,
+    DBUC: DeleteBookUseCase,
     CAUC: CreateAuthorUseCase,
 {
     async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError> {
@@ -69,12 +74,9 @@ where
         Ok(book)
     }
 
-    async fn delete_book(
-        &self,
-        user_id: &str,
-        book_id: &str,
-    ) -> Result<(), UseCaseError> {
-        todo!()
+    async fn delete_book(&self, user_id: &str, book_id: &str) -> Result<(), UseCaseError> {
+        self.delete_book_use_case.delete(user_id, book_id).await?;
+        Ok(())
     }
 
     async fn create_author(
