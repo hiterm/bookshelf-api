@@ -365,7 +365,7 @@ impl InternalBookRepository {
         book_id: &BookId,
         conn: &mut Transaction<'_, Postgres>,
     ) -> Result<(), DomainError> {
-        let result = sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
+        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
             .execute(&mut *conn)
