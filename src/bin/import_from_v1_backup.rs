@@ -1,9 +1,8 @@
 use bookshelf_api::{
+    common::types::{BookFormat, BookStore},
     domain::entity::{
         author::{Author, AuthorId, AuthorName},
-        book::{
-            Book, BookFormat, BookId, BookStore, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag,
-        },
+        book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
         user::UserId,
     },
     infrastructure::{

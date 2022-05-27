@@ -2,13 +2,11 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
+    common::types::{BookFormat, BookStore},
     domain::{
         entity::{
             author::AuthorId,
-            book::{
-                Book, BookFormat, BookId, BookStore, BookTitle, DestructureBook, Isbn, OwnedFlag,
-                Priority, ReadFlag,
-            },
+            book::{Book, BookId, BookTitle, DestructureBook, Isbn, OwnedFlag, Priority, ReadFlag},
         },
         error::DomainError,
     },

@@ -2,12 +2,11 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::{ComplexObject, Context, Enum, Result};
 use async_graphql::{InputObject, SimpleObject, ID};
 
+use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::QI;
-use crate::domain;
 use crate::use_case::dto::author::AuthorDto;
 use crate::use_case::dto::author::CreateAuthorDto;
 use crate::use_case::dto::book::{BookDto, CreateBookDto, UpdateBookDto};
-use domain::entity::book::{BookFormat as DomainBookFormat, BookStore as DomainBookStore};
 
 use super::loader::AuthorLoader;
 
@@ -29,22 +28,22 @@ pub enum BookFormat {
     Unknown,
 }
 
-impl From<DomainBookFormat> for BookFormat {
-    fn from(book_format: DomainBookFormat) -> Self {
+impl From<CommonBookFormat> for BookFormat {
+    fn from(book_format: CommonBookFormat) -> Self {
         match book_format {
-            DomainBookFormat::EBook => BookFormat::EBook,
-            DomainBookFormat::Printed => BookFormat::Printed,
-            DomainBookFormat::Unknown => BookFormat::Unknown,
+            CommonBookFormat::EBook => BookFormat::EBook,
+            CommonBookFormat::Printed => BookFormat::Printed,
+            CommonBookFormat::Unknown => BookFormat::Unknown,
         }
     }
 }
 
-impl From<BookFormat> for DomainBookFormat {
+impl From<BookFormat> for CommonBookFormat {
     fn from(book_format: BookFormat) -> Self {
         match book_format {
-            BookFormat::EBook => DomainBookFormat::EBook,
-            BookFormat::Printed => DomainBookFormat::Printed,
-            BookFormat::Unknown => DomainBookFormat::Unknown,
+            BookFormat::EBook => CommonBookFormat::EBook,
+            BookFormat::Printed => CommonBookFormat::Printed,
+            BookFormat::Unknown => CommonBookFormat::Unknown,
         }
     }
 }
@@ -55,20 +54,20 @@ pub enum BookStore {
     Unknown,
 }
 
-impl From<DomainBookStore> for BookStore {
-    fn from(book_format: DomainBookStore) -> Self {
+impl From<CommonBookStore> for BookStore {
+    fn from(book_format: CommonBookStore) -> Self {
         match book_format {
-            DomainBookStore::Kindle => BookStore::Kindle,
-            DomainBookStore::Unknown => BookStore::Unknown,
+            CommonBookStore::Kindle => BookStore::Kindle,
+            CommonBookStore::Unknown => BookStore::Unknown,
         }
     }
 }
 
-impl From<BookStore> for DomainBookStore {
+impl From<BookStore> for CommonBookStore {
     fn from(book_format: BookStore) -> Self {
         match book_format {
-            BookStore::Kindle => DomainBookStore::Kindle,
-            BookStore::Unknown => DomainBookStore::Unknown,
+            BookStore::Kindle => CommonBookStore::Kindle,
+            BookStore::Unknown => CommonBookStore::Unknown,
         }
     }
 }

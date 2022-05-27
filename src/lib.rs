@@ -1,3 +1,4 @@
+pub mod common;
 pub mod dependency_injection;
 pub mod domain;
 pub mod extractors;

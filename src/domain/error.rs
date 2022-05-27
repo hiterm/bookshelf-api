@@ -1,6 +1,8 @@
 use thiserror::Error;
 use validator::ValidationErrors;
 
+use crate::common::types::{ParseBookFormatError, ParseBookStoreError};
+
 #[derive(Debug, Error)]
 pub enum DomainError {
     #[error("{0}")]
@@ -19,6 +21,18 @@ pub enum DomainError {
 
 impl From<ValidationErrors> for DomainError {
     fn from(err: ValidationErrors) -> Self {
+        DomainError::Validation(err.to_string())
+    }
+}
+
+impl From<ParseBookStoreError> for DomainError {
+    fn from(err: ParseBookStoreError) -> Self {
+        DomainError::Validation(err.to_string())
+    }
+}
+
+impl From<ParseBookFormatError> for DomainError {
+    fn from(err: ParseBookFormatError) -> Self {
         DomainError::Validation(err.to_string())
     }
 }
