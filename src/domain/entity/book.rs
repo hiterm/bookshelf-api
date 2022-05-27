@@ -1,4 +1,3 @@
-use derive_more::Display;
 use getset::{Getters, Setters};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -6,7 +5,11 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::{domain::error::DomainError, impl_string_value_object};
+use crate::{
+    common::types::{BookFormat, BookStore},
+    domain::error::DomainError,
+    impl_string_value_object,
+};
 
 use super::author::AuthorId;
 
@@ -112,51 +115,6 @@ impl Priority {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display)]
-pub enum BookFormat {
-    #[display(fmt = "eBook")]
-    EBook,
-    Printed,
-    Unknown,
-}
-
-impl TryFrom<&str> for BookFormat {
-    type Error = DomainError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "eBook" => Ok(BookFormat::EBook),
-            "Printed" => Ok(BookFormat::Printed),
-            "Unknown" => Ok(BookFormat::Unknown),
-            _ => Err(DomainError::Validation(format!(
-                "{} is not valid format",
-                value
-            ))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Display)]
-pub enum BookStore {
-    Kindle,
-    Unknown,
-}
-
-impl TryFrom<&str> for BookStore {
-    type Error = DomainError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "Kindle" => Ok(BookStore::Kindle),
-            "Unknown" => Ok(BookStore::Unknown),
-            _ => Err(DomainError::Validation(format!(
-                "{} is not valid store",
-                value
-            ))),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Getters, Setters)]
 pub struct Book {
     #[getset(get = "pub")]
@@ -247,8 +205,6 @@ impl Book {
 
 #[cfg(test)]
 mod test {
-    use crate::domain::entity::book::{BookFormat, BookStore};
-
     use super::{Isbn, Priority};
 
     #[test]
@@ -297,30 +253,5 @@ mod test {
     fn priority_101_is_invalid() {
         let priority = Priority::new(101);
         assert!(matches!(priority, Err(_)));
-    }
-
-    #[test]
-    fn book_format_ebook_to_string() {
-        assert_eq!(BookFormat::EBook.to_string(), "eBook");
-    }
-
-    #[test]
-    fn book_format_printed_to_string() {
-        assert_eq!(BookFormat::Printed.to_string(), "Printed");
-    }
-
-    #[test]
-    fn book_format_unknown_to_string() {
-        assert_eq!(BookFormat::Unknown.to_string(), "Unknown");
-    }
-
-    #[test]
-    fn book_store_kindle_to_string() {
-        assert_eq!(BookStore::Kindle.to_string(), "Kindle");
-    }
-
-    #[test]
-    fn book_store_unknown_to_string() {
-        assert_eq!(BookStore::Unknown.to_string(), "Unknown");
     }
 }

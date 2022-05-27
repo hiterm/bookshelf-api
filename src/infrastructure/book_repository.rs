@@ -4,16 +4,17 @@ use sqlx::{PgConnection, PgPool};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::domain::{
-    entity::{
-        author::AuthorId,
-        book::{
-            Book, BookFormat, BookId, BookStore, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag,
+use crate::{
+    common::types::{BookFormat, BookStore},
+    domain::{
+        entity::{
+            author::AuthorId,
+            book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+            user::UserId,
         },
-        user::UserId,
+        error::DomainError,
+        repository::book_repository::BookRepository,
     },
-    error::DomainError,
-    repository::book_repository::BookRepository,
 };
 
 #[derive(sqlx::FromRow)]
