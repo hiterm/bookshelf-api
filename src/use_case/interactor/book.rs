@@ -15,7 +15,7 @@ use crate::{
     use_case::{
         dto::book::{BookDto, CreateBookDto, TimeInfo, UpdateBookDto},
         error::UseCaseError,
-        traits::book::{CreateBookUseCase, UpdateBookUseCase},
+        traits::book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
     },
 };
 
@@ -111,5 +111,30 @@ where
         self.book_repository.update(&user_id, &book).await?;
 
         Ok(book.into())
+    }
+}
+
+pub struct DeleteBookInteractor<BR> {
+    book_repository: BR,
+}
+
+impl<BR> DeleteBookInteractor<BR> {
+    pub fn new(book_repository: BR) -> Self {
+        Self { book_repository }
+    }
+}
+
+#[async_trait]
+impl<BR> DeleteBookUseCase for DeleteBookInteractor<BR>
+where
+    BR: BookRepository,
+{
+    async fn delete(&self, user_id: &str, book_id: &str) -> Result<(), UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let book_id = BookId::try_from(book_id)?;
+
+        self.book_repository.delete(&user_id, &book_id).await?;
+
+        Ok(())
     }
 }

@@ -20,4 +20,5 @@ pub trait BookRepository: Send + Sync + 'static {
     ) -> Result<Option<Book>, DomainError>;
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError>;
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError>;
+    async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError>;
 }

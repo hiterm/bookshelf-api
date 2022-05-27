@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use sqlx::{PgConnection, PgPool};
+use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -70,6 +70,14 @@ impl BookRepository for PgBookRepository {
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
         InternalBookRepository::update(user_id, book, &mut tx).await?;
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+        InternalBookRepository::delete(user_id, book_id, &mut tx).await?;
         tx.commit().await?;
 
         Ok(())
@@ -351,6 +359,43 @@ impl InternalBookRepository {
 
         Ok(())
     }
+
+    async fn delete(
+        user_id: &UserId,
+        book_id: &BookId,
+        conn: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), DomainError> {
+        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
+            .bind(user_id.as_str())
+            .bind(book_id.to_uuid())
+            .execute(&mut *conn)
+            .await?;
+
+        let result = sqlx::query("DELETE FROM book WHERE user_id = $1 AND id = $2")
+            .bind(user_id.as_str())
+            .bind(book_id.to_uuid())
+            .execute(&mut *conn)
+            .await?;
+
+        let rows_affected = result.rows_affected();
+        match rows_affected {
+            0 => {
+                return Err(DomainError::NotFound {
+                    entity_type: "book",
+                    entity_id: book_id.to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
+            }
+            1 => {}
+            _ => {
+                return Err(DomainError::Unexpected(String::from(
+                    "rows_affected is greater than 1.",
+                )))
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -450,6 +495,27 @@ mod tests {
 
         let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
         assert_eq!(actual, Some(book.clone()));
+
+        tx.rollback().await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore] // Depends on PostgreSQL
+    async fn test_delete() -> anyhow::Result<()> {
+        // setup
+        let mut tx = prepare_tx().await?;
+        let user_id = prepare_user(&mut tx).await?;
+        let author_ids = prepare_authors1(&user_id, &mut tx).await?;
+        let book = book_entity1(&author_ids)?;
+        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
+        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        assert_eq!(actual, Some(book.clone()));
+
+        InternalBookRepository::delete(&user_id, book.id(), &mut tx).await?;
+        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        assert_eq!(actual, None);
 
         tx.rollback().await?;
 

@@ -58,6 +58,19 @@ where
         Ok(book.into())
     }
 
+    async fn delete_book(
+        &self,
+        ctx: &Context<'_>,
+        book_data: UpdateBookInput,
+    ) -> Result<String, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        self.mutation_use_case
+            .delete_book(&claims.sub, &book_data.id)
+            .await?;
+
+        Ok(book_data.id)
+    }
+
     async fn create_author(
         &self,
         ctx: &Context<'_>,
