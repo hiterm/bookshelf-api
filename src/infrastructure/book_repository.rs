@@ -75,9 +75,9 @@ impl BookRepository for PgBookRepository {
         Ok(())
     }
 
-    async fn remove(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
+    async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
-        InternalBookRepository::remove(user_id, book_id, &mut tx).await?;
+        InternalBookRepository::delete(user_id, book_id, &mut tx).await?;
         tx.commit().await?;
 
         Ok(())
@@ -360,7 +360,7 @@ impl InternalBookRepository {
         Ok(())
     }
 
-    async fn remove(
+    async fn delete(
         user_id: &UserId,
         book_id: &BookId,
         conn: &mut Transaction<'_, Postgres>,
@@ -503,7 +503,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore] // Depends on PostgreSQL
-    async fn test_remove() -> anyhow::Result<()> {
+    async fn test_delete() -> anyhow::Result<()> {
         // setup
         let mut tx = prepare_tx().await?;
         let user_id = prepare_user(&mut tx).await?;
@@ -513,7 +513,7 @@ mod tests {
         let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
         assert_eq!(actual, Some(book.clone()));
 
-        InternalBookRepository::remove(&user_id, book.id(), &mut tx).await?;
+        InternalBookRepository::delete(&user_id, book.id(), &mut tx).await?;
         let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
         assert_eq!(actual, None);
 
