@@ -24,11 +24,7 @@ pub trait MutationUseCase: Send + Sync + 'static {
         user_id: &str,
         book_data: UpdateBookDto,
     ) -> Result<BookDto, UseCaseError>;
-    async fn delete_book(
-        &self,
-        user_id: &str,
-        book_id: &str,
-    ) -> Result<(), UseCaseError>;
+    async fn delete_book(&self, user_id: &str, book_id: &str) -> Result<(), UseCaseError>;
     async fn create_author(
         &self,
         user_id: &str,
