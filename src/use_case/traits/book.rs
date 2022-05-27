@@ -25,3 +25,13 @@ pub trait UpdateBookUseCase: Send + Sync + 'static {
         book_data: UpdateBookDto,
     ) -> Result<BookDto, UseCaseError>;
 }
+
+#[automock]
+#[async_trait]
+pub trait DeleteBookUseCase: Send + Sync + 'static {
+    async fn delete(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<(), UseCaseError>;
+}
