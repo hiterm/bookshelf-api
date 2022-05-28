@@ -61,14 +61,14 @@ where
     async fn delete_book(
         &self,
         ctx: &Context<'_>,
-        book_data: UpdateBookInput,
+        book_id: ID,
     ) -> Result<String, PresentationalError> {
         let claims = get_claims(ctx)?;
         self.mutation_use_case
-            .delete_book(&claims.sub, &book_data.id)
+            .delete_book(&claims.sub, book_id.as_str())
             .await?;
 
-        Ok(book_data.id)
+        Ok(book_id.to_string())
     }
 
     async fn create_author(
