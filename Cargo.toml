@@ -11,8 +11,8 @@ actix-cors = "0.6.1"
 actix-web = "4"
 actix-web-httpauth = "0.6.0"
 anyhow = { version = "1.0.56", features = ["backtrace"] }
-async-graphql = { version = "3.0.35", features = ["dataloader"] }
-async-graphql-actix-web = "3.0.35"
+async-graphql = { version = "4.0.6", features = ["dataloader"] }
+async-graphql-actix-web = "4.0.6"
 async-trait = "0.1.52"
 awc = { version = "3.0.0", features = ["rustls"] }
 derive_more = "0.99"
