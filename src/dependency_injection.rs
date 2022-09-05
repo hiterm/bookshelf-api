@@ -6,7 +6,7 @@ use crate::{
         author_repository::PgAuthorRepository, book_repository::PgBookRepository,
         user_repository::PgUserRepository,
     },
-    presentational::graphql::{mutation::Mutation, query::Query, schema::build_schema},
+    presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
         author::CreateAuthorInteractor,
         book::{CreateBookInteractor, DeleteBookInteractor, UpdateBookInteractor},

@@ -1,5 +1,5 @@
 use bookshelf_api::{
-    presentational::graphql::{mutation::Mutation, query::Query, schema::build_schema},
+    presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},
 };
 
