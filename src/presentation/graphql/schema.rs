@@ -20,7 +20,7 @@ mod tests {
 
     use crate::{
         extractors::Claims,
-        presentational::graphql::{mutation::Mutation, query::Query},
+        presentation::graphql::{mutation::Mutation, query::Query},
         use_case::{
             dto::author::AuthorDto,
             traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},

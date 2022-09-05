@@ -8,7 +8,7 @@ use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 
 use crate::{
     extractors::Claims,
-    presentational::graphql::{loader::AuthorLoader, mutation::Mutation, query::Query},
+    presentation::graphql::{loader::AuthorLoader, mutation::Mutation, query::Query},
     use_case::traits::{mutation::MutationUseCase, query::QueryUseCase},
 };
 
