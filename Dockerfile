@@ -17,4 +17,8 @@ RUN cargo build --release
 
 FROM debian:buster-slim
 COPY --from=build-stage /bookshelf-api/target/release/bookshelf-api /
+
+RUN apt update
+RUN apt install -y libssl-dev
+
 CMD ["/bookshelf-api"]
