@@ -47,7 +47,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(auth0_config.clone())
             .wrap(Logger::default())
             .wrap(cors)
-            .service(hello)
+            .service(health)
             .service(graphql_playground)
             .route("/graphql", web::post().to(graphql::<QI, MI>))
     })
@@ -56,9 +56,9 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-#[get("/hello")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("hello")
+#[get("/health")]
+async fn health() -> impl Responder {
+    HttpResponse::Ok().body("OK")
 }
 
 fn fetch_port() -> u16 {
