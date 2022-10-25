@@ -77,6 +77,7 @@ impl From<BookStore> for CommonBookStore {
 pub struct Book {
     pub id: String,
     pub title: String,
+    #[graphql(skip)]
     pub author_ids: Vec<String>,
     pub isbn: String,
     pub read: bool,
