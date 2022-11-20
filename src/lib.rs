@@ -1,3 +1,5 @@
+#![feature(async_fn_in_trait)]
+
 pub mod common;
 pub mod dependency_injection;
 pub mod domain;

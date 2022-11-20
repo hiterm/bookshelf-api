@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use sqlx::{PgConnection, PgPool};
 
 use crate::domain::{
@@ -23,7 +22,6 @@ impl PgUserRepository {
     }
 }
 
-#[async_trait]
 impl UserRepository for PgUserRepository {
     async fn create(&self, user: &User) -> Result<(), DomainError> {
         let mut conn = self.pool.acquire().await?;
