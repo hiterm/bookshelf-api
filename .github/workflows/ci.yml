@@ -1,7 +1,6 @@
 on:
   push:
-      branches:
-        main
+    branches: main
   pull_request:
 
 name: Continuous integration
@@ -12,23 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
+      - uses: dtolnay/rust-toolchain@1.66.1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check
 
   test:
     name: Test Suite
@@ -37,77 +22,34 @@ jobs:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - uses: dtolnay/rust-toolchain@1.66.1
+      - uses: Swatinem/rust-cache@v2
       - run: sudo systemctl start postgresql.service
       - run: pg_isready
       - run: sudo -u postgres psql --command="CREATE USER bookshelf PASSWORD 'password'" --command="\du" postgres
       - run: sudo -u postgres createdb --owner=bookshelf bookshelf
       - run: if ! (type sqlx > /dev/null 2>&1); then cargo install sqlx-cli; fi
       - run: sqlx migrate run
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -- --include-ignored
+      - run: cargo test -- --include-ignored
 
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/cache@v3
+      - uses: dtolnay/rust-toolchain@1.66.1
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/cache@v3
+      - uses: dtolnay/rust-toolchain@1.66.1
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -- -D warnings
