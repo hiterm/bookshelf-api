@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let path = Path::new(&data_file);
     let display = path.display();
 
-    let mut file = match File::open(&path) {
+    let mut file = match File::open(path) {
         Err(why) => panic!("couldn't open {}: {}", display, why),
         Ok(file) => file,
     };
