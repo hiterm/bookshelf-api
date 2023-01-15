@@ -20,14 +20,8 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
+      - uses: dtolnay/rust-toolchain@1.66.1
+      - run: cargo check
 
   test:
     name: Test Suite
@@ -45,21 +39,14 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - uses: dtolnay/rust-toolchain@1.66.1
       - run: sudo systemctl start postgresql.service
       - run: pg_isready
       - run: sudo -u postgres psql --command="CREATE USER bookshelf PASSWORD 'password'" --command="\du" postgres
       - run: sudo -u postgres createdb --owner=bookshelf bookshelf
       - run: if ! (type sqlx > /dev/null 2>&1); then cargo install sqlx-cli; fi
       - run: sqlx migrate run
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -- --include-ignored
+      - run: cargo test -- --include-ignored
 
   fmt:
     name: Rustfmt
@@ -75,16 +62,10 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@1.66.1
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
@@ -100,13 +81,7 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@1.66.1
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+          components: clippy
+      - run: cargo clippy -- -D warnings
