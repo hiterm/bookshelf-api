@@ -1,4 +1,4 @@
-FROM rust:1.66.1 AS build-stage
+FROM rust:1.69.0 AS build-stage
 
 RUN cargo new --bin bookshelf-api
 WORKDIR /bookshelf-api
