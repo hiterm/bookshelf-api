@@ -3,9 +3,6 @@ name: Deploy to Render
 on:
   release:
     types: [published]
-  push:
-    branches:
-      - main
 
 env:
   REGISTRY: ghcr.io
