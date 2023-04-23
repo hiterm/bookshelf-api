@@ -1,4 +1,4 @@
-name: Publish Docker image
+name: Deploy to Render
 
 on:
   release:
@@ -13,7 +13,7 @@ env:
 
 jobs:
   push_to_registry:
-    name: Push Docker image to GitHub Packages
+    name: Push Docker image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,3 +48,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: push_to_registry
+    steps:
+      - env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: curl "${RENDER_DEPLOY_HOOK}"
