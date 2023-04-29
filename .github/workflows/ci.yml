@@ -7,7 +7,7 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.69.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo check
@@ -18,7 +18,7 @@ jobs:
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.69.0
       - uses: Swatinem/rust-cache@v2
       - run: sudo systemctl start postgresql.service
@@ -33,7 +33,7 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.69.0
         with:
           components: rustfmt
@@ -44,7 +44,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.69.0
         with:
           components: clippy
