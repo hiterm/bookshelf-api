@@ -14,7 +14,6 @@ anyhow = { version = "1.0.56", features = ["backtrace"] }
 async-graphql = { version = "4.0.6", features = ["dataloader"] }
 async-graphql-actix-web = "4.0.6"
 async-trait = "0.1.52"
-awc = { version = "3.0.0", features = ["rustls"] }
 axum = "0.6.17"
 derive_more = "0.99"
 dotenv = "0.15.0"
