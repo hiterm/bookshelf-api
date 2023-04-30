@@ -14,7 +14,7 @@ use http::{
     HeaderValue, Method,
 };
 use sqlx::postgres::PgPoolOptions;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 
 #[tokio::main]
 async fn main() {
@@ -36,8 +36,6 @@ async fn main() {
         .expect("Migration failed.");
 
     let (query_use_case, schema) = dependency_injection(pool);
-
-    let auth0_config = extractors::Auth0Config::default();
 
     let auth0_config = extractors::Auth0Config::default();
     let state = Arc::new(AppState { auth0_config });

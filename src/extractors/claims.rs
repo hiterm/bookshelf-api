@@ -2,7 +2,6 @@ use crate::types::ErrorMessage;
 use actix_web::{error::ResponseError, Error, FromRequest, HttpResponse};
 use actix_web_httpauth::{extractors::bearer::BearerAuth, headers::www_authenticate::bearer};
 use async_trait::async_trait;
-use axum::extract::State;
 use axum::headers::authorization::Bearer;
 use axum::headers::Authorization;
 use axum::http::request::Parts;
