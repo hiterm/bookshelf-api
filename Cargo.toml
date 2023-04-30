@@ -15,7 +15,8 @@ async-graphql = { version = "4.0.6", features = ["dataloader"] }
 async-graphql-actix-web = "4.0.6"
 async-graphql-axum = "5.0.7"
 async-trait = "0.1.52"
-axum = "0.6.17"
+axum = { version = "0.6.17" }
+# axum = { version = "0.6.17", features = ["headers"] }
 derive_more = "0.99"
 dotenv = "0.15.0"
 env_logger = "0.9.0"
