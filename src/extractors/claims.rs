@@ -1,14 +1,10 @@
 use crate::types::ErrorMessage;
-use actix_web::{
-    error::ResponseError,
-    http::{StatusCode, Uri},
-    Error, FromRequest, HttpResponse,
-};
+use actix_web::{error::ResponseError, Error, FromRequest, HttpResponse};
 use actix_web_httpauth::{
     extractors::bearer::BearerAuth, headers::www_authenticate::bearer::Bearer,
 };
-use awc::Client;
 use derive_more::Display;
+use http::{StatusCode, Uri};
 use jsonwebtoken::{
     decode, decode_header,
     jwk::{AlgorithmParameters, JwkSet},
@@ -142,18 +138,14 @@ struct MyError {
 impl ResponseError for MyError {}
 
 async fn fetch_jwks(domain: &str) -> Result<JwkSet, MyError> {
-    let response = Client::new()
-        .get(
-            Uri::builder()
-                .scheme("https")
-                .authority(domain)
-                .path_and_query("/.well-known/jwks.json")
-                .build()
-                .unwrap(),
-        )
-        .send()
-        .await;
-    let mut response = match response {
+    let uri = Uri::builder()
+        .scheme("https")
+        .authority(domain)
+        .path_and_query("/.well-known/jwks.json")
+        .build()
+        .unwrap();
+    let response = reqwest::get(uri.to_string()).await;
+    let response = match response {
         Ok(response) => response,
         Err(e) => {
             return Err(MyError {
