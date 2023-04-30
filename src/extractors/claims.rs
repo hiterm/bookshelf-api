@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::{collections::HashSet, future::Future, pin::Pin, sync::Arc};
 
-#[derive(Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Auth0Config {
     audience: String,
     domain: String,
@@ -83,8 +83,9 @@ impl ResponseError for ClientError {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct AppState {
-    auth0_config: Auth0Config,
+    pub auth0_config: Auth0Config,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -140,12 +141,12 @@ impl FromRequest for Claims {
 }
 
 #[async_trait]
-impl FromRequestParts<State<Arc<AppState>>> for Claims {
+impl FromRequestParts<Arc<AppState>> for Claims {
     type Rejection = AuthError;
 
     async fn from_request_parts(
         parts: &mut Parts,
-        State(state): &State<Arc<AppState>>,
+        state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
         let config = state.auth0_config.clone();
         let TypedHeader(Authorization(bearer)) = parts
