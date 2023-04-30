@@ -10,8 +10,10 @@ use axum::{
 };
 
 use crate::{
-    extractors::Claims,
-    presentation::graphql::{loader::AuthorLoader, mutation::Mutation, query::Query},
+    presentation::{
+        extractor::Claims,
+        graphql::{loader::AuthorLoader, mutation::Mutation, query::Query},
+    },
     use_case::traits::{mutation::MutationUseCase, query::QueryUseCase},
 };
 

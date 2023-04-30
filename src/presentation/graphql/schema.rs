@@ -19,8 +19,10 @@ mod tests {
     use mockall::predicate;
 
     use crate::{
-        extractors::Claims,
-        presentation::graphql::{mutation::Mutation, query::Query},
+        presentation::{
+            extractor::Claims,
+            graphql::{mutation::Mutation, query::Query},
+        },
         use_case::{
             dto::author::AuthorDto,
             traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},

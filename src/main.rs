@@ -2,8 +2,8 @@ use actix_cors::Cors;
 use actix_web::http;
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use bookshelf_api::dependency_injection::{dependency_injection, MI, QI};
-use bookshelf_api::extractors;
 use bookshelf_api::presentation::controller::graphql_controller::{graphql, graphql_playground};
+use bookshelf_api::presentation::extractor::Auth0Config;
 use sqlx::postgres::PgPoolOptions;
 
 #[actix_web::main]
@@ -27,7 +27,7 @@ async fn main() -> std::io::Result<()> {
 
     let (query_use_case, schema) = dependency_injection(pool);
 
-    let auth0_config = extractors::Auth0Config::default();
+    let auth0_config = Auth0Config::default();
 
     let allowed_origins = fetch_allowed_origins();
 

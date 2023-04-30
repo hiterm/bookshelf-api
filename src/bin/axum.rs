@@ -6,7 +6,7 @@ use axum::{
 };
 use bookshelf_api::{
     dependency_injection::{dependency_injection, MI, QI},
-    extractors::{self, claims::AppState},
+    presentation::extractor::{claims::AppState, Auth0Config},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
 };
 use http::{
@@ -37,7 +37,7 @@ async fn main() {
 
     let (query_use_case, schema) = dependency_injection(pool);
 
-    let auth0_config = extractors::Auth0Config::default();
+    let auth0_config = Auth0Config::default();
     let state = Arc::new(AppState { auth0_config });
 
     let allowed_origins: Vec<_> = fetch_allowed_origins()
