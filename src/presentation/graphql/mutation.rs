@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_graphql::{Context, Object, ID};
 
 use crate::{
-    presentation::{error::PresentationalError, extractor::Claims},
+    presentation::{error::PresentationalError, extractor::claims::Claims},
     use_case::traits::mutation::MutationUseCase,
 };
 

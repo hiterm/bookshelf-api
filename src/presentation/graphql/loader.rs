@@ -4,7 +4,7 @@ use async_graphql::dataloader::Loader;
 use async_trait::async_trait;
 
 use crate::{
-    presentation::{error::PresentationalError, extractor::Claims},
+    presentation::{error::PresentationalError, extractor::claims::Claims},
     use_case::traits::query::QueryUseCase,
 };
 

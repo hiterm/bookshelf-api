@@ -20,7 +20,7 @@ mod tests {
 
     use crate::{
         presentation::{
-            extractor::Claims,
+            extractor::claims::Claims,
             graphql::{mutation::Mutation, query::Query},
         },
         use_case::{

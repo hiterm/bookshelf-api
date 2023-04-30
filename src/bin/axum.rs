@@ -6,7 +6,7 @@ use axum::{
 };
 use bookshelf_api::{
     dependency_injection::{dependency_injection, MI, QI},
-    presentation::extractor::{claims::AppState, Auth0Config},
+    presentation::extractor::{claims::AppState, claims::Auth0Config},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
 };
 use http::{
