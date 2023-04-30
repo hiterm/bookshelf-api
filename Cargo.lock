@@ -351,21 +351,23 @@ dependencies = [
 
 [[package]]
 name = "async-graphql"
-version = "4.0.6"
+version = "5.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84ecd9edbd48b68e44f81b720d83e670d876dce440856feee6c892c8cd3f6798"
+checksum = "6f0ed623e2503b45d875461e5de88a1b3466cf2ed3e43cf189a102a641b93f19"
 dependencies = [
  "async-graphql-derive",
  "async-graphql-parser",
  "async-graphql-value",
  "async-stream",
  "async-trait",
+ "base64 0.13.0",
  "bytes",
  "fast_chemail",
  "fnv",
  "futures-channel",
  "futures-timer",
  "futures-util",
+ "handlebars",
  "http",
  "indexmap",
  "lru",
@@ -377,6 +379,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "static_assertions",
  "tempfile",
  "thiserror",
@@ -384,9 +387,9 @@ dependencies = [
 
 [[package]]
 name = "async-graphql-actix-web"
-version = "4.0.6"
+version = "5.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d0f66f1435e477e66ef1ba698da2e4ebfb480c4f08a41ec6edae4e43622a794"
+checksum = "21c83b72a4c8a7f89356a0e7d9edaf0446e44b00480a83c214f43b00517479d4"
 dependencies = [
  "actix",
  "actix-http",
@@ -397,33 +400,31 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "serde_json",
- "serde_urlencoded",
  "thiserror",
 ]
 
 [[package]]
 name = "async-graphql-axum"
-version = "4.0.6"
+version = "5.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7a55a393b11b95d952a8f6614c9db55e1875138c364ec34ca40b38e15c7ee71"
+checksum = "396ebdb8f6444ed430c6869cbf9f6bc018a8a95d0e5759952ae5f4bec144d79c"
 dependencies = [
  "async-graphql",
  "async-trait",
- "axum 0.5.17",
+ "axum",
  "bytes",
  "futures-util",
  "http-body",
  "serde_json",
- "serde_urlencoded",
  "tokio-util",
  "tower-service",
 ]
 
 [[package]]
 name = "async-graphql-derive"
-version = "4.0.6"
+version = "5.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8801127f6a7b3af410498d2f971ee6da8f12f9b0b784473da636ce04e5ac565"
+checksum = "cebcf27112b969c4ff2a003b318ab5efde96055f9d0ee3344a3b3831fa2932ba"
 dependencies = [
  "Inflector",
  "async-graphql-parser",
@@ -437,9 +438,9 @@ dependencies = [
 
 [[package]]
 name = "async-graphql-parser"
-version = "4.0.6"
+version = "5.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4097e2e3e313a9220df25485046b7749f4b8d749aba8ed7e09e929d60a643e3"
+checksum = "631770464ad2492da9af6b70048e9e477ef7c1e55fdbfb0719f3330cfa87d8e9"
 dependencies = [
  "async-graphql-value",
  "pest",
@@ -449,9 +450,9 @@ dependencies = [
 
 [[package]]
 name = "async-graphql-value"
-version = "4.0.6"
+version = "5.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cbb3f5e2eb77fbe173b102e3a9321a5f93a491f9c5ef3850e1155ae83c49e88"
+checksum = "b59633f68ae4b858e14ec761e02455c575327249cbefed3af067a0b26d76daa9"
 dependencies = [
  "bytes",
  "indexmap",
@@ -519,47 +520,13 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "axum"
-version = "0.5.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acee9fd5073ab6b045a275b3e709c163dd36c90685219cb21804a147b58dba43"
-dependencies = [
- "async-trait",
- "axum-core 0.2.9",
- "base64 0.13.0",
- "bitflags",
- "bytes",
- "futures-util",
- "headers",
- "http",
- "http-body",
- "hyper",
- "itoa",
- "matchit 0.5.0",
- "memchr",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sha-1",
- "sync_wrapper",
- "tokio",
- "tokio-tungstenite",
- "tower",
- "tower-http",
- "tower-layer",
- "tower-service",
-]
-
-[[package]]
-name = "axum"
 version = "0.6.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b70caf9f1b0c045f7da350636435b775a9733adf2df56e8aa2a29210fbc335d4"
 dependencies = [
  "async-trait",
- "axum-core 0.3.4",
+ "axum-core",
+ "base64 0.21.0",
  "bitflags",
  "bytes",
  "futures-util",
@@ -568,7 +535,7 @@ dependencies = [
  "http-body",
  "hyper",
  "itoa",
- "matchit 0.7.0",
+ "matchit",
  "memchr",
  "mime",
  "percent-encoding",
@@ -578,25 +545,11 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
+ "sha1 0.10.1",
  "sync_wrapper",
  "tokio",
+ "tokio-tungstenite",
  "tower",
- "tower-layer",
- "tower-service",
-]
-
-[[package]]
-name = "axum-core"
-version = "0.2.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37e5939e02c56fecd5c017c37df4238c0a839fa76b7f97acdd7efb804fd181cc"
-dependencies = [
- "async-trait",
- "bytes",
- "futures-util",
- "http",
- "http-body",
- "mime",
  "tower-layer",
  "tower-service",
 ]
@@ -616,6 +569,18 @@ dependencies = [
  "rustversion",
  "tower-layer",
  "tower-service",
+]
+
+[[package]]
+name = "axum-macros"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bb524613be645939e280b7279f7b017f98cf7f5ef084ec374df373530e73277"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -678,7 +643,8 @@ dependencies = [
  "async-graphql-actix-web",
  "async-graphql-axum",
  "async-trait",
- "axum 0.6.17",
+ "axum",
+ "axum-macros",
  "derive_more",
  "dotenv",
  "env_logger",
@@ -1283,6 +1249,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "handlebars"
+version = "4.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "035ef95d03713f2c347a72547b7cd38cbc9af7cd51e6099fb62d586d4a6dee3a"
+dependencies = [
+ "log",
+ "pest",
+ "pest_derive",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1394,12 +1374,6 @@ dependencies = [
  "http",
  "pin-project-lite",
 ]
-
-[[package]]
-name = "http-range-header"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bfe8eed0a9285ef776bb792479ea3834e8b94e13d615c2f66d03dd50a435a29"
 
 [[package]]
 name = "httparse"
@@ -1638,12 +1612,6 @@ name = "matches"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3e378b66a060d48947b590737b30a1be76706c8dd7b8ba0f2fe3989c68a853f"
-
-[[package]]
-name = "matchit"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73cbba799671b762df5a175adf59ce145165747bb891505c43d09aefbbf38beb"
 
 [[package]]
 name = "matchit"
@@ -1964,6 +1932,40 @@ checksum = "e68e84bfb01f0507134eac1e9b410a12ba379d064eab48c50ba4ce329a527b70"
 dependencies = [
  "thiserror",
  "ucd-trie",
+]
+
+[[package]]
+name = "pest_derive"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b79d4c71c865a25a4322296122e3924d30bc8ee0834c8bfc8b95f7f054afbfb"
+dependencies = [
+ "pest",
+ "pest_generator",
+]
+
+[[package]]
+name = "pest_generator"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c435bf1076437b851ebc8edc3a18442796b30f1728ffea6262d59bbe28b077e"
+dependencies = [
+ "pest",
+ "pest_meta",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
+]
+
+[[package]]
+name = "pest_meta"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "745a452f8eb71e39ffd8ee32b3c5f51d03845f99786fa9b68db6ff509c505411"
+dependencies = [
+ "once_cell",
+ "pest",
+ "sha2",
 ]
 
 [[package]]
@@ -2891,9 +2893,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.17.2"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f714dd15bead90401d77e04243611caec13726c2408afd5b31901dfcdcb3b181"
+checksum = "54319c93411147bced34cb5609a80e0a8e44c5999c93903a81cd866630ec0bfd"
 dependencies = [
  "futures-util",
  "log",
@@ -2939,25 +2941,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "tower-http"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f873044bf02dd1e8239e9c1293ea39dad76dc594ec16185d0a1bf31d8dc8d858"
-dependencies = [
- "bitflags",
- "bytes",
- "futures-core",
- "futures-util",
- "http",
- "http-body",
- "http-range-header",
- "pin-project-lite",
- "tower",
- "tower-layer",
- "tower-service",
 ]
 
 [[package]]
@@ -3013,9 +2996,9 @@ checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
 
 [[package]]
 name = "tungstenite"
-version = "0.17.3"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e27992fd6a8c29ee7eef28fc78349aa244134e10ad447ce3b9f0ac0ed0fa4ce0"
+checksum = "30ee6ab729cd4cf0fd55218530c4522ed30b7b6081752839b68fcec8d0960788"
 dependencies = [
  "base64 0.13.0",
  "byteorder",
@@ -3024,7 +3007,7 @@ dependencies = [
  "httparse",
  "log",
  "rand",
- "sha-1",
+ "sha1 0.10.1",
  "thiserror",
  "url",
  "utf-8",
