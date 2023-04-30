@@ -15,10 +15,10 @@ use crate::{
     use_case::traits::{mutation::MutationUseCase, query::QueryUseCase},
 };
 
-async fn graphql_handler<QUC, MUC>(
+pub async fn graphql_handler<QUC, MUC>(
+    claims: Claims,
     schema: Extension<Schema<Query<QUC>, Mutation<MUC>, EmptySubscription>>,
     Extension(query_use_case): Extension<QUC>,
-    claims: Claims,
     req: GraphQLRequest,
 ) -> GraphQLResponse
 where
@@ -37,6 +37,6 @@ where
         .into()
 }
 
-async fn graphql_playground() -> impl IntoResponse {
+pub async fn graphql_playground_handler() -> impl IntoResponse {
     Html(playground_source(GraphQLPlaygroundConfig::new("/graphql")))
 }
