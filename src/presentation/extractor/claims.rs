@@ -82,6 +82,53 @@ impl ResponseError for ClientError {
     }
 }
 
+#[derive(Debug, Display)]
+pub enum ClientError2 {
+    #[display(fmt = "authentication")]
+    Authentication,
+    #[display(fmt = "decode")]
+    Decode(jsonwebtoken::errors::Error),
+    #[display(fmt = "not_found")]
+    NotFound(String),
+    #[display(fmt = "unsupported_algorithm")]
+    UnsupportedAlgortithm(AlgorithmParameters),
+}
+
+impl IntoResponse for ClientError2 {
+    fn into_response(self) -> Response {
+        let (error, error_description, message) = match self {
+            Self::Authentication => (None, None, "Requires authentication".to_string()),
+            Self::Decode(_) => (
+                Some("invalid_token".to_string()),
+                Some(
+                    "Authorization header value must follow this format: Bearer access-token"
+                        .to_string(),
+                ),
+                "Bad credentials".to_string(),
+            ),
+            Self::NotFound(msg) => (
+                Some("invalid_token".to_string()),
+                Some(msg),
+                "Bad credentials".to_string(),
+            ),
+            Self::UnsupportedAlgortithm(alg) => (
+                Some("invalid_token".to_string()),
+                Some(format!(
+                    "Unsupported encryption algortithm expected RSA got {:?}",
+                    alg
+                )),
+                "Bad credentials".to_string(),
+            ),
+        };
+        let body = Json(json!({
+            "error": error,
+            "error_description": error_description,
+            "message": message
+        }));
+        (StatusCode::UNAUTHORIZED, body).into_response()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub auth0_config: Auth0Config,
@@ -141,7 +188,7 @@ impl FromRequest for Claims {
 
 #[async_trait]
 impl FromRequestParts<Arc<AppState>> for Claims {
-    type Rejection = AuthError;
+    type Rejection = ClientError2;
 
     async fn from_request_parts(
         parts: &mut Parts,
@@ -151,16 +198,20 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
-            .map_err(|_| AuthError::InvalidToken)?;
+            .map_err(|_| ClientError2::Authentication)?;
         let token = bearer.token();
 
-        let header = decode_header(token).map_err(|_| AuthError::InvalidToken)?;
-        let kid = header.kid.ok_or_else(|| AuthError::InvalidToken)?;
+        let header = decode_header(token).map_err(ClientError2::Decode)?;
+        let kid = header
+            .kid
+            .ok_or_else(|| ClientError2::NotFound("kid not found in token header".to_string()))?;
         let domain = config.domain.as_str();
         // TODO: サンプル実装の通りに戻せそうなら戻す
         // https://github.com/auth0-developer-hub/api_actix-web_rust_hello-world/blob/c86861763a4a4f2ad5f0e39bb3c15a7216d3fdba/src/extractors/claims.rs#L107-L119
         let jwks = fetch_jwks(domain).await.unwrap(); // TODO
-        let jwk = jwks.find(&kid).ok_or_else(|| AuthError::InvalidToken)?;
+        let jwk = jwks
+            .find(&kid)
+            .ok_or_else(|| ClientError2::NotFound("No JWK found for kid".to_string()))?;
         match jwk.clone().algorithm {
             AlgorithmParameters::RSA(ref rsa) => {
                 let mut validation = Validation::new(Algorithm::RS256);
@@ -172,12 +223,12 @@ impl FromRequestParts<Arc<AppState>> for Claims {
                     .build()
                     .unwrap()]);
                 let key = DecodingKey::from_rsa_components(&rsa.n, &rsa.e)
-                    .map_err(|_| AuthError::InvalidToken)?;
-                let token = decode::<Claims>(token, &key, &validation)
-                    .map_err(|_| AuthError::InvalidToken)?;
+                    .map_err(ClientError2::Decode)?;
+                let token =
+                    decode::<Claims>(token, &key, &validation).map_err(ClientError2::Decode)?;
                 Ok(token.claims)
             }
-            algorithm => Err(AuthError::InvalidToken),
+            algorithm => Err(ClientError2::UnsupportedAlgortithm(algorithm)),
         }
     }
 }
