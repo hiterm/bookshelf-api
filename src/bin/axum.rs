@@ -51,9 +51,10 @@ async fn main() {
 
     // build our application with a single route
     let app = Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
+        .route("/", get(|| async { "OK" }))
         .route("/graphql", post(graphql_handler::<QI, MI>))
         .route("/graphql/playground", get(graphql_playground_handler))
+        .route("/health", get(|| async { "OK" }))
         .with_state(state)
         .layer(Extension(query_use_case))
         .layer(Extension(schema))
