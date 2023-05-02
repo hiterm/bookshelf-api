@@ -14,13 +14,15 @@ use http::{
     HeaderValue, Method,
 };
 use sqlx::postgres::PgPoolOptions;
+use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().ok();
 
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let db_url = fetch_database_url();
 
@@ -56,8 +58,12 @@ async fn main() {
         .route("/graphql/playground", get(graphql_playground_handler))
         .route("/health", get(|| async { "OK" }))
         .with_state(state)
-        .layer(Extension(query_use_case))
-        .layer(Extension(schema))
+        .layer(
+            ServiceBuilder::new()
+                .layer(Extension(query_use_case))
+                .layer(Extension(schema))
+                .layer(TraceLayer::new_for_http()),
+        )
         .layer(cors_layer);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], fetch_port()));
