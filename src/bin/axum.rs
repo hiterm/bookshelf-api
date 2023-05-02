@@ -15,8 +15,9 @@ use http::{
 };
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
-use tower_http::cors::CorsLayer;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
+use tower_http::{cors::CorsLayer, trace::DefaultOnRequest};
+use tracing::Level;
 
 #[tokio::main]
 async fn main() {
@@ -62,7 +63,11 @@ async fn main() {
             ServiceBuilder::new()
                 .layer(Extension(query_use_case))
                 .layer(Extension(schema))
-                .layer(TraceLayer::new_for_http()),
+                .layer(
+                    TraceLayer::new_for_http()
+                        .on_request(DefaultOnRequest::new().level(Level::INFO))
+                        .on_response(DefaultOnResponse::new().level(Level::INFO)),
+                ),
         )
         .layer(cors_layer);
 
