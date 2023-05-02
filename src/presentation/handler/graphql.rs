@@ -30,7 +30,7 @@ where
     let query_use_case: QUC = query_use_case.clone();
     let author_loader = DataLoader::new(
         AuthorLoader::new(claims.clone(), query_use_case),
-        actix_web::rt::spawn,
+        tokio::spawn,
     );
 
     schema
