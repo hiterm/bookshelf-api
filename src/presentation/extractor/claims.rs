@@ -1,3 +1,4 @@
+use crate::presentation::app_state::AppState;
 use crate::types::ErrorMessage;
 use actix_web::{error::ResponseError, Error, FromRequest, HttpResponse};
 use actix_web_httpauth::{extractors::bearer::BearerAuth, headers::www_authenticate::bearer};
@@ -127,11 +128,6 @@ impl IntoResponse for ClientError2 {
         }));
         (StatusCode::UNAUTHORIZED, body).into_response()
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct AppState {
-    pub auth0_config: Auth0Config,
 }
 
 #[derive(Debug, Clone, Deserialize)]
