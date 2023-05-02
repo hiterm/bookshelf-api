@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     routing::{get, post},
@@ -6,8 +6,8 @@ use axum::{
 };
 use bookshelf_api::{
     dependency_injection::{dependency_injection, MI, QI},
-    presentation::{extractor::claims::Auth0Config, app_state::AppState},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
+    presentation::{app_state::AppState, extractor::claims::Auth0Config},
 };
 use http::{
     header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
@@ -60,11 +60,23 @@ async fn main() {
         .layer(Extension(schema))
         .layer(cors_layer);
 
-    // run it with hyper on localhost:3000
-    axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
+    let addr = SocketAddr::from(([0, 0, 0, 0], fetch_port()));
+    axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
         .unwrap();
+}
+
+fn fetch_port() -> u16 {
+    use std::env::VarError;
+
+    match std::env::var("PORT") {
+        Ok(s) => s
+            .parse()
+            .expect("Failed to parse environment variable PORT."),
+        Err(VarError::NotPresent) => panic!("Environment variable PORT is required."),
+        Err(VarError::NotUnicode(_)) => panic!("Environment variable PORT is not unicode."),
+    }
 }
 
 fn fetch_database_url() -> String {
