@@ -1,16 +1,29 @@
-use actix_cors::Cors;
-use actix_web::http;
-use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
-use bookshelf_api::dependency_injection::{dependency_injection, MI, QI};
-use bookshelf_api::presentation::controller::graphql_controller::{graphql, graphql_playground};
-use bookshelf_api::presentation::extractor::claims::Auth0Config;
-use sqlx::postgres::PgPoolOptions;
+use std::{net::SocketAddr, sync::Arc};
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+use axum::{
+    routing::{get, post},
+    Extension, Router,
+};
+use bookshelf_api::{
+    dependency_injection::{dependency_injection, MI, QI},
+    presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
+    presentation::{app_state::AppState, extractor::claims::Auth0Config},
+};
+use http::{
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+    HeaderValue, Method,
+};
+use sqlx::postgres::PgPoolOptions;
+use tower::ServiceBuilder;
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
+use tower_http::{cors::CorsLayer, trace::DefaultOnRequest};
+use tracing::Level;
+
+#[tokio::main]
+async fn main() {
     dotenv::dotenv().ok();
 
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let db_url = fetch_database_url();
 
@@ -28,37 +41,41 @@ async fn main() -> std::io::Result<()> {
     let (query_use_case, schema) = dependency_injection(pool);
 
     let auth0_config = Auth0Config::default();
+    let state = Arc::new(AppState { auth0_config });
 
-    let allowed_origins = fetch_allowed_origins();
+    let allowed_origins: Vec<_> = fetch_allowed_origins()
+        .into_iter()
+        .map(|origin| origin.parse::<HeaderValue>().unwrap())
+        .collect();
+    let cors_layer = CorsLayer::new()
+        .allow_origin(allowed_origins)
+        .allow_methods([Method::POST])
+        .allow_headers(vec![AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
 
-    HttpServer::new(move || {
-        let mut cors = Cors::default();
-        for allowed_origin in allowed_origins.iter() {
-            cors = cors.allowed_origin(allowed_origin);
-        }
-        cors = cors.allowed_methods([http::Method::POST]).allowed_headers([
-            http::header::AUTHORIZATION,
-            http::header::ACCEPT,
-            http::header::CONTENT_TYPE,
-        ]);
-        App::new()
-            .app_data(web::Data::new(query_use_case.clone()))
-            .app_data(web::Data::new(schema.clone()))
-            .app_data(auth0_config.clone())
-            .wrap(Logger::default())
-            .wrap(cors)
-            .service(health)
-            .service(graphql_playground)
-            .route("/graphql", web::post().to(graphql::<QI, MI>))
-    })
-    .bind(("0.0.0.0", fetch_port()))?
-    .run()
-    .await
-}
+    // build our application with a single route
+    let app = Router::new()
+        .route("/", get(|| async { "OK" }))
+        .route("/graphql", post(graphql_handler::<QI, MI>))
+        .route("/graphql/playground", get(graphql_playground_handler))
+        .route("/health", get(|| async { "OK" }))
+        .with_state(state)
+        .layer(
+            ServiceBuilder::new()
+                .layer(Extension(query_use_case))
+                .layer(Extension(schema))
+                .layer(
+                    TraceLayer::new_for_http()
+                        .on_request(DefaultOnRequest::new().level(Level::INFO))
+                        .on_response(DefaultOnResponse::new().level(Level::INFO)),
+                ),
+        )
+        .layer(cors_layer);
 
-#[get("/health")]
-async fn health() -> impl Responder {
-    HttpResponse::Ok().body("OK")
+    let addr = SocketAddr::from(([0, 0, 0, 0], fetch_port()));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }
 
 fn fetch_port() -> u16 {
