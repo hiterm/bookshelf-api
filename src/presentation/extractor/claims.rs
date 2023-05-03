@@ -144,7 +144,11 @@ async fn fetch_jwks(domain: &str) -> Result<JwkSet, MyError> {
         .path_and_query("/.well-known/jwks.json")
         .build()
         .unwrap();
-    let response = reqwest::get(uri.to_string()).await;
+    let client = reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .build()
+        .unwrap();
+    let response = client.get(uri.to_string()).send().await;
     let response = match response {
         Ok(response) => response,
         Err(e) => {
