@@ -67,9 +67,9 @@ async fn main() {
                     TraceLayer::new_for_http()
                         .on_request(DefaultOnRequest::new().level(Level::INFO))
                         .on_response(DefaultOnResponse::new().level(Level::INFO)),
-                ),
-        )
-        .layer(cors_layer);
+                )
+                .layer(cors_layer),
+        );
 
     let addr = SocketAddr::from(([0, 0, 0, 0], fetch_port()));
     axum::Server::bind(&addr)
