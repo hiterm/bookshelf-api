@@ -187,7 +187,7 @@ impl InternalBookRepository {
             let author_ids: Vec<AuthorId> = row
                 .author_ids
                 .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
-                .unwrap_or_else(std::vec::Vec::new);
+                .unwrap_or_default();
             let isbn = Isbn::new(row.isbn)?;
             let read = ReadFlag::new(row.read);
             let owned = OwnedFlag::new(row.owned);
