@@ -65,3 +65,7 @@ Run server and access `/graphql/playground`.
 ```
 $ cargo run --bin gen_schema
 ```
+
+## Deploy to production
+
+Publish a new release.
