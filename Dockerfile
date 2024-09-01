@@ -15,7 +15,7 @@ RUN touch src/main.rs
 RUN cargo build --release
 
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 COPY --from=build-stage /bookshelf-api/target/release/bookshelf-api /
 
 RUN apt update
