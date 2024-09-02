@@ -23,7 +23,7 @@ impl AuthorId {
 
 impl Display for AuthorId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.id.to_hyphenated())
+        write!(f, "{}", self.id.hyphenated())
     }
 }
 
