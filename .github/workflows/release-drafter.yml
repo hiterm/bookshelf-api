@@ -16,8 +16,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Update Cargo.toml
         run: |
-          tag=${{ steps.release_drafter.outputs.tag_name }}
-          sed -i "s/^version = \".*\"/version = \"${tag#v}\"/" Cargo.toml
+          cargo set-version ${{ steps.release_drafter.outputs.tag_name }}
         continue-on-error: true
       - uses: stefanzweifel/git-auto-commit-action@v4
         with:
