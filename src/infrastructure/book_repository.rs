@@ -1,3 +1,5 @@
+use std::ops::DerefMut;
+
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
@@ -368,13 +370,13 @@ impl InternalBookRepository {
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(&mut *conn)
+            .execute(conn.deref_mut())
             .await?;
 
         let result = sqlx::query("DELETE FROM book WHERE user_id = $1 AND id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(&mut *conn)
+            .execute(conn.deref_mut())
             .await?;
 
         let rows_affected = result.rows_affected();
@@ -414,7 +416,10 @@ mod tests {
 
     use super::*;
     use sqlx::{postgres::PgPoolOptions, Postgres, Transaction};
-    use time::{date, time, PrimitiveDateTime};
+    use time::{
+        macros::{date, time},
+        PrimitiveDateTime,
+    };
 
     #[tokio::test]
     #[ignore] // Depends on PostgreSQL
@@ -540,7 +545,7 @@ mod tests {
         let db_url = fetch_database_url();
         let pool = PgPoolOptions::new()
             .max_connections(5)
-            .connect_timeout(Duration::from_secs(1))
+            .acquire_timeout(Duration::from_secs(1))
             .connect(&db_url)
             .await?;
 

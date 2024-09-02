@@ -78,7 +78,7 @@ mod tests {
         let db_url = fetch_database_url();
         let pool = PgPoolOptions::new()
             .max_connections(5)
-            .connect_timeout(Duration::from_secs(1))
+            .acquire_timeout(Duration::from_secs(1))
             .connect(&db_url)
             .await?;
         let mut tx = pool.begin().await?;
