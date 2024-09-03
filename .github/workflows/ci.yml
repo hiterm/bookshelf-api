@@ -34,9 +34,12 @@ jobs:
     name: Test Image Building
     runs-on: ubuntu-latest
     steps:
+      - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
           push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   fmt:
     name: Rustfmt
