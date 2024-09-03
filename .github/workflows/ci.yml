@@ -30,6 +30,14 @@ jobs:
       - run: sqlx migrate run
       - run: cargo test -- --include-ignored
 
+  test-image-building:
+    name: Test Image Building
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/build-push-action@v6
+        with:
+          push: false
+
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
