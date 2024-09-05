@@ -402,63 +402,69 @@ impl InternalBookRepository {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
 
     use crate::{
-        domain::entity::{
-            author::{Author, AuthorName},
-            user::User,
+        domain::{
+            entity::{
+                author::{Author, AuthorName},
+                user::User,
+            },
+            repository::{author_repository::AuthorRepository, user_repository::UserRepository},
         },
         infrastructure::{
-            author_repository::InternalAuthorRepository, user_repository::InternalUserRepository,
+            author_repository::PgAuthorRepository, user_repository::PgUserRepository,
         },
     };
 
     use super::*;
-    use sqlx::{postgres::PgPoolOptions, Postgres, Transaction};
     use time::{
         macros::{date, time},
         PrimitiveDateTime,
     };
 
-    #[tokio::test]
+    #[sqlx::test]
     #[ignore] // Depends on PostgreSQL
-    async fn test_create_and_find_by_id() -> anyhow::Result<()> {
-        let mut tx = prepare_tx().await?;
-        let user_id = prepare_user(&mut tx).await?;
-        let author_ids = prepare_authors1(&user_id, &mut tx).await?;
+    async fn test_create_and_find_by_id(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
 
-        let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
+        let user_id = prepare_user(&user_repository).await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+
+        let all_books = book_repository.find_all(&user_id).await?;
         assert_eq!(all_books.len(), 0);
 
         let book = book_entity1(&author_ids)?;
-        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
+        book_repository.create(&user_id, &book).await?;
 
-        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book));
-
-        tx.rollback().await?;
 
         Ok(())
     }
 
-    #[tokio::test]
+    #[sqlx::test]
     #[ignore] // Depends on PostgreSQL
-    async fn test_create_and_find_all() -> anyhow::Result<()> {
-        let mut tx = prepare_tx().await?;
-        let user_id = prepare_user(&mut tx).await?;
-        let author_ids1 = prepare_authors1(&user_id, &mut tx).await?;
-        let author_ids2 = prepare_authors2(&user_id, &mut tx).await?;
+    async fn test_create_and_find_all(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
 
-        let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
+        let user_id = prepare_user(&user_repository).await?;
+
+        let author_ids1 = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids2 = prepare_authors2(&user_id, &author_repository).await?;
+
+        let all_books = book_repository.find_all(&user_id).await?;
         assert_eq!(all_books.len(), 0);
 
         let book1 = book_entity1(&author_ids1)?;
         let book2 = book_entity2(&author_ids2)?;
-        InternalBookRepository::create(&user_id, &book1, &mut tx).await?;
-        InternalBookRepository::create(&user_id, &book2, &mut tx).await?;
+        book_repository.create(&user_id, &book1).await?;
+        book_repository.create(&user_id, &book2).await?;
 
-        let all_books = InternalBookRepository::find_all(&user_id, &mut tx).await?;
+        let all_books = book_repository.find_all(&user_id).await?;
         assert_eq!(all_books.len(), 2);
         if all_books[0] == book1 {
             assert_eq!(all_books[0], book1);
@@ -468,21 +474,22 @@ mod tests {
             assert_eq!(all_books[1], book1);
         }
 
-        tx.rollback().await?;
-
         Ok(())
     }
 
-    #[tokio::test]
+    #[sqlx::test]
     #[ignore] // Depends on PostgreSQL
-    async fn test_update() -> anyhow::Result<()> {
+    async fn test_update(pool: PgPool) -> anyhow::Result<()> {
         // setup
-        let mut tx = prepare_tx().await?;
-        let user_id = prepare_user(&mut tx).await?;
-        let mut author_ids = prepare_authors1(&user_id, &mut tx).await?;
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository).await?;
+        let mut author_ids = prepare_authors1(&user_id, &author_repository).await?;
         let mut book = book_entity1(&author_ids)?;
-        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
-        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        book_repository.create(&user_id, &book).await?;
+        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book.clone()));
 
         // update
@@ -493,96 +500,69 @@ mod tests {
             another_author_id.clone(),
             AuthorName::new("another_author1".to_owned())?,
         )?;
-        InternalAuthorRepository::create(&user_id, &another_author, &mut tx).await?;
+        author_repository.create(&user_id, &another_author).await?;
         author_ids.push(another_author_id);
         book.set_author_ids(author_ids);
-        InternalBookRepository::update(&user_id, &book, &mut tx).await?;
+        book_repository.update(&user_id, &book).await?;
 
-        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book.clone()));
-
-        tx.rollback().await?;
 
         Ok(())
     }
 
-    #[tokio::test]
+    #[sqlx::test]
     #[ignore] // Depends on PostgreSQL
-    async fn test_delete() -> anyhow::Result<()> {
-        // setup
-        let mut tx = prepare_tx().await?;
-        let user_id = prepare_user(&mut tx).await?;
-        let author_ids = prepare_authors1(&user_id, &mut tx).await?;
+    async fn test_delete(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository).await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        InternalBookRepository::create(&user_id, &book, &mut tx).await?;
-        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        book_repository.create(&user_id, &book).await?;
+        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book.clone()));
 
-        InternalBookRepository::delete(&user_id, book.id(), &mut tx).await?;
-        let actual = InternalBookRepository::find_by_id(&user_id, book.id(), &mut tx).await?;
+        book_repository.delete(&user_id, book.id()).await?;
+        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, None);
 
-        tx.rollback().await?;
-
         Ok(())
     }
 
-    fn fetch_database_url() -> String {
-        use std::env::VarError;
-
-        match std::env::var("DATABASE_URL") {
-            Ok(s) => s,
-            Err(VarError::NotPresent) => panic!("Environment variable DATABASE_URL is required."),
-            Err(VarError::NotUnicode(_)) => {
-                panic!("Environment variable DATABASE_URL is not unicode.")
-            }
-        }
-    }
-
-    async fn prepare_tx() -> Result<Transaction<'static, Postgres>, DomainError> {
-        dotenv::dotenv().ok();
-
-        let db_url = fetch_database_url();
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .acquire_timeout(Duration::from_secs(1))
-            .connect(&db_url)
-            .await?;
-
-        Ok(pool.begin().await?)
-    }
-
-    async fn prepare_user(tx: &mut PgConnection) -> Result<UserId, DomainError> {
+    async fn prepare_user(repository: &PgUserRepository) -> Result<UserId, DomainError> {
         let user_id = UserId::new(String::from("user1"))?;
         let user = User::new(user_id.clone());
-        InternalUserRepository::create(&user, tx).await?;
+        repository.create(&user).await?;
 
         Ok(user_id)
     }
 
     async fn prepare_authors1(
         user_id: &UserId,
-        tx: &mut PgConnection,
+        repository: &PgAuthorRepository,
     ) -> Result<Vec<AuthorId>, DomainError> {
         let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
         let author_id2 = AuthorId::try_from("925aaf96-64c7-44be-85f8-767a20b2c20c")?;
         let author_ids = vec![author_id1.clone(), author_id2.clone()];
         let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
         let author2 = Author::new(author_id2, AuthorName::new("author2".to_owned())?)?;
-        InternalAuthorRepository::create(user_id, &author1, tx).await?;
-        InternalAuthorRepository::create(user_id, &author2, tx).await?;
+        repository.create(user_id, &author1).await?;
+        repository.create(user_id, &author2).await?;
 
         Ok(author_ids)
     }
 
     async fn prepare_authors2(
         user_id: &UserId,
-        tx: &mut PgConnection,
+        repository: &PgAuthorRepository,
     ) -> Result<Vec<AuthorId>, DomainError> {
         let author_id1 = AuthorId::try_from("93090e87-b7a1-403c-974c-d74d881e83b9")?;
         let author_ids = vec![author_id1.clone()];
         let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
-        InternalAuthorRepository::create(user_id, &author1, tx).await?;
+        repository.create(user_id, &author1).await?;
 
         Ok(author_ids)
     }
