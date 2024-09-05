@@ -154,6 +154,7 @@ impl InternalAuthorRepository {
     }
 }
 
+#[cfg(feature = "test-with-database")]
 #[cfg(test)]
 mod tests {
 
@@ -165,7 +166,6 @@ mod tests {
     use super::*;
 
     #[sqlx::test]
-    #[ignore] // Depends on PostgreSQL
     async fn create_and_find_by_id(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -185,7 +185,6 @@ mod tests {
     }
 
     #[sqlx::test]
-    #[ignore] // Depends on PostgreSQL
     async fn create_and_find_all(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -211,7 +210,6 @@ mod tests {
     }
 
     #[sqlx::test]
-    #[ignore] // Depends on PostgreSQL
     async fn create_and_find_by_ids_as_hash_map(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());

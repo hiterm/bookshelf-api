@@ -63,12 +63,12 @@ impl InternalUserRepository {
     }
 }
 
+#[cfg(feature = "test-with-database")]
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[sqlx::test]
-    #[ignore] // Depends on PostgreSQL
     async fn test_user_repository(pool: PgPool) -> anyhow::Result<()> {
         dotenv::dotenv().ok();
 

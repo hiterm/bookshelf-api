@@ -25,7 +25,7 @@ jobs:
       - run: pg_isready
       - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - run: sudo -u postgres createdb --owner=bookshelf bookshelf
-      - run: cargo test -- --include-ignored
+      - run: cargo test --all-features
 
   test-image-building:
     name: Test Image Building

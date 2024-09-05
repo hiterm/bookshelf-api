@@ -400,6 +400,7 @@ impl InternalBookRepository {
     }
 }
 
+#[cfg(feature = "test-with-database")]
 #[cfg(test)]
 mod tests {
 
@@ -423,7 +424,6 @@ mod tests {
     };
 
     #[sqlx::test]
-    #[ignore] // Depends on PostgreSQL
     async fn test_create_and_find_by_id(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -445,7 +445,6 @@ mod tests {
     }
 
     #[sqlx::test]
-    #[ignore] // Depends on PostgreSQL
     async fn test_create_and_find_all(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -478,7 +477,6 @@ mod tests {
     }
 
     #[sqlx::test]
-    #[ignore] // Depends on PostgreSQL
     async fn test_update(pool: PgPool) -> anyhow::Result<()> {
         // setup
         let user_repository = PgUserRepository::new(pool.clone());
@@ -512,7 +510,6 @@ mod tests {
     }
 
     #[sqlx::test]
-    #[ignore] // Depends on PostgreSQL
     async fn test_delete(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
