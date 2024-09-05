@@ -34,7 +34,25 @@ jobs:
     name: Test Image Building
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: Cache
+        uses: actions/cache@v3
+        id: cache
+        with:
+          path: |
+            usr-local-cargo-registry
+            app-target
+          key: cache-${{ hashFiles('Dockerfile') }}
+      - name: inject cache into docker
+        uses: reproducible-containers/buildkit-cache-dance@v3.1.0
+        with:
+          cache-map: |
+            {
+              "usr-local-cargo-registry": "/usr/local/cargo/registry",
+              "app-target": "/app/target"
+            }
+          skip-extraction: ${{ steps.cache.outputs.cache-hit }}
       - uses: docker/build-push-action@v6
         with:
           push: false
