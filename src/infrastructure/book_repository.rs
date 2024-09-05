@@ -409,14 +409,10 @@ mod tests {
                 author::{Author, AuthorName},
                 user::User,
             },
-            repository::{
-                author_repository::AuthorRepository,
-                user_repository::UserRepository,
-            },
+            repository::{author_repository::AuthorRepository, user_repository::UserRepository},
         },
         infrastructure::{
-            author_repository::PgAuthorRepository,
-            user_repository::PgUserRepository,
+            author_repository::PgAuthorRepository, user_repository::PgUserRepository,
         },
     };
 
