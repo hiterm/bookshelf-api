@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use sqlx::{PgConnection, PgPool};
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::domain::{
@@ -34,8 +34,13 @@ impl PgAuthorRepository {
 #[async_trait]
 impl AuthorRepository for PgAuthorRepository {
     async fn create(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalAuthorRepository::create(user_id, author, &mut conn).await?;
+        sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
+            .bind(author.id().to_uuid())
+            .bind(user_id.as_str())
+            .bind(author.name().as_str())
+            .execute(&self.pool)
+            .await?;
+
         Ok(())
     }
     async fn find_by_id(
@@ -43,52 +48,11 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<Option<Author>, DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalAuthorRepository::find_by_id(user_id, author_id, &mut conn).await
-    }
-
-    async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalAuthorRepository::find_all(user_id, &mut conn).await
-    }
-
-    async fn find_by_ids_as_hash_map(
-        &self,
-        user_id: &UserId,
-        author_ids: &[AuthorId],
-    ) -> Result<HashMap<AuthorId, Author>, DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalAuthorRepository::find_by_ids_as_hash_map(user_id, author_ids, &mut conn).await
-    }
-}
-
-pub struct InternalAuthorRepository {}
-
-impl InternalAuthorRepository {
-    pub async fn create(
-        user_id: &UserId,
-        author: &Author,
-        conn: &mut PgConnection,
-    ) -> Result<(), DomainError> {
-        sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
-            .bind(author.id().to_uuid())
-            .bind(user_id.as_str())
-            .bind(author.name().as_str())
-            .execute(conn)
-            .await?;
-        Ok(())
-    }
-
-    pub async fn find_by_id(
-        user_id: &UserId,
-        author_id: &AuthorId,
-        conn: &mut PgConnection,
-    ) -> Result<Option<Author>, DomainError> {
         let row: Option<AuthorRow> =
             sqlx::query_as("SELECT * FROM author WHERE id = $1 AND user_id = $2")
                 .bind(author_id.to_uuid())
                 .bind(user_id.as_str())
-                .fetch_optional(conn)
+                .fetch_optional(&self.pool)
                 .await?;
 
         row.map(|row| -> Result<Author, DomainError> {
@@ -99,14 +63,11 @@ impl InternalAuthorRepository {
         .transpose()
     }
 
-    async fn find_all(
-        user_id: &UserId,
-        conn: &mut PgConnection,
-    ) -> Result<Vec<Author>, DomainError> {
+    async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError> {
         let authors: Result<Vec<Author>, DomainError> =
             sqlx::query_as("SELECT * FROM author WHERE user_id = $1 ORDER BY name ASC")
                 .bind(user_id.as_str())
-                .fetch(conn)
+                .fetch(&self.pool)
                 .map(
                     |row: Result<AuthorRow, sqlx::Error>| -> Result<Author, DomainError> {
                         let row = row?;
@@ -123,9 +84,9 @@ impl InternalAuthorRepository {
     }
 
     async fn find_by_ids_as_hash_map(
+        &self,
         user_id: &UserId,
         author_ids: &[AuthorId],
-        conn: &mut PgConnection,
     ) -> Result<HashMap<AuthorId, Author>, DomainError> {
         let author_ids: Vec<Uuid> = author_ids
             .iter()
@@ -137,7 +98,7 @@ impl InternalAuthorRepository {
         )
         .bind(user_id.as_str())
         .bind(author_ids)
-        .fetch(conn)
+        .fetch(&self.pool)
         .map(
             |row: Result<AuthorRow, sqlx::Error>| -> Result<(AuthorId, Author), DomainError> {
                 let row = row?;
