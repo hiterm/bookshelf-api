@@ -53,7 +53,7 @@ With DB
 
 ```
 $ docker-compose -f docker-compose-test.yml up -d
-$ cargo test -- --include-ignored
+$ cargo test --all-features
 ```
 
 ## GraphQL Playground
