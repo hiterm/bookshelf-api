@@ -1,8 +1,6 @@
-use std::ops::DerefMut;
-
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use sqlx::{PgConnection, PgPool, Postgres, Transaction};
+use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -48,52 +46,6 @@ impl PgBookRepository {
 #[async_trait]
 impl BookRepository for PgBookRepository {
     async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-        InternalBookRepository::create(user_id, book, &mut tx).await?;
-        tx.commit().await?;
-
-        Ok(())
-    }
-
-    async fn find_by_id(
-        &self,
-        user_id: &UserId,
-        book_id: &BookId,
-    ) -> Result<Option<Book>, DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalBookRepository::find_by_id(user_id, book_id, &mut conn).await
-    }
-
-    async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
-        let mut conn = self.pool.acquire().await?;
-        InternalBookRepository::find_all(user_id, &mut conn).await
-    }
-
-    async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-        InternalBookRepository::update(user_id, book, &mut tx).await?;
-        tx.commit().await?;
-
-        Ok(())
-    }
-
-    async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-        InternalBookRepository::delete(user_id, book_id, &mut tx).await?;
-        tx.commit().await?;
-
-        Ok(())
-    }
-}
-
-pub struct InternalBookRepository {}
-
-impl InternalBookRepository {
-    pub async fn create(
-        user_id: &UserId,
-        book: &Book,
-        conn: &mut PgConnection,
-    ) -> Result<(), DomainError> {
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -121,7 +73,7 @@ impl InternalBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
-        .execute(&mut *conn)
+        .execute(&self.pool)
         .await?;
 
         let author_ids: Vec<Uuid> = book
@@ -138,16 +90,16 @@ impl InternalBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&mut *conn)
+        .execute(&self.pool)
         .await?;
 
         Ok(())
     }
 
     async fn find_by_id(
+        &self,
         user_id: &UserId,
         book_id: &BookId,
-        conn: &mut PgConnection,
     ) -> Result<Option<Book>, DomainError> {
         let book_row: Option<BookRow> = sqlx::query_as(
             "WITH book_of_user AS(
@@ -180,7 +132,7 @@ impl InternalBookRepository {
         )
         .bind(user_id.as_str())
         .bind(book_id.to_uuid())
-        .fetch_optional(conn)
+        .fetch_optional(&self.pool)
         .await?;
 
         let book = book_row.map(|row| {
@@ -216,7 +168,7 @@ impl InternalBookRepository {
         Ok(book)
     }
 
-    async fn find_all(user_id: &UserId, conn: &mut PgConnection) -> Result<Vec<Book>, DomainError> {
+    async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
         let books: Result<Vec<Book>, DomainError> = sqlx::query_as(
             "WITH book_of_user AS(
                 SELECT
@@ -246,7 +198,7 @@ impl InternalBookRepository {
                 ON  book_of_user.id = authors_of_book_and_user.book_id",
         )
         .bind(user_id.as_str())
-        .fetch(conn)
+        .fetch(&self.pool)
         .map(
             |row: Result<BookRow, sqlx::Error>| -> Result<Book, DomainError> {
                 let row = row?;
@@ -284,11 +236,7 @@ impl InternalBookRepository {
         books
     }
 
-    async fn update(
-        user_id: &UserId,
-        book: &Book,
-        conn: &mut PgConnection,
-    ) -> Result<(), DomainError> {
+    async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
         let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
@@ -314,7 +262,7 @@ impl InternalBookRepository {
         .bind(book.created_at())
         .bind(book.updated_at())
         .bind(book.id().to_uuid())
-        .execute(&mut *conn)
+        .execute(&self.pool)
         .await?;
 
         let rows_affected = result.rows_affected();
@@ -344,7 +292,7 @@ impl InternalBookRepository {
         sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
             .bind(book.id().to_uuid())
             .bind(&author_ids)
-            .execute(&mut *conn)
+            .execute(&self.pool)
             .await?;
 
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
@@ -356,27 +304,23 @@ impl InternalBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&mut *conn)
+        .execute(&self.pool)
         .await?;
 
         Ok(())
     }
 
-    async fn delete(
-        user_id: &UserId,
-        book_id: &BookId,
-        conn: &mut Transaction<'_, Postgres>,
-    ) -> Result<(), DomainError> {
+    async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(conn.deref_mut())
+            .execute(&self.pool)
             .await?;
 
         let result = sqlx::query("DELETE FROM book WHERE user_id = $1 AND id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(conn.deref_mut())
+            .execute(&self.pool)
             .await?;
 
         let rows_affected = result.rows_affected();
