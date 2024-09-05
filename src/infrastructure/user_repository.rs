@@ -66,47 +66,27 @@ impl InternalUserRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
-    use sqlx::postgres::PgPoolOptions;
-
-    #[tokio::test]
+    #[sqlx::test]
     #[ignore] // Depends on PostgreSQL
-    async fn test_user_repository() -> anyhow::Result<()> {
+    async fn test_user_repository(pool: PgPool) -> anyhow::Result<()> {
         dotenv::dotenv().ok();
 
-        let db_url = fetch_database_url();
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .acquire_timeout(Duration::from_secs(1))
-            .connect(&db_url)
-            .await?;
-        let mut tx = pool.begin().await?;
+        let repository = PgUserRepository::new(pool);
+
+        // let mut tx = pool.begin().await?;
 
         let id = UserId::new(String::from("foo"))?;
         let user = User::new(id.clone());
 
-        let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx).await?;
+        let fetched_user = repository.find_by_id(&id).await?;
         assert!(fetched_user.is_none());
 
-        InternalUserRepository::create(&user, &mut tx).await?;
+        repository.create(&user).await?;
 
-        let fetched_user = InternalUserRepository::find_by_id(&id, &mut tx).await?;
+        let fetched_user = repository.find_by_id(&id).await?;
         assert_eq!(fetched_user, Some(user));
 
-        tx.rollback().await?;
         Ok(())
-    }
-
-    fn fetch_database_url() -> String {
-        use std::env::VarError;
-
-        match std::env::var("DATABASE_URL") {
-            Ok(s) => s,
-            Err(VarError::NotPresent) => panic!("Environment variable DATABASE_URL is required."),
-            Err(VarError::NotUnicode(_)) => {
-                panic!("Environment variable DATABASE_URL is not unicode.")
-            }
-        }
     }
 }
