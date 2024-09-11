@@ -16,7 +16,7 @@ jobs:
     name: Test Suite
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
+      DATABASE_URL: postgres://bookshelf:password@localhost:5432/
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.80.1
@@ -24,7 +24,6 @@ jobs:
       - run: sudo systemctl start postgresql.service
       - run: pg_isready
       - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
-      - run: sudo -u postgres createdb --owner=bookshelf bookshelf
       - run: cargo test --all-features
 
   test-image-building:
