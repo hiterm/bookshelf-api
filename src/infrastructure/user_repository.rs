@@ -55,8 +55,6 @@ mod tests {
 
         let repository = PgUserRepository::new(pool);
 
-        // let mut tx = pool.begin().await?;
-
         let id = UserId::new(String::from("foo"))?;
         let user = User::new(id.clone());
 
