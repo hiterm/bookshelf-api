@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use async_graphql::dataloader::Loader;
-use async_trait::async_trait;
 
 use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
@@ -24,7 +23,6 @@ impl<QUC> AuthorLoader<QUC> {
     }
 }
 
-#[async_trait]
 impl<QUC> Loader<String> for AuthorLoader<QUC>
 where
     QUC: QueryUseCase,
