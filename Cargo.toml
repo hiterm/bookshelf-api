@@ -12,16 +12,17 @@ test-with-database = []
 [dependencies]
 anyhow = { version = "1.0.56", features = ["backtrace"] }
 async-graphql = { version = "7.0.10", features = ["dataloader"] }
-async-graphql-axum = "5.0.7"
+async-graphql-axum = "7.0.11"
 async-trait = "0.1.52"
-axum = { version = "0.6.17", features = ["headers"] }
-axum-macros = "0.3.7"
+axum = { version = "0.7.7" }
+axum-extra = { version = "0.9.4", features = ["typed-header"] }
+axum-macros = "0.4.2"
 derive_more = "0.99"
 dotenv = "0.15.0"
 envy = "0.4.2"
 futures-util = "0.3.21"
 getset = "0.1.2"
-http = "0.2.9"
+http = "1.1.0"
 jsonwebtoken = "8.0.1"
 log = "0.4.14"
 mockall = "0.11.0"
@@ -40,8 +41,8 @@ thiserror = "1.0.30"
 time = "0.3.36"
 time-macros = "0.2.4"
 tokio = { version = "1.18.5", features = ["full"] }
-tower = "0.4.13"
-tower-http = { version = "0.4.0", features = ["cors", "trace"] }
+tower = "0.5.1"
+tower-http = { version = "0.6.1", features = ["cors", "trace"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 uuid = { version = "1.10.0", features = ["v4"] }

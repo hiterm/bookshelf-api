@@ -72,10 +72,8 @@ async fn main() {
         );
 
     let addr = SocketAddr::from(([0, 0, 0, 0], fetch_port()));
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
 fn fetch_port() -> u16 {

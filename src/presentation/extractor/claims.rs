@@ -1,11 +1,12 @@
 use crate::presentation::app_state::AppState;
 use async_trait::async_trait;
-use axum::headers::authorization::Bearer;
-use axum::headers::Authorization;
+use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
-use axum::{extract::FromRequestParts, TypedHeader};
 use axum::{Json, RequestPartsExt};
+use axum_extra::headers::authorization::Bearer;
+use axum_extra::headers::Authorization;
+use axum_extra::TypedHeader;
 use derive_more::Display;
 use http::{StatusCode, Uri};
 use jsonwebtoken::{
