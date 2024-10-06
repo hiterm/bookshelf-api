@@ -29,9 +29,6 @@ EOF
 
 FROM debian:bookworm-slim
 
-RUN apt update
-RUN apt install -y libssl-dev
-
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/develop/develop-images/dockerfile_best-practices/   #user
 ARG UID=10001
