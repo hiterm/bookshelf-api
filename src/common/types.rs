@@ -3,7 +3,7 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Display)]
 pub enum BookFormat {
-    #[display(fmt = "eBook")]
+    #[display("eBook")]
     EBook,
     Printed,
     Unknown,

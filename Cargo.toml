@@ -17,7 +17,7 @@ async-trait = "0.1.83"
 axum = { version = "0.7.7" }
 axum-extra = { version = "0.9.4", features = ["typed-header"] }
 axum-macros = "0.4.2"
-derive_more = "0.99"
+derive_more = { version = "1.0", features = ["display", "error"] }
 dotenv = "0.15.0"
 envy = "0.4.2"
 futures-util = "0.3.31"
