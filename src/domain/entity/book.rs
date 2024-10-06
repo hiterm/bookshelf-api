@@ -61,7 +61,7 @@ static ISBN_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(^$|^(\d-?){12}\d$)")
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct Isbn {
     // TODO: Validate check digit
-    #[validate(regex = "ISBN_REGEX")]
+    #[validate(regex(path = *ISBN_REGEX))]
     value: String,
 }
 

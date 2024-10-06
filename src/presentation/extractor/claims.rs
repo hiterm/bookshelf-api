@@ -34,13 +34,13 @@ impl Default for Auth0Config {
 
 #[derive(Debug, Display)]
 pub enum ClientError {
-    #[display(fmt = "authentication")]
+    #[display("authentication")]
     Authentication,
-    #[display(fmt = "decode")]
+    #[display("decode")]
     Decode(jsonwebtoken::errors::Error),
-    #[display(fmt = "not_found")]
+    #[display("not_found")]
     NotFound(String),
-    #[display(fmt = "unsupported_algorithm")]
+    #[display("unsupported_algorithm")]
     UnsupportedAlgortithm(AlgorithmParameters),
 }
 
@@ -133,7 +133,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
 }
 
 #[derive(Debug, Display, derive_more::Error)]
-#[display(fmt = "my error: {}", message)]
+#[display("my error: {message}")]
 struct MyError {
     message: String,
 }
@@ -186,5 +186,21 @@ impl IntoResponse for AuthError {
             "error": error_message,
         }));
         (status, body).into_response()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::presentation::extractor::claims::MyError;
+
+    #[test]
+    fn my_error_to_string() {
+        assert_eq!(
+            MyError {
+                message: "test".to_string()
+            }
+            .to_string(),
+            "my error: test"
+        );
     }
 }
