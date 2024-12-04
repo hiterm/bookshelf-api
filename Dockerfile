@@ -1,6 +1,6 @@
 # https://docs.docker.com/language/rust/develop/
 
-FROM rust:1.80.1 AS build-stage
+FROM rust:1.83.0 AS build-stage
 
 ARG APP_NAME=bookshelf-api
 
