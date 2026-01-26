@@ -23,6 +23,8 @@ jobs:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
       AUTH0_AUDIENCE: test-audience
       AUTH0_DOMAIN: example.com
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.93.0
@@ -31,6 +33,8 @@ jobs:
         run: |
           until pg_isready -h localhost -p 5432; do sleep 1; done
       - name: Create DB and user
+        env:
+          PGPASSWORD: password
         run: |
           psql -h localhost -U postgres -c "CREATE USER IF NOT EXISTS bookshelf WITH PASSWORD 'password';"
           psql -h localhost -U postgres -c "CREATE DATABASE IF NOT EXISTS bookshelf OWNER bookshelf;"
