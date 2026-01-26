@@ -8,16 +8,19 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 fn spawn_server() -> Child {
-    // Start the application binary. It expects PORT, DATABASE_URL and ALLOWED_ORIGINS env vars.
+    // Start the application binary via `cargo run`.
+    // The test process inherits env vars (PORT, DATABASE_URL, ALLOWED_ORIGINS).
     Command::new("cargo")
         .args(&["run", "--bin", "bookshelf-api"])
         .spawn()
-        .expect("failed to spawn app")
+        .expect("failed to spawn app via cargo run")
 }
 
 async fn wait_for_server(url: &str) {
     let client = Client::new();
-    for _ in 0..50 {
+    // Wait up to ~30 seconds for the server to become ready. Building the binary
+    // and starting it inside tests can take a while, so allow a longer timeout.
+    for _ in 0..150 {
         if let Ok(resp) = client.get(url).send().await {
             if resp.status().is_success() {
                 return;
