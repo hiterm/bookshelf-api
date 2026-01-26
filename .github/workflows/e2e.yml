@@ -1,0 +1,50 @@
+name: E2E tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.83.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5432; do sleep 1; done
+      - name: Create DB and user
+        run: |
+          psql -h localhost -U postgres -c "CREATE USER IF NOT EXISTS bookshelf WITH PASSWORD 'password';"
+          psql -h localhost -U postgres -c "CREATE DATABASE IF NOT EXISTS bookshelf OWNER bookshelf;"
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
+      - name: Prepare database
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          sqlx database create
+          sqlx migrate run
+          psql "$DATABASE_URL" -f testdata/testdata.sql || true
+      - name: Run tests
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          PORT: 8080
+          ALLOWED_ORIGINS: 'http://localhost:8080'
+        run: |
+          cargo test --features test-with-database --test e2e -- --test-threads=1
