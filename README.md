@@ -16,45 +16,58 @@ https://auth0.com/developers/hub/code-samples/api/actix-web-rust/basic-authoriza
 ### Setup .env
 
 ```sh
-$ mv .env.template .env
-$ vim .env  # Fill your value
+mv .env.template .env
+vim .env  # Fill your value
 ```
 
 ### Run migration
 
-```
-$ cargo install sqlx-cli
-$ sqlx migrate run
+```sh
+cargo install sqlx-cli
+sqlx migrate run
 ```
 
 ### Start server
 
-```
-$ cargo run
+```sh
+cargo run
 ```
 
 ### Run via Docker Compose
 
 ```sh
-$ mv .env.template .env.docker
-$ vim .env.docker  # Fill your value
+cp .env.template .env.docker
+vim .env.docker  # Fill your value
 ```
 
-```
-$ docker-compose up --build
+```sh
+docker-compose up --build
 ```
 
 ## Test
 
-```
-$ cargo test
+```sh
+cargo test
 ```
 
-With DB
+## E2E test
 
 ```
-$ docker-compose -f docker-compose-test.yml up -d
-$ cargo test --all-features
+# 1) 起動
+cp .env.template .env.docker
+docker compose -f docker-compose-test.yml up -d
+```
+
+# 2) データベース準備（必要なら sqlx をインストール）
+cargo install sqlx-cli --no-default-features --features postgres,rustls
+sqlx database create
+sqlx migrate run
+docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE ROLE bookshelf WITH LOGIN PASSWORD 'password';"
+docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE DATABASE bookshelf OWNER bookshelf;"
+
+# 3) E2E 実行
+PORT=8080 AUTH0_AUDIENCE=test-audience AUTH0_DOMAIN=example.com DATABASE_URL=postgres://bookshelf:password@localhost:5432/bookshelf \
+  cargo test --test e2e -p bookshelf-e2e -- --test-threads=1
 ```
 
 ## GraphQL Playground
@@ -64,7 +77,7 @@ Run server and access `/graphql/playground`.
 ## Generate GraphQL schema
 
 ```
-$ cargo run --bin gen_schema
+cargo run --bin gen_schema
 ```
 
 ## Deploy to production
