@@ -40,7 +40,6 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run
-          psql "$DATABASE_URL" -f testdata/testdata.sql
       - name: Run tests
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
