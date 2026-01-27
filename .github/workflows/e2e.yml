@@ -23,7 +23,11 @@ jobs:
       - name: Start Postgres service
         run: sudo systemctl start postgresql.service
       - name: Wait for Postgres
-        run: pg_isready
+        run: |
+          for i in {1..30}; do
+            pg_isready && break
+            sleep 1
+          done
       - name: Create DB and user
         run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - name: Create DB
