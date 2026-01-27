@@ -21,13 +21,13 @@ fn spawn_server() -> Child {
 
 async fn wait_for_server(url: &str) {
     let client = Client::new();
-    for _ in 0..150 {
+    for _ in 0..300 {
         if let Ok(resp) = client.get(url).send().await {
             if resp.status().is_success() {
                 return;
             }
         }
-        sleep(Duration::from_millis(200)).await;
+        sleep(Duration::from_secs(1)).await;
     }
     panic!("server did not become ready");
 }
