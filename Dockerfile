@@ -17,6 +17,7 @@ WORKDIR ${BUILDDIR}
 RUN --mount=type=bind,source=src,target=src \
     --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
     --mount=type=bind,source=Cargo.lock,target=Cargo.lock \
+    --mount=type=bind,source=e2e,target=e2e \
     --mount=type=cache,target=${BUILDDIR}/target/ \
     --mount=type=cache,target=/usr/local/cargo/registry/ \
     --mount=type=bind,source=migrations,target=migrations \
