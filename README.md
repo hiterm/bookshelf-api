@@ -52,11 +52,10 @@ cargo test
 
 ## E2E test
 
-```
+```sh
 # 1) 起動
 cp .env.template .env.docker
 docker compose -f docker-compose-test.yml up -d
-```
 
 # 2) データベース準備（必要なら sqlx をインストール）
 cargo install sqlx-cli --no-default-features --features postgres,rustls
