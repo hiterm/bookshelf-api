@@ -4,8 +4,8 @@
 #![cfg(test)]
 
 use reqwest::Client;
-use tokio::process::{Child, Command};
 use std::time::Duration;
+use tokio::process::{Child, Command};
 use tokio::time::sleep;
 
 fn spawn_server() -> Child {
