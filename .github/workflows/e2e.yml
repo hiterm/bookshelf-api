@@ -25,9 +25,13 @@ jobs:
       - name: Wait for Postgres
         run: |
           for i in {1..30}; do
-            pg_isready && break
+            if pg_isready; then
+              exit 0
+            fi
             sleep 1
           done
+          echo "::error::Postgres did not become ready in time" >&2
+          exit 1
       - name: Create DB and user
         run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - name: Create DB
