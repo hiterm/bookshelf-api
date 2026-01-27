@@ -10,15 +10,6 @@ jobs:
   e2e:
     name: End-to-end tests
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
       AUTH0_AUDIENCE: test-audience
@@ -29,15 +20,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.93.0
       - uses: Swatinem/rust-cache@v2
+      - name: Start Postgres service
+        run: sudo systemctl start postgresql.service
       - name: Wait for Postgres
-        run: |
-          until pg_isready -h localhost -p 5432; do sleep 1; done
+        run: pg_isready
       - name: Create DB and user
-        env:
-          PGPASSWORD: password
-        run: |
-          psql -h localhost -U postgres -c "CREATE USER IF NOT EXISTS bookshelf WITH PASSWORD 'password';"
-          psql -h localhost -U postgres -c "CREATE DATABASE IF NOT EXISTS bookshelf OWNER bookshelf;"
+        run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
+      - name: Create DB
+        run: sudo -u postgres createdb --owner=bookshelf bookshelf
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres,rustls
       - name: Prepare database
