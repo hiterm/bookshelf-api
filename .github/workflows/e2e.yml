@@ -1,0 +1,55 @@
+name: E2E tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
+      AUTH0_AUDIENCE: test-audience
+      AUTH0_DOMAIN: example.com
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Start Postgres service
+        run: sudo systemctl start postgresql.service
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            if pg_isready; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Postgres did not become ready in time" >&2
+          exit 1
+      - name: Create DB and user
+        run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
+      - name: Create DB
+        run: sudo -u postgres createdb --owner=bookshelf bookshelf
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
+      - name: Prepare database
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          sqlx database create
+          sqlx migrate run
+      - name: Run tests
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          PORT: 8080
+          ALLOWED_ORIGINS: 'http://localhost:8080'
+          AUTH0_AUDIENCE: ${{ env.AUTH0_AUDIENCE }}
+          AUTH0_DOMAIN: ${{ env.AUTH0_DOMAIN }}
+        run: |
+          cargo test -p bookshelf-e2e -- --test-threads=1
