@@ -69,6 +69,12 @@ PORT=8080 AUTH0_AUDIENCE=test-audience AUTH0_DOMAIN=example.com DATABASE_URL=pos
   cargo test -p bookshelf-e2e -- --test-threads=1
 ```
 
+### token
+
+```
+auth0 test token --no-input deHinxoUNX5K43IOxbh1NZ2pLsJFUF1j -a https://test-bookshelf-api.hiterm.dev
+```
+
 ## GraphQL Playground
 
 Run server and access `/graphql/playground`.
