@@ -224,26 +224,26 @@ async fn ensure_user_registered() {
     let token = get_token();
     let query = r#"mutation { registerUser { id } }"#;
     let (status, response) = graphql_request(query, Some(&token)).await;
-    if status != 200 {
-        // Check if it's a duplicate key error (user already exists)
-        if let Some(errors) = response.get("errors") {
-            let error_message = errors
-                .as_array()
-                .and_then(|arr| arr.first())
-                .and_then(|e| e.get("message"))
-                .and_then(|m| m.as_str())
-                .unwrap_or("");
 
-            if !error_message.contains("duplicate key") {
-                panic!(
-                    "registerUser failed with non-duplicate error: {}",
-                    error_message
-                );
-            }
-            // Duplicate key means user already exists - that's OK
-        } else {
-            panic!("registerUser failed with status {} and no errors", status);
+    // Always check for GraphQL errors, regardless of HTTP status
+    if let Some(errors) = response.get("errors") {
+        let error_message = errors
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|e| e.get("message"))
+            .and_then(|m| m.as_str())
+            .unwrap_or("");
+
+        if !error_message.contains("duplicate key") {
+            panic!("registerUser failed with error: {}", error_message);
         }
+        // Duplicate key means user already exists - that's OK
+        return;
+    }
+
+    // If no GraphQL errors, HTTP status should be 200
+    if status != 200 {
+        panic!("registerUser failed with status {}", status);
     }
 }
 
@@ -374,34 +374,32 @@ async fn e2e_graphql_crud_book() {
             .as_bool(),
         Some(true)
     );
-    let (_, response) = graphql_request(&update_query, Some(&token)).await;
+
+    // Verify update by reading the book
+    let query = format!(
+        r#"{{ book(id: "{}") {{ id title read priority }} }}"#,
+        book_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await;
     let data = response.get("data").expect("data field must exist");
-    let update_result = data.get("updateBook").expect("updateBook field must exist");
+    let book = data.get("book").expect("book field must exist");
     assert_eq!(
-        update_result
-            .get("title")
-            .expect("title field must exist")
-            .as_str(),
+        book.get("title").expect("title field must exist").as_str(),
         Some("Updated Test Book")
     );
     assert_eq!(
-        update_result
-            .get("read")
-            .expect("read field must exist")
-            .as_bool(),
+        book.get("read").expect("read field must exist").as_bool(),
         Some(true)
     );
     assert_eq!(
-        update_result
-            .get("priority")
+        book.get("priority")
             .expect("priority field must exist")
             .as_i64(),
         Some(2)
     );
 
     // Delete book
-    let delete_query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
-    graphql_request(&delete_query, Some(&token)).await;
+    delete_test_book(book_id).await;
 
     // Verify deletion
     let query = format!(r#"{{ book(id: "{}") {{ id title }} }}"#, book_id);
