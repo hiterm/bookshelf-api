@@ -65,8 +65,14 @@ docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE DATABASE bookshelf OWNER bookshelf;"
 
 # 3) E2E 実行
-PORT=8080 AUTH0_AUDIENCE=test-audience AUTH0_DOMAIN=example.com DATABASE_URL=postgres://bookshelf:password@localhost:5432/bookshelf \
+PORT=8080 AUTH0_AUDIENCE=<your-auth0-audience> AUTH0_DOMAIN=<your-auth0-domain> DATABASE_URL=<your-database-url> \
   cargo test -p bookshelf-e2e -- --test-threads=1
+```
+
+### token
+
+```sh
+auth0 test token --no-input <client-id> -a <your-auth0-audience>
 ```
 
 ## GraphQL Playground
@@ -75,7 +81,7 @@ Run server and access `/graphql/playground`.
 
 ## Generate GraphQL schema
 
-```
+```sh
 cargo run --bin gen_schema
 ```
 

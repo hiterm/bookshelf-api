@@ -1,19 +1,16 @@
 name: E2E tests
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+on: [push]
 
 jobs:
   e2e:
     name: End-to-end tests
     runs-on: ubuntu-latest
+    environment: e2e-test
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
-      AUTH0_AUDIENCE: test-audience
-      AUTH0_DOMAIN: example.com
+      AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
+      AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
     permissions:
       contents: read
     steps:
@@ -44,12 +41,34 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run
+      - name: Get Auth0 Access Token
+        id: auth
+        run: |
+          set -euo pipefail
+          RESPONSE=$(curl --fail --silent --show-error \
+            --connect-timeout 10 --max-time 30 \
+            --request POST \
+            --url "https://${{ vars.AUTH0_DOMAIN }}/oauth/token" \
+            --header 'content-type: application/json' \
+            --data "{\"client_id\":\"${{ vars.AUTH0_CLIENT_ID }}\",\"client_secret\":\"${{ secrets.AUTH0_CLIENT_SECRET }}\",\"audience\":\"${{ vars.AUTH0_AUDIENCE }}\",\"grant_type\":\"client_credentials\"}" \
+          )
+          TOKEN=$(printf '%s' "$RESPONSE" | jq -r '.access_token // empty')
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Auth0 token acquisition failed: empty access_token"
+            exit 1
+          fi
+
+          # Mask token in logs
+          echo "::add-mask::$TOKEN"
+
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
       - name: Run tests
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           PORT: 8080
           ALLOWED_ORIGINS: 'http://localhost:8080'
-          AUTH0_AUDIENCE: ${{ env.AUTH0_AUDIENCE }}
-          AUTH0_DOMAIN: ${{ env.AUTH0_DOMAIN }}
+          AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
+          AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
+          TEST_JWT_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
-          cargo test -p bookshelf-e2e -- --test-threads=1
+          cargo test -p bookshelf-e2e -- --test-threads=1 --include-ignored
