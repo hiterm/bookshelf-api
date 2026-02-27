@@ -174,3 +174,270 @@ async fn e2e_me_endpoint_response_contains_required_fields() {
     let id = body["id"].as_str().unwrap();
     assert!(!id.is_empty(), "Response 'id' field must not be empty");
 }
+
+// ============================================
+// GraphQL E2E Tests
+// ============================================
+
+fn get_graphql_url() -> String {
+    let base_url = get_server_url();
+    format!("{}/graphql", base_url)
+}
+
+fn get_token() -> String {
+    std::env::var("TEST_JWT_TOKEN")
+        .expect("TEST_JWT_TOKEN environment variable must be set for this test")
+}
+
+async fn graphql_request(query: &str, token: Option<&str>) -> (u16, serde_json::Value) {
+    let client = Client::new();
+    let url = get_graphql_url();
+
+    let mut request = client
+        .post(&url)
+        .json(&serde_json::json!({ "query": query }));
+
+    if let Some(t) = token {
+        request = request.header("Authorization", format!("Bearer {}", t));
+    }
+
+    let res = request.send().await.expect("request failed");
+    let status = res.status().as_u16();
+    let body = res.json::<serde_json::Value>().await.expect("invalid JSON");
+    (status, body)
+}
+
+async fn delete_test_book(book_id: &str) {
+    let token = get_token();
+    let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
+    graphql_request(&query, Some(&token)).await;
+}
+
+async fn ensure_user_registered() {
+    let token = get_token();
+    let query = r#"mutation { registerUser { id } }"#;
+    graphql_request(query, Some(&token)).await;
+}
+
+#[tokio::test]
+async fn e2e_graphql_without_auth_returns_error() {
+    let query = r#"{ books }"#;
+    let (status, _response) = graphql_request(query, None).await;
+
+    assert_eq!(
+        status, 401,
+        "Expected 401 Unauthorized when accessing GraphQL without authentication"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_JWT_TOKEN environment variable"]
+async fn e2e_graphql_books_empty() {
+    let token = get_token();
+    let query = r#"{ books { id title } }"#;
+    let (_, response) = graphql_request(query, Some(&token)).await;
+
+    let data = response.get("data").expect("data field must exist");
+    let books = data.get("books").expect("books field must exist");
+    assert!(books.is_array(), "books should be an array");
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_JWT_TOKEN environment variable"]
+async fn e2e_graphql_crud_book() {
+    let token = get_token();
+    ensure_user_registered().await;
+
+    // Create book
+    let create_query = r#"
+        mutation {
+            createBook(bookData: {
+                title: "Test Book"
+                authorIds: []
+                isbn: "9783161484100"
+                read: false
+                owned: true
+                priority: 1
+                format: E_BOOK
+                store: KINDLE
+            }) {
+                id
+                title
+                read
+                owned
+                priority
+            }
+        }
+    "#;
+    let (_, response) = graphql_request(create_query, Some(&token)).await;
+    let data = response.get("data").expect("data field must exist");
+    let create_result = data.get("createBook").expect("createBook field must exist");
+    let book_id = create_result
+        .get("id")
+        .expect("id field must exist")
+        .as_str()
+        .expect("id must be string");
+
+    // Update book
+    let update_query = format!(
+        r#"
+        mutation {{
+            updateBook(bookData: {{
+                id: "{}"
+                title: "Updated Test Book"
+                authorIds: []
+                isbn: "9783161484100"
+                read: true
+                owned: true
+                priority: 2
+                format: PRINTED
+                store: KINDLE
+            }}) {{
+                id
+                title
+                read
+                priority
+            }}
+        }}
+        "#,
+        book_id
+    );
+    let (_, response) = graphql_request(&update_query, Some(&token)).await;
+    let data = response.get("data").expect("data field must exist");
+    let update_result = data.get("updateBook").expect("updateBook field must exist");
+    assert_eq!(
+        update_result
+            .get("title")
+            .expect("title field must exist")
+            .as_str(),
+        Some("Updated Test Book")
+    );
+    assert_eq!(
+        update_result
+            .get("read")
+            .expect("read field must exist")
+            .as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        update_result
+            .get("priority")
+            .expect("priority field must exist")
+            .as_i64(),
+        Some(2)
+    );
+
+    // Delete book
+    let delete_query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
+    graphql_request(&delete_query, Some(&token)).await;
+
+    // Verify deletion
+    let query = format!(r#"{{ book(id: "{}") {{ id title }} }}"#, book_id);
+    let (_, response) = graphql_request(&query, Some(&token)).await;
+    let data = response.get("data").expect("data field must exist");
+    let book = data.get("book").expect("book field must exist");
+    assert!(book.is_null(), "book should be null after deletion");
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_JWT_TOKEN environment variable"]
+async fn e2e_graphql_book_by_id() {
+    let token = get_token();
+    ensure_user_registered().await;
+
+    // Create book
+    let create_query = r#"
+        mutation {
+            createBook(bookData: {
+                title: "Book By ID Test"
+                authorIds: []
+                isbn: "978-0-123456-78-9"
+                read: false
+                owned: true
+                priority: 1
+                format: E_BOOK
+                store: KINDLE
+            }) {
+                id
+                title
+            }
+        }
+    "#;
+    let (_, response) = graphql_request(create_query, Some(&token)).await;
+    let data = response.get("data").expect("data field must exist");
+    let create_result = data.get("createBook").expect("createBook field must exist");
+    let book_id = create_result
+        .get("id")
+        .expect("id field must exist")
+        .as_str()
+        .expect("id must be string");
+
+    // Get book by ID
+    let query = format!(
+        r#"{{ book(id: "{}") {{ id title isbn read owned priority format store }} }}"#,
+        book_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await;
+    let data = response.get("data").expect("data field must exist");
+    let book = data.get("book").expect("book field must exist");
+    assert_eq!(
+        book.get("title").expect("title field must exist").as_str(),
+        Some("Book By ID Test")
+    );
+    assert_eq!(
+        book.get("isbn").expect("isbn field must exist").as_str(),
+        Some("978-0-123456-78-9")
+    );
+
+    // Clean up
+    delete_test_book(book_id).await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_JWT_TOKEN environment variable"]
+async fn e2e_graphql_authors() {
+    let token = get_token();
+    let query = r#"{ authors { id name } }"#;
+    let (_, response) = graphql_request(query, Some(&token)).await;
+
+    let data = response.get("data").expect("data field must exist");
+    let authors = data.get("authors").expect("authors field must exist");
+    assert!(authors.is_array(), "authors should be an array");
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_JWT_TOKEN environment variable"]
+async fn e2e_graphql_create_author() {
+    // Note: Author deletion is not supported in the current GraphQL API.
+    // Created authors will remain in the database.
+    // Use random names to avoid conflicts.
+    let token = get_token();
+    ensure_user_registered().await;
+
+    let random_name = format!("Test Author {}", uuid::Uuid::new_v4());
+
+    let query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id name }} }}"#,
+        random_name
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await;
+
+    let data = response.get("data").expect("data field must exist");
+    let create_result = data
+        .get("createAuthor")
+        .expect("createAuthor field must exist");
+    assert!(
+        create_result
+            .get("id")
+            .expect("id field must exist")
+            .is_string(),
+        "id field must exist"
+    );
+    assert_eq!(
+        create_result
+            .get("name")
+            .expect("name field must exist")
+            .as_str(),
+        Some(random_name.as_str())
+    );
+}
