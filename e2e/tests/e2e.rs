@@ -5,6 +5,7 @@
 
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
+use serial_test::serial;
 
 /// Response payload for GET /me endpoint
 #[derive(Debug, Deserialize)]
@@ -210,18 +211,39 @@ async fn graphql_request(query: &str, token: Option<&str>) -> (u16, serde_json::
 async fn delete_test_book(book_id: &str) {
     let token = get_token();
     let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
-    graphql_request(&query, Some(&token)).await;
+    let (status, response) = graphql_request(&query, Some(&token)).await;
+    assert_eq!(status, 200, "deleteBook should return 200");
+    let data = response.get("data").expect("data field must exist");
+    assert!(data.get("deleteBook").is_some(), "deleteBook should succeed");
 }
 
 async fn ensure_user_registered() {
     let token = get_token();
     let query = r#"mutation { registerUser { id } }"#;
-    graphql_request(query, Some(&token)).await;
+    let (status, response) = graphql_request(query, Some(&token)).await;
+    if status != 200 {
+        // Check if it's a duplicate key error (user already exists)
+        if let Some(errors) = response.get("errors") {
+            let error_message = errors.as_array()
+                .and_then(|arr| arr.first())
+                .and_then(|e| e.get("message"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("");
+            
+            if !error_message.contains("duplicate key") {
+                panic!("registerUser failed with non-duplicate error: {}", error_message);
+            }
+            // Duplicate key means user already exists - that's OK
+        } else {
+            panic!("registerUser failed with status {} and no errors", status);
+        }
+    }
 }
 
 #[tokio::test]
+#[serial]
 async fn e2e_graphql_without_auth_returns_error() {
-    let query = r#"{ books }"#;
+    let query = r#"{ books { id title } }"#;
     let (status, _response) = graphql_request(query, None).await;
 
     assert_eq!(
@@ -231,6 +253,7 @@ async fn e2e_graphql_without_auth_returns_error() {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_books_empty() {
     let token = get_token();
@@ -247,6 +270,7 @@ async fn e2e_graphql_books_empty() {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_crud_book() {
     let token = get_token();
@@ -344,6 +368,7 @@ async fn e2e_graphql_crud_book() {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_book_by_id() {
     let token = get_token();
@@ -398,6 +423,7 @@ async fn e2e_graphql_book_by_id() {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_authors() {
     let token = get_token();
@@ -410,6 +436,7 @@ async fn e2e_graphql_authors() {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_create_author() {
     // Note: Author deletion is not supported in the current GraphQL API.
