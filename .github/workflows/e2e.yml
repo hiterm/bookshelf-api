@@ -6,6 +6,7 @@ jobs:
   e2e:
     name: End-to-end tests
     runs-on: ubuntu-latest
+    environment: e2e-test
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
       AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
