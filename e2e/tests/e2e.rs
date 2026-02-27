@@ -276,28 +276,42 @@ async fn e2e_graphql_crud_book() {
     let token = get_token();
     ensure_user_registered().await;
 
-    // Create book
-    let create_query = r#"
-        mutation {
-            createBook(bookData: {
+    // Create author first
+    let author_name = format!("Test Author for CRUD {}", uuid::Uuid::new_v4());
+    let create_author_query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        author_name
+    );
+    let (_, response) = graphql_request(&create_author_query, Some(&token)).await;
+    let data = response.get("data").expect("data field must exist");
+    let author_result = data.get("createAuthor").expect("createAuthor field must exist");
+    let author_id = author_result.get("id").expect("id field must exist").as_str().expect("id must be string");
+
+    // Create book with author
+    let create_query = format!(
+        r#"
+        mutation {{
+            createBook(bookData: {{
                 title: "Test Book"
-                authorIds: []
+                authorIds: ["{}"]
                 isbn: "9783161484100"
                 read: false
                 owned: true
                 priority: 1
                 format: E_BOOK
                 store: KINDLE
-            }) {
+            }}) {{
                 id
                 title
                 read
                 owned
                 priority
-            }
-        }
-    "#;
-    let (_, response) = graphql_request(create_query, Some(&token)).await;
+            }}
+        }}
+        "#,
+        author_id
+    );
+    let (_, response) = graphql_request(&create_query, Some(&token)).await;
     let data = response.get("data").expect("data field must exist");
     let create_result = data.get("createBook").expect("createBook field must exist");
     let book_id = create_result
@@ -313,7 +327,7 @@ async fn e2e_graphql_crud_book() {
             updateBook(bookData: {{
                 id: "{}"
                 title: "Updated Test Book"
-                authorIds: []
+                authorIds: ["{}"]
                 isbn: "9783161484100"
                 read: true
                 owned: true
@@ -328,7 +342,24 @@ async fn e2e_graphql_crud_book() {
             }}
         }}
         "#,
-        book_id
+        book_id, author_id
+    );
+    let (_, response) = graphql_request(&update_query, Some(&token)).await;
+    let data = response.get("data").expect("data field must exist");
+    let update_result = data.get("updateBook").expect("updateBook field must exist");
+    assert_eq!(
+        update_result
+            .get("title")
+            .expect("title field must exist")
+            .as_str(),
+        Some("Updated Test Book")
+    );
+    assert_eq!(
+        update_result
+            .get("read")
+            .expect("read field must exist")
+            .as_bool(),
+        Some(true)
     );
     let (_, response) = graphql_request(&update_query, Some(&token)).await;
     let data = response.get("data").expect("data field must exist");
@@ -374,25 +405,39 @@ async fn e2e_graphql_book_by_id() {
     let token = get_token();
     ensure_user_registered().await;
 
-    // Create book
-    let create_query = r#"
-        mutation {
-            createBook(bookData: {
+    // Create author first
+    let author_name = format!("Test Author for BookByID {}", uuid::Uuid::new_v4());
+    let create_author_query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        author_name
+    );
+    let (_, response) = graphql_request(&create_author_query, Some(&token)).await;
+    let data = response.get("data").expect("data field must exist");
+    let author_result = data.get("createAuthor").expect("createAuthor field must exist");
+    let author_id = author_result.get("id").expect("id field must exist").as_str().expect("id must be string");
+
+    // Create book with author
+    let create_query = format!(
+        r#"
+        mutation {{
+            createBook(bookData: {{
                 title: "Book By ID Test"
-                authorIds: []
-                isbn: "978-0-123456-78-9"
+                authorIds: ["{}"]
+                isbn: "9780123456789"
                 read: false
                 owned: true
                 priority: 1
                 format: E_BOOK
                 store: KINDLE
-            }) {
+            }}) {{
                 id
                 title
-            }
-        }
-    "#;
-    let (_, response) = graphql_request(create_query, Some(&token)).await;
+            }}
+        }}
+        "#,
+        author_id
+    );
+    let (_, response) = graphql_request(&create_query, Some(&token)).await;
     let data = response.get("data").expect("data field must exist");
     let create_result = data.get("createBook").expect("createBook field must exist");
     let book_id = create_result
@@ -415,7 +460,7 @@ async fn e2e_graphql_book_by_id() {
     );
     assert_eq!(
         book.get("isbn").expect("isbn field must exist").as_str(),
-        Some("978-0-123456-78-9")
+        Some("9780123456789")
     );
 
     // Clean up
