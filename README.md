@@ -72,7 +72,7 @@ PORT=8080 AUTH0_AUDIENCE=test-audience AUTH0_DOMAIN=example.com DATABASE_URL=pos
 ### token
 
 ```
-auth0 test token --no-input deHinxoUNX5K43IOxbh1NZ2pLsJFUF1j -a https://test-bookshelf-api.hiterm.dev
+auth0 test token --no-input <client-id> -a https://test-bookshelf-api.hiterm.dev
 ```
 
 ## GraphQL Playground

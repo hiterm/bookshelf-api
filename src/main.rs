@@ -7,6 +7,7 @@ use axum::{
 use bookshelf_api::{
     dependency_injection::{dependency_injection, MI, QI},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
+    presentation::handler::user::me_handler,
     presentation::{app_state::AppState, extractor::claims::Auth0Config},
 };
 use http::{
@@ -49,12 +50,13 @@ async fn main() {
         .collect();
     let cors_layer = CorsLayer::new()
         .allow_origin(allowed_origins)
-        .allow_methods([Method::POST])
+        .allow_methods([Method::GET, Method::POST])
         .allow_headers(vec![AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
 
-    // build our application with a single route
+    // build our application with routes
     let app = Router::new()
         .route("/", get(|| async { "OK" }))
+        .route("/me", get(me_handler))
         .route("/graphql", post(graphql_handler::<QI, MI>))
         .route("/graphql/playground", get(graphql_playground_handler))
         .route("/health", get(|| async { "OK" }))
