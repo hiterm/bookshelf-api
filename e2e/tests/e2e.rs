@@ -5,9 +5,6 @@
 
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
-use std::time::Duration;
-use tokio::process::{Child, Command};
-use tokio::time::sleep;
 
 /// Response payload for GET /me endpoint
 #[derive(Debug, Deserialize)]
@@ -15,38 +12,15 @@ struct MeResponse {
     id: String,
 }
 
-fn spawn_server() -> Child {
-    // Start the application binary from the workspace by specifying the package
-    // Use tokio::process::Command and enable kill_on_drop so the child is
-    // killed automatically if the test task panics or times out.
-    Command::new("cargo")
-        .args(&["run", "-p", "bookshelf-api", "--bin", "bookshelf-api"])
-        .kill_on_drop(true)
-        .spawn()
-        .expect("failed to spawn app via cargo run")
-}
-
-async fn wait_for_server(url: &str) {
-    let client = Client::new();
-    for _ in 0..300 {
-        if let Ok(resp) = client.get(url).send().await {
-            if resp.status().is_success() {
-                return;
-            }
-        }
-        sleep(Duration::from_secs(1)).await;
-    }
-    panic!("server did not become ready");
+fn get_server_url() -> String {
+    std::env::var("TEST_SERVER_URL")
+        .expect("TEST_SERVER_URL environment variable must be set. Please set it to the external server URL (e.g., http://localhost:8080)")
 }
 
 #[tokio::test]
 async fn e2e_health_check() {
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let addr = format!("http://127.0.0.1:{}/health", port);
-
-    let _child = spawn_server();
-
-    wait_for_server(&addr).await;
+    let base_url = get_server_url();
+    let addr = format!("{}/health", base_url);
 
     let client = Client::new();
     let res = client.get(&addr).send().await.expect("request failed");
@@ -60,12 +34,8 @@ async fn e2e_health_check() {
 #[tokio::test]
 async fn e2e_me_endpoint_without_auth_returns_401() {
     // Given: No authentication token provided
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let health_addr = format!("http://127.0.0.1:{}/health", port);
-    let me_addr = format!("http://127.0.0.1:{}/me", port);
-
-    let _child = spawn_server();
-    wait_for_server(&health_addr).await;
+    let base_url = get_server_url();
+    let me_addr = format!("{}/me", base_url);
 
     // When: Requesting /me without authentication
     let client = Client::new();
@@ -90,16 +60,12 @@ async fn e2e_me_endpoint_without_auth_returns_401() {
 #[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_me_endpoint_with_valid_token_returns_user_info() {
     // Given: A valid JWT token
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let health_addr = format!("http://127.0.0.1:{}/health", port);
-    let me_addr = format!("http://127.0.0.1:{}/me", port);
+    let base_url = get_server_url();
+    let me_addr = format!("{}/me", base_url);
 
     // Get valid token from environment
     let token = std::env::var("TEST_JWT_TOKEN")
         .expect("TEST_JWT_TOKEN environment variable must be set for this test");
-
-    let _child = spawn_server();
-    wait_for_server(&health_addr).await;
 
     // When: Requesting /me with valid authentication
     let client = Client::new();
@@ -127,12 +93,8 @@ async fn e2e_me_endpoint_with_valid_token_returns_user_info() {
 #[tokio::test]
 async fn e2e_me_endpoint_with_invalid_token_returns_401() {
     // Given: An invalid JWT token
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let health_addr = format!("http://127.0.0.1:{}/health", port);
-    let me_addr = format!("http://127.0.0.1:{}/me", port);
-
-    let _child = spawn_server();
-    wait_for_server(&health_addr).await;
+    let base_url = get_server_url();
+    let me_addr = format!("{}/me", base_url);
 
     // When: Requesting /me with invalid authentication
     let client = Client::new();
@@ -154,12 +116,8 @@ async fn e2e_me_endpoint_with_invalid_token_returns_401() {
 #[tokio::test]
 async fn e2e_me_endpoint_with_malformed_auth_header_returns_401() {
     // Given: Malformed Authorization header (missing "Bearer" prefix)
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let health_addr = format!("http://127.0.0.1:{}/health", port);
-    let me_addr = format!("http://127.0.0.1:{}/me", port);
-
-    let _child = spawn_server();
-    wait_for_server(&health_addr).await;
+    let base_url = get_server_url();
+    let me_addr = format!("{}/me", base_url);
 
     // When: Requesting /me with malformed Authorization header
     let client = Client::new();
@@ -182,16 +140,12 @@ async fn e2e_me_endpoint_with_malformed_auth_header_returns_401() {
 #[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_me_endpoint_response_contains_required_fields() {
     // Given: A valid JWT token and running server
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let health_addr = format!("http://127.0.0.1:{}/health", port);
-    let me_addr = format!("http://127.0.0.1:{}/me", port);
+    let base_url = get_server_url();
+    let me_addr = format!("{}/me", base_url);
 
     // Get valid token from environment
     let token = std::env::var("TEST_JWT_TOKEN")
         .expect("TEST_JWT_TOKEN environment variable must be set for this test");
-
-    let _child = spawn_server();
-    wait_for_server(&health_addr).await;
 
     // When: Requesting /me with valid authentication
     let client = Client::new();

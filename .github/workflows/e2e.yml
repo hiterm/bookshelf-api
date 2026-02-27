@@ -41,6 +41,25 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run
+      - name: Start application server
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          PORT: 8080
+          ALLOWED_ORIGINS: 'http://localhost:8080'
+          AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
+          AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
+        run: |
+          cargo run -p bookshelf-api --bin bookshelf-api &
+          # Wait for server to be ready
+          for i in {1..600}; do
+            if curl -s http://localhost:8080/health > /dev/null; then
+              echo "Server is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Server did not become ready in time" >&2
+          exit 1
       - name: Get Auth0 Access Token
         id: auth
         run: |
@@ -64,11 +83,7 @@ jobs:
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
       - name: Run tests
         env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-          PORT: 8080
-          ALLOWED_ORIGINS: 'http://localhost:8080'
-          AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
-          AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
+          TEST_SERVER_URL: http://localhost:8080
           TEST_JWT_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
           cargo test -p bookshelf-e2e -- --test-threads=1 --include-ignored
