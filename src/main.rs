@@ -73,8 +73,10 @@ async fn main() {
                 .layer(cors_layer),
         );
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], fetch_port()));
+    let port = fetch_port();
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    tracing::info!("Server started on port {}", port);
     axum::serve(listener, app).await.unwrap();
 }
 
