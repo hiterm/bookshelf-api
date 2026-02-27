@@ -214,7 +214,10 @@ async fn delete_test_book(book_id: &str) {
     let (status, response) = graphql_request(&query, Some(&token)).await;
     assert_eq!(status, 200, "deleteBook should return 200");
     let data = response.get("data").expect("data field must exist");
-    assert!(data.get("deleteBook").is_some(), "deleteBook should succeed");
+    assert!(
+        data.get("deleteBook").is_some(),
+        "deleteBook should succeed"
+    );
 }
 
 async fn ensure_user_registered() {
@@ -224,14 +227,18 @@ async fn ensure_user_registered() {
     if status != 200 {
         // Check if it's a duplicate key error (user already exists)
         if let Some(errors) = response.get("errors") {
-            let error_message = errors.as_array()
+            let error_message = errors
+                .as_array()
                 .and_then(|arr| arr.first())
                 .and_then(|e| e.get("message"))
                 .and_then(|m| m.as_str())
                 .unwrap_or("");
-            
+
             if !error_message.contains("duplicate key") {
-                panic!("registerUser failed with non-duplicate error: {}", error_message);
+                panic!(
+                    "registerUser failed with non-duplicate error: {}",
+                    error_message
+                );
             }
             // Duplicate key means user already exists - that's OK
         } else {
@@ -284,8 +291,14 @@ async fn e2e_graphql_crud_book() {
     );
     let (_, response) = graphql_request(&create_author_query, Some(&token)).await;
     let data = response.get("data").expect("data field must exist");
-    let author_result = data.get("createAuthor").expect("createAuthor field must exist");
-    let author_id = author_result.get("id").expect("id field must exist").as_str().expect("id must be string");
+    let author_result = data
+        .get("createAuthor")
+        .expect("createAuthor field must exist");
+    let author_id = author_result
+        .get("id")
+        .expect("id field must exist")
+        .as_str()
+        .expect("id must be string");
 
     // Create book with author
     let create_query = format!(
@@ -413,8 +426,14 @@ async fn e2e_graphql_book_by_id() {
     );
     let (_, response) = graphql_request(&create_author_query, Some(&token)).await;
     let data = response.get("data").expect("data field must exist");
-    let author_result = data.get("createAuthor").expect("createAuthor field must exist");
-    let author_id = author_result.get("id").expect("id field must exist").as_str().expect("id must be string");
+    let author_result = data
+        .get("createAuthor")
+        .expect("createAuthor field must exist");
+    let author_id = author_result
+        .get("id")
+        .expect("id field must exist")
+        .as_str()
+        .expect("id must be string");
 
     // Create book with author
     let create_query = format!(
