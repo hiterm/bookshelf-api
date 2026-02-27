@@ -44,17 +44,22 @@ jobs:
       - name: Get Auth0 Access Token
         id: auth
         run: |
-          TOKEN=$(curl --request POST \
+          set -euo pipefail
+          RESPONSE=$(curl --fail --silent --show-error --request POST \
             --url "https://${{ vars.AUTH0_DOMAIN }}/oauth/token" \
             --header 'content-type: application/json' \
             --data "{\"client_id\":\"${{ vars.AUTH0_CLIENT_ID }}\",\"client_secret\":\"${{ secrets.AUTH0_CLIENT_SECRET }}\",\"audience\":\"${{ vars.AUTH0_AUDIENCE }}\",\"grant_type\":\"client_credentials\"}" \
-            | jq -r '.access_token')
+          )
+          TOKEN=$(printf '%s' "$RESPONSE" | jq -r '.access_token // empty')
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Auth0 token acquisition failed: empty access_token"
+            exit 1
+          fi
 
           # Mask token in logs
           echo "::add-mask::$TOKEN"
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
-
       - name: Run tests
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
