@@ -239,7 +239,11 @@ async fn e2e_graphql_books_empty() {
 
     let data = response.get("data").expect("data field must exist");
     let books = data.get("books").expect("books field must exist");
-    assert!(books.is_array(), "books should be an array");
+    let books_array = books.as_array().expect("books should be an array");
+    assert!(
+        books_array.is_empty(),
+        "books should be empty after cleanup by other tests"
+    );
 }
 
 #[tokio::test]

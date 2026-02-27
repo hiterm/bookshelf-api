@@ -49,7 +49,7 @@ jobs:
           AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
           AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
         run: |
-          cargo run -p bookshelf-api --bin bookshelf-api &
+          cargo run -p bookshelf-api --bin bookshelf-api > server.log 2>&1 &
           # Wait for server to be ready
           for i in {1..600}; do
             if curl -s http://localhost:8080/health > /dev/null; then
@@ -58,7 +58,9 @@ jobs:
             fi
             sleep 1
           done
-          echo "::error::Server did not become ready in time" >&2
+          echo "::error::Server did not become ready in time"
+          echo "--- Server log ---"
+          cat server.log
           exit 1
       - name: Get Auth0 Access Token
         id: auth
