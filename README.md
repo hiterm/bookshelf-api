@@ -71,7 +71,7 @@ PORT=8080 AUTH0_AUDIENCE=<your-auth0-audience> AUTH0_DOMAIN=<your-auth0-domain> 
 
 ### token
 
-```
+```sh
 auth0 test token --no-input <client-id> -a <your-auth0-audience>
 ```
 
@@ -81,7 +81,7 @@ Run server and access `/graphql/playground`.
 
 ## Generate GraphQL schema
 
-```
+```sh
 cargo run --bin gen_schema
 ```
 
