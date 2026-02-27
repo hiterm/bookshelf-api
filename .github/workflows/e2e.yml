@@ -59,7 +59,7 @@ jobs:
           # Mask token in logs
           echo "::add-mask::$TOKEN"
 
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
       - name: Run tests
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
