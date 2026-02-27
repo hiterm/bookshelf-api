@@ -20,8 +20,8 @@ use std::{collections::HashSet, sync::Arc};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Auth0Config {
-    pub audience: String,
-    pub domain: String,
+    pub(crate) audience: String,
+    pub(crate) domain: String,
 }
 
 impl Default for Auth0Config {
