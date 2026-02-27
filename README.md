@@ -64,8 +64,12 @@ sqlx migrate run
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE ROLE bookshelf WITH LOGIN PASSWORD 'password';"
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE DATABASE bookshelf OWNER bookshelf;"
 
-# 3) E2E 実行
+# 3) アプリケーションサーバー起動（別ターミナルで）
 PORT=8080 AUTH0_AUDIENCE=<your-auth0-audience> AUTH0_DOMAIN=<your-auth0-domain> DATABASE_URL=<your-database-url> \
+  cargo run -p bookshelf-api --bin bookshelf-api
+
+# 4) E2E 実行
+TEST_SERVER_URL=http://localhost:8080 \
   cargo test -p bookshelf-e2e -- --test-threads=1
 ```
 
