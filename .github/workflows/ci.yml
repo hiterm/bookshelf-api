@@ -76,9 +76,21 @@ jobs:
             -e AUTH0_AUDIENCE=dummy \
             -e AUTH0_DOMAIN=dummy \
             bookshelf-api:test
-          sleep 10
-          curl --fail http://localhost:8080/health || (echo "=== Container Logs ===" && docker logs test-container && exit 1)
+
+          for i in {1..60}; do
+            if curl --fail http://localhost:8080/health 2>/dev/null; then
+              echo "Health check passed after ${i} seconds"
+              docker stop test-container
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Health check failed after 60 seconds"
+          echo "=== Container Logs ==="
+          docker logs test-container
           docker stop test-container
+          exit 1
 
   fmt:
     name: Rustfmt
