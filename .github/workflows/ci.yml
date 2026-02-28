@@ -77,7 +77,7 @@ jobs:
             -e AUTH0_DOMAIN=dummy \
             bookshelf-api:test
           sleep 10
-          curl --fail http://localhost:8080/health || (docker logs test-container && exit 1)
+          curl --fail http://localhost:8080/health || (echo "=== Container Logs ===" && docker logs test-container && exit 1)
           docker stop test-container
 
   fmt:
