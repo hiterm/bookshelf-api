@@ -1,0 +1,25 @@
+{
+  "name": "OpenCode Web Environment",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "OpenCode Web",
+      "onAutoForward": "notify",
+      "visibility": "private"
+    }
+  },
+  "postStartCommand": "bash ${containerWorkspaceFolder}/scripts/start-opencode-web.sh",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
