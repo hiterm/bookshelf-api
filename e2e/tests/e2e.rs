@@ -325,6 +325,8 @@ async fn e2e_graphql_crud_book() {
                 read
                 owned
                 priority
+                createdAt
+                updatedAt
             }}
         }}
         "#,
@@ -383,12 +385,21 @@ async fn e2e_graphql_crud_book() {
 
     // Verify update by reading the book
     let query = format!(
-        r#"{{ book(id: "{}") {{ id title read priority }} }}"#,
+        r#"{{ book(id: "{}") {{ id title read priority createdAt updatedAt authors {{ id name }} }} }}"#,
         book_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await;
     let data = response.get("data").expect("data field must exist");
     let book = data.get("book").expect("book field must exist");
+    let created_at = book.get("createdAt").expect("createdAt field must exist").as_i64();
+    let updated_at = book.get("updatedAt").expect("updatedAt field must exist").as_i64();
+    assert!(created_at.is_some(), "created_at should exist");
+    assert!(updated_at.is_some(), "updated_at should exist");
+    // Verify updated_at >= created_at (update happened after create)
+    assert!(
+        updated_at.unwrap() >= created_at.unwrap(),
+        "updated_at should be >= created_at"
+    );
     assert_eq!(
         book.get("title").expect("title field must exist").as_str(),
         Some("Updated Test Book")
@@ -398,11 +409,13 @@ async fn e2e_graphql_crud_book() {
         Some(true)
     );
     assert_eq!(
-        book.get("priority")
-            .expect("priority field must exist")
-            .as_i64(),
+        book.get("priority").expect("priority field must exist").as_i64(),
         Some(2)
     );
+    let authors = book.get("authors").expect("authors field must exist").as_array();
+    assert!(authors.is_some(), "authors should be an array");
+    let authors_array = authors.unwrap();
+    assert_eq!(authors_array.len(), 1, "should have 1 author");
 
     // Delete book
     delete_test_book(book_id).await;
