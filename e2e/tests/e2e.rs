@@ -254,9 +254,10 @@ async fn delete_test_book(book_id: &str) -> Result<()> {
         .as_str()
         .context("deleteResult should be a string")?;
 
-    if delete_result_str.is_empty() {
-        anyhow::bail!("deleteBook should return the book ID");
-    }
+    assert_eq!(
+        delete_result_str, book_id,
+        "deleted book id should match the requested book_id"
+    );
 
     Ok(())
 }
@@ -344,6 +345,22 @@ async fn e2e_graphql_crud_book() -> Result<()> {
         .context("id field must exist")?
         .as_str()
         .context("id must be string")?;
+
+    // Verify author was created by fetching it
+    let author_query = format!(r#"{{ author(id: "{}") {{ id name }} }}"#, author_id);
+    let (_, response) = graphql_request(&author_query, Some(&token)).await?;
+    let data = response.get("data").context("data field must exist")?;
+    let author = data.get("author").context("author field must exist")?;
+    assert!(!author.is_null(), "author should exist after creation");
+    let author_name_from_query = author
+        .get("name")
+        .context("name field must exist")?
+        .as_str()
+        .context("name should be string")?;
+    assert_eq!(
+        author_name_from_query, author_name,
+        "author name should match"
+    );
 
     // Create book with author
     let create_query = format!(
@@ -444,8 +461,8 @@ async fn e2e_graphql_crud_book() -> Result<()> {
         .context("updatedAt field must exist")?
         .as_i64()
         .context("updatedAt should be i64")?;
-    assert!(created_at >= 0, "created_at should exist");
-    assert!(updated_at >= 0, "updated_at should exist");
+    assert!(created_at > 0, "created_at should be positive");
+    assert!(updated_at > 0, "updated_at should be positive");
     // Verify updated_at >= created_at (update happened after create)
     assert!(
         updated_at >= created_at,
@@ -473,6 +490,15 @@ async fn e2e_graphql_crud_book() -> Result<()> {
         .as_array()
         .context("authors should be an array")?;
     assert_eq!(authors.len(), 1, "should have 1 author");
+    let author_from_book = authors[0]
+        .get("id")
+        .context("author id field must exist")?
+        .as_str()
+        .context("author id should be string")?;
+    assert_eq!(
+        author_from_book, author_id,
+        "author id should match the created author"
+    );
 
     // Delete book
     delete_test_book(book_id).await?;
@@ -616,5 +642,42 @@ async fn e2e_graphql_create_author() -> Result<()> {
             .as_str(),
         Some(random_name.as_str())
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_book_with_invalid_id() -> Result<()> {
+    let token = get_token()?;
+    let query = r#"{ book(id: "00000000-0000-0000-0000-000000000000") { id title } }"#;
+    let (_, response) = graphql_request(query, Some(&token)).await?;
+
+    let data = response.get("data").context("data field must exist")?;
+    let book = data.get("book").context("book field must exist")?;
+    assert!(book.is_null(), "book with invalid ID should be null");
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_create_book_without_auth() -> Result<()> {
+    let query = r#"
+        mutation {
+            createBook(bookData: {
+                title: "Test Book"
+                authorIds: []
+                isbn: "9781234567890"
+                read: false
+                owned: true
+                priority: 1
+                format: E_BOOK
+                store: KINDLE
+            }) {
+                id
+            }
+        }
+    "#;
+    let (status, _response) = graphql_request(query, None).await?;
+    assert_eq!(status, 401, "createBook without auth should return 401");
     Ok(())
 }
