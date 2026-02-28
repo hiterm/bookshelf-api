@@ -610,7 +610,7 @@ async fn e2e_graphql_authors() -> Result<()> {
 #[serial]
 #[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_create_author() -> Result<()> {
-    // Note: Author deletion is not supported in the current GraphQL API.
+    // Note: Author in the current Graph deletion is not supportedQL API.
     // Created authors will remain in the database.
     // Use random names to avoid conflicts.
     let token = get_token()?;
@@ -628,13 +628,11 @@ async fn e2e_graphql_create_author() -> Result<()> {
     let create_result = data
         .get("createAuthor")
         .context("createAuthor field must exist")?;
-    assert!(
-        create_result
-            .get("id")
-            .context("id field must exist")?
-            .is_string(),
-        "id field must exist"
-    );
+    let author_id = create_result
+        .get("id")
+        .context("id field must exist")?
+        .as_str()
+        .context("id should be string")?;
     assert_eq!(
         create_result
             .get("name")
@@ -642,6 +640,23 @@ async fn e2e_graphql_create_author() -> Result<()> {
             .as_str(),
         Some(random_name.as_str())
     );
+
+    // Verify author was created by fetching it
+    let author_query = format!(r#"{{ author(id: "{}") {{ id name }} }}"#, author_id);
+    let (_, response) = graphql_request(&author_query, Some(&token)).await?;
+    let data = response.get("data").context("data field must exist")?;
+    let author = data.get("author").context("author field must exist")?;
+    assert!(!author.is_null(), "author should exist after creation");
+    let author_name_from_query = author
+        .get("name")
+        .context("name field must exist")?
+        .as_str()
+        .context("name should be string")?;
+    assert_eq!(
+        author_name_from_query, random_name,
+        "author name should match"
+    );
+
     Ok(())
 }
 
