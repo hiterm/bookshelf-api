@@ -9,7 +9,7 @@ WORKDIR ${BUILDDIR}
 
 # Build the application.
 # Leverage a cache mount to /usr/local/cargo/registry/
-# for downloaded dependencies and a cache mount to /app/target/ for 
+# for downloaded dependencies and a cache mount to /app/target/ for
 # compiled dependencies which will speed up subsequent builds.
 # Leverage a bind mount to the src directory to avoid having to copy the
 # source code into the container. Once built, copy the executable to an
@@ -31,7 +31,7 @@ EOF
 FROM debian:trixie-slim
 
 # Create a non-privileged user that the app will run under.
-# See https://docs.docker.com/develop/develop-images/dockerfile_best_practices/   #user
+# See https://docs.docker.com/build/building/best-practices/#user
 ARG UID=10001
 RUN useradd -M -u "${UID}" -d "/nonexistent" -s "/sbin/nologin" appuser
 USER appuser
