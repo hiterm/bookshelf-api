@@ -68,6 +68,7 @@ jobs:
       - name: Run container and health check
         run: |
           docker run -d --name test-container -p 8080:8080 \
+            --add-host=host.docker.internal:host-gateway \
             -e PORT=8080 \
             -e DATABASE_URL=postgres://bookshelf:password@host.docker.internal:5432/bookshelf \
             -e ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080 \
@@ -75,8 +76,8 @@ jobs:
             -e AUTH0_AUDIENCE=dummy \
             -e AUTH0_DOMAIN=dummy \
             bookshelf-api:test
-          sleep 5
-          curl --fail http://localhost:8080/health
+          sleep 10
+          curl --fail http://localhost:8080/health || (docker logs test-container && exit 1)
           docker stop test-container
 
   fmt:
