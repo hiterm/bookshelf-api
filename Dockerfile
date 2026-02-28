@@ -1,6 +1,6 @@
 # https://docs.docker.com/language/rust/develop/
 
-FROM rust:1.93.1 AS build-stage
+FROM rust:1.93.1-trixie AS build-stage
 
 ARG APP_NAME=bookshelf-api
 
@@ -9,7 +9,7 @@ WORKDIR ${BUILDDIR}
 
 # Build the application.
 # Leverage a cache mount to /usr/local/cargo/registry/
-# for downloaded dependencies and a cache mount to /app/target/ for 
+# for downloaded dependencies and a cache mount to /app/target/ for
 # compiled dependencies which will speed up subsequent builds.
 # Leverage a bind mount to the src directory to avoid having to copy the
 # source code into the container. Once built, copy the executable to an
@@ -28,19 +28,12 @@ cp ./target/release/$APP_NAME /bin/server
 EOF
 
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # Create a non-privileged user that the app will run under.
-# See https://docs.docker.com/develop/develop-images/dockerfile_best-practices/   #user
+# See https://docs.docker.com/build/building/best-practices/#user
 ARG UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
-    --no-create-home \
-    --uid "${UID}" \
-    appuser
+RUN useradd -l -M -u "${UID}" -d "/nonexistent" -s "/sbin/nologin" appuser
 USER appuser
 
 COPY --from=build-stage /bin/server /bin/

@@ -53,8 +53,55 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           push: false
+          load: true
+          tags: bookshelf-api:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Run container and health check
+        run: |
+          docker network create test-network
+
+          docker run -d --name postgres --network test-network \
+            -e POSTGRES_PASSWORD=password \
+            -e POSTGRES_USER=bookshelf \
+            -e POSTGRES_DB=bookshelf \
+            postgres:16
+
+          # Wait for PostgreSQL to be ready
+          for i in {1..30}; do
+            if docker exec postgres pg_isready -U bookshelf; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          docker run -d --name test-container --network test-network -p 8080:8080 \
+            -e PORT=8080 \
+            -e DATABASE_URL=postgres://bookshelf:password@postgres:5432/bookshelf \
+            -e ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080 \
+            -e RUST_LOG=debug \
+            -e AUTH0_AUDIENCE=dummy \
+            -e AUTH0_DOMAIN=dummy \
+            bookshelf-api:test
+
+          for i in {1..20}; do
+            if curl --fail http://localhost:8080/health 2>/dev/null; then
+              echo "Health check passed after ${i} seconds"
+              docker stop test-container postgres
+              docker network remove test-network
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Health check failed after 20 seconds"
+          echo "=== Container Logs ==="
+          docker logs test-container
+          docker stop test-container postgres
+          docker network remove test-network
+          exit 1
 
   fmt:
     name: Rustfmt
