@@ -31,16 +31,9 @@ EOF
 FROM debian:trixie-slim
 
 # Create a non-privileged user that the app will run under.
-# See https://docs.docker.com/develop/develop-images/dockerfile_best-practices/   #user
+# See https://docs.docker.com/develop/develop-images/dockerfile_best_practices/   #user
 ARG UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
-    --no-create-home \
-    --uid "${UID}" \
-    appuser
+RUN useradd -M -u "${UID}" -d "/nonexistent" -s "/sbin/nologin" appuser
 USER appuser
 
 COPY --from=build-stage /bin/server /bin/
