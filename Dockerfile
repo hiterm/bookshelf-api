@@ -33,7 +33,7 @@ FROM debian:trixie-slim
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/build/building/best-practices/#user
 ARG UID=10001
-RUN useradd -M -u "${UID}" -d "/nonexistent" -s "/sbin/nologin" appuser
+RUN useradd -l -M -u "${UID}" -d "/nonexistent" -s "/sbin/nologin" appuser
 USER appuser
 
 COPY --from=build-stage /bin/server /bin/
