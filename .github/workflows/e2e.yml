@@ -1,5 +1,31 @@
 name: E2E tests
 
+# Required GitHub Secrets:
+# - AUTH0_CLIENT_SECRET: Auth0 client secret
+#
+# Required GitHub Variables:
+# - AUTH0_AUDIENCE: Auth0 API Audience (e.g., https://test-bookshelf-api.hiterm.dev)
+# - AUTH0_DOMAIN: Auth0 domain (e.g., hiterm-bookshelf-test.us.auth0.com)
+# - AUTH0_CLIENT_ID: Auth0 Machine to Machine Application Client ID
+#
+# Configuration:
+# 1. Create a GitHub Environment (e.g., "e2e-test"):
+#    - Go to Settings > Environments
+#    - Add new environment "e2e-test"
+#    - Add environment-specific variables and secrets
+#
+# 2. Set variables in the environment:
+#    - Go to Settings > Environments > e2e-test > Environment variables
+#    - Add: AUTH0_AUDIENCE, AUTH0_DOMAIN, AUTH0_CLIENT_ID
+#
+# 3. Set secrets in the environment:
+#    - Go to Settings > Environments > e2e-test > Environment secrets
+#    - Add: AUTH0_CLIENT_SECRET
+#
+# 4. For Dependabot updates:
+#    - Go to Settings > Secrets and variables > Dependabot
+#    - Add: AUTH0_CLIENT_SECRET (Dependabot only supports secrets, not variables)
+
 on: [push]
 
 jobs:
@@ -41,6 +67,27 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run
+      - name: Start application server
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          PORT: 8080
+          ALLOWED_ORIGINS: 'http://localhost:8080'
+          AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
+          AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
+        run: |
+          cargo run > server.log 2>&1 &
+          # Wait for server to be ready
+          for i in {1..600}; do
+            if curl -s http://localhost:8080/health > /dev/null; then
+              echo "Server is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Server did not become ready in time"
+          echo "--- Server log ---"
+          cat server.log
+          exit 1
       - name: Get Auth0 Access Token
         id: auth
         run: |
@@ -64,11 +111,7 @@ jobs:
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
       - name: Run tests
         env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-          PORT: 8080
-          ALLOWED_ORIGINS: 'http://localhost:8080'
-          AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
-          AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
+          TEST_SERVER_URL: http://localhost:8080
           TEST_JWT_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
           cargo test -p bookshelf-e2e -- --test-threads=1 --include-ignored
