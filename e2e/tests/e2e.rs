@@ -214,7 +214,10 @@ async fn delete_test_book(book_id: &str) {
     let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
     let (status, response) = graphql_request(&query, Some(&token)).await;
     assert_eq!(status, 200, "deleteBook should return 200");
-    assert!(response.get("errors").is_none(), "deleteBook should not have errors");
+    assert!(
+        response.get("errors").is_none(),
+        "deleteBook should not have errors"
+    );
     let data = response.get("data").expect("data field must exist");
     let delete_result = data.get("deleteBook").expect("deleteBook field must exist");
     assert!(
