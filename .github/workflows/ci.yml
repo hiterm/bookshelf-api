@@ -77,7 +77,7 @@ jobs:
             -e AUTH0_DOMAIN=dummy \
             bookshelf-api:test
 
-          for i in {1..60}; do
+          for i in {1..20}; do
             if curl --fail http://localhost:8080/health 2>/dev/null; then
               echo "Health check passed after ${i} seconds"
               docker stop test-container
@@ -86,7 +86,7 @@ jobs:
             sleep 1
           done
 
-          echo "Health check failed after 60 seconds"
+          echo "Health check failed after 20 seconds"
           echo "=== Container Logs ==="
           docker logs test-container
           docker stop test-container
