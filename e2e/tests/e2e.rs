@@ -222,9 +222,9 @@ async fn graphql_request(query: &str, token: Option<&str>) -> Result<(u16, serde
     let status = res.status().as_u16();
 
     // For 401, we still want to return the response body (for auth error checking)
-    let _ = if !res.status().is_success() && res.status() != StatusCode::UNAUTHORIZED {
+    if !res.status().is_success() && res.status() != StatusCode::UNAUTHORIZED {
         return Err(anyhow::anyhow!("HTTP error: {}", res.status()));
-    };
+    }
     let body = res
         .json::<serde_json::Value>()
         .await
@@ -647,6 +647,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_book_with_invalid_id() -> Result<()> {
     let token = get_token()?;
     let query = r#"{ book(id: "00000000-0000-0000-0000-000000000000") { id title } }"#;
