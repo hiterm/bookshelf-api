@@ -58,19 +58,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Setup PostgreSQL
-        run: |
-          sudo systemctl start postgresql.service
-          pg_isready
-          sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
-          sudo -u postgres createdb --owner=bookshelf bookshelf
-
       - name: Run container and health check
         run: |
-          docker run -d --name test-container -p 8080:8080 \
-            --add-host=host.docker.internal:host-gateway \
+          docker network create test-network
+
+          docker run -d --name postgres --network test-network \
+            -e POSTGRES_PASSWORD=password \
+            -e POSTGRES_USER=bookshelf \
+            -e POSTGRES_DB=bookshelf \
+            postgres:latest
+
+          docker run -d --name test-container --network test-network -p 8080:8080 \
             -e PORT=8080 \
-            -e DATABASE_URL=postgres://bookshelf:password@host.docker.internal:5432/bookshelf \
+            -e DATABASE_URL=postgres://bookshelf:password@postgres:5432/bookshelf \
             -e ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080 \
             -e RUST_LOG=debug \
             -e AUTH0_AUDIENCE=dummy \
@@ -80,7 +80,8 @@ jobs:
           for i in {1..20}; do
             if curl --fail http://localhost:8080/health 2>/dev/null; then
               echo "Health check passed after ${i} seconds"
-              docker stop test-container
+              docker stop test-container postgres
+              docker network remove test-network
               exit 0
             fi
             sleep 1
@@ -89,7 +90,8 @@ jobs:
           echo "Health check failed after 20 seconds"
           echo "=== Container Logs ==="
           docker logs test-container
-          docker stop test-container
+          docker stop test-container postgres
+          docker network remove test-network
           exit 1
 
   fmt:
