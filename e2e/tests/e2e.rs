@@ -15,6 +15,7 @@ struct MeResponse {
 
 fn get_server_url() -> String {
     std::env::var("TEST_SERVER_URL")
+        .map(|s| s.trim_end_matches('/').to_owned())
         .expect("TEST_SERVER_URL environment variable must be set. Please set it to the external server URL (e.g., http://localhost:8080)")
 }
 
@@ -213,10 +214,12 @@ async fn delete_test_book(book_id: &str) {
     let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
     let (status, response) = graphql_request(&query, Some(&token)).await;
     assert_eq!(status, 200, "deleteBook should return 200");
+    assert!(response.get("errors").is_none(), "deleteBook should not have errors");
     let data = response.get("data").expect("data field must exist");
+    let delete_result = data.get("deleteBook").expect("deleteBook field must exist");
     assert!(
-        data.get("deleteBook").is_some(),
-        "deleteBook should succeed"
+        delete_result.is_string() && !delete_result.as_str().unwrap().is_empty(),
+        "deleteBook should return the book ID"
     );
 }
 

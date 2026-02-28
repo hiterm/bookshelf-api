@@ -1,5 +1,31 @@
 name: E2E tests
 
+# Required GitHub Secrets:
+# - AUTH0_CLIENT_SECRET: Auth0 client secret
+#
+# Required GitHub Variables:
+# - AUTH0_AUDIENCE: Auth0 API Audience (e.g., https://test-bookshelf-api.hiterm.dev)
+# - AUTH0_DOMAIN: Auth0 domain (e.g., hiterm-bookshelf-test.us.auth0.com)
+# - AUTH0_CLIENT_ID: Auth0 Machine to Machine Application Client ID
+#
+# Configuration:
+# 1. Create a GitHub Environment (e.g., "e2e-test"):
+#    - Go to Settings > Environments
+#    - Add new environment "e2e-test"
+#    - Add environment-specific variables and secrets
+#
+# 2. Set variables in the environment:
+#    - Go to Settings > Environments > e2e-test > Environment variables
+#    - Add: AUTH0_AUDIENCE, AUTH0_DOMAIN, AUTH0_CLIENT_ID
+#
+# 3. Set secrets in the environment:
+#    - Go to Settings > Environments > e2e-test > Environment secrets
+#    - Add: AUTH0_CLIENT_SECRET
+#
+# 4. For Dependabot updates:
+#    - Go to Settings > Secrets and variables > Dependabot
+#    - Add: AUTH0_CLIENT_SECRET (Dependabot only supports secrets, not variables)
+
 on: [push]
 
 jobs:

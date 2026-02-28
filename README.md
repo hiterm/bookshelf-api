@@ -53,22 +53,22 @@ cargo test
 ## E2E test
 
 ```sh
-# 1) 起動
+# 1) Start containers
 cp .env.template .env.docker
 docker compose -f docker-compose-test.yml up -d
 
-# 2) データベース準備（必要なら sqlx をインストール）
+# 2) Database setup (install sqlx if needed)
 cargo install sqlx-cli --no-default-features --features postgres,rustls
 sqlx database create
 sqlx migrate run
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE ROLE bookshelf WITH LOGIN PASSWORD 'password';"
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE DATABASE bookshelf OWNER bookshelf;"
 
-# 3) アプリケーションサーバー起動（別ターミナルで）
+# 3) Start application server (in a separate terminal)
 PORT=8080 AUTH0_AUDIENCE=<your-auth0-audience> AUTH0_DOMAIN=<your-auth0-domain> DATABASE_URL=<your-database-url> ALLOWED_ORIGINS=http://localhost:8080 \
   cargo run
 
-# 4) E2E 実行
+# 4) Run E2E tests
 TEST_SERVER_URL=http://localhost:8080 \
   cargo test -p bookshelf-e2e -- --test-threads=1
 ```
