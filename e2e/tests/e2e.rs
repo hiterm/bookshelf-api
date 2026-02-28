@@ -391,8 +391,14 @@ async fn e2e_graphql_crud_book() {
     let (_, response) = graphql_request(&query, Some(&token)).await;
     let data = response.get("data").expect("data field must exist");
     let book = data.get("book").expect("book field must exist");
-    let created_at = book.get("createdAt").expect("createdAt field must exist").as_i64();
-    let updated_at = book.get("updatedAt").expect("updatedAt field must exist").as_i64();
+    let created_at = book
+        .get("createdAt")
+        .expect("createdAt field must exist")
+        .as_i64();
+    let updated_at = book
+        .get("updatedAt")
+        .expect("updatedAt field must exist")
+        .as_i64();
     assert!(created_at.is_some(), "created_at should exist");
     assert!(updated_at.is_some(), "updated_at should exist");
     // Verify updated_at >= created_at (update happened after create)
@@ -409,10 +415,15 @@ async fn e2e_graphql_crud_book() {
         Some(true)
     );
     assert_eq!(
-        book.get("priority").expect("priority field must exist").as_i64(),
+        book.get("priority")
+            .expect("priority field must exist")
+            .as_i64(),
         Some(2)
     );
-    let authors = book.get("authors").expect("authors field must exist").as_array();
+    let authors = book
+        .get("authors")
+        .expect("authors field must exist")
+        .as_array();
     assert!(authors.is_some(), "authors should be an array");
     let authors_array = authors.unwrap();
     assert_eq!(authors_array.len(), 1, "should have 1 author");
