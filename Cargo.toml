@@ -42,7 +42,7 @@ sqlx = { version = "0.8", features = [
   "uuid",
 ] }
 thiserror = "1.0.64"
-time = "0.3.36"
+time = "0.3.47"
 time-macros = "0.2.18"
 tokio = { version = "1.43.1", features = ["full"] }
 tower = "0.5.1"
