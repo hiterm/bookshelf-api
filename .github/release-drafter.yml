@@ -15,13 +15,13 @@ categories:
 version-resolver:
   major:
     labels:
-      - 'major'
+      - 'bump-major'
   minor:
     labels:
-      - 'minor'
+      - 'bump-minor'
   patch:
     labels:
-      - 'patch'
+      - 'bump-patch'
   default: patch
 template: |
   $CHANGES
