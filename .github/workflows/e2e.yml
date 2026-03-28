@@ -60,7 +60,7 @@ jobs:
       - name: Create DB
         run: sudo -u postgres createdb --owner=bookshelf bookshelf
       - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
+        run: cargo install sqlx-cli --locked --no-default-features --features postgres,rustls
       - name: Prepare database
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -75,7 +75,7 @@ jobs:
           AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
           AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
         run: |
-          cargo run > server.log 2>&1 &
+          cargo run --locked > server.log 2>&1 &
           # Wait for server to be ready
           for i in {1..600}; do
             if curl -s http://localhost:8080/health > /dev/null; then
@@ -114,4 +114,4 @@ jobs:
           TEST_SERVER_URL: http://localhost:8080
           TEST_JWT_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
-          cargo test -p bookshelf-e2e -- --test-threads=1 --include-ignored
+          cargo test -p bookshelf-e2e --locked -- --test-threads=1 --include-ignored

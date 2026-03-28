@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@2ea1b3bdd0261867664fd125505456a7b9c3385c # 1.93.1
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
-      - run: cargo check
+      - run: cargo check --locked
 
   test:
     name: Test Suite
@@ -25,7 +25,7 @@ jobs:
       - run: pg_isready
       - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - run: sudo -u postgres createdb --owner=bookshelf bookshelf
-      - run: cargo test --all-features
+      - run: cargo test --all-features --locked
 
   test-image-building:
     name: Test Image Building
@@ -112,7 +112,7 @@ jobs:
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
-      - run: cargo fmt --all -- --check
+      - run: cargo fmt --all -- --check --locked
 
   clippy:
     name: Clippy
@@ -123,4 +123,4 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --locked -- -D warnings
