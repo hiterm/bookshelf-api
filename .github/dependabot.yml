@@ -5,8 +5,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-      time: "03:00"
+      day: "friday"
+      time: "12:00"
     open-pull-requests-limit: 10
     reviewers:
       - "hiterm"
