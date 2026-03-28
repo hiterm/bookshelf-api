@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: release-drafter/release-drafter@67e173cadb2fbd3de94f4a861e0c48c913b462ae # v6
+      - uses: release-drafter/release-drafter@a6acf82562eee06318b77ab8cb0b11ed81c677a7 # v7.1.1
         id: release_drafter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
