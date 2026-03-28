@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+      time: "12:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "hiterm"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    # Rust toolchain version is manually managed to maintain consistent build environment
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"
