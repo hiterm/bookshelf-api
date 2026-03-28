@@ -13,3 +13,6 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    # Rust toolchain version is manually managed to maintain consistent build environment
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"
