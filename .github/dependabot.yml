@@ -25,6 +25,6 @@ updates:
       day: "friday"
       time: "12:00"
     groups:
-      minor-and-patch:
+      all:
         patterns:
           - "*"
