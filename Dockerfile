@@ -1,6 +1,6 @@
 # https://docs.docker.com/language/rust/develop/
 
-FROM rust:1.93.1-trixie AS build-stage
+FROM rust:1.93.1-trixie@sha256:ecbe59a8408895edd02d9ef422504b8501dd9fa1526de27a45b73406d734d659 AS build-stage
 
 ARG APP_NAME=bookshelf-api
 
@@ -28,7 +28,7 @@ cp ./target/release/$APP_NAME /bin/server
 EOF
 
 
-FROM debian:trixie-slim
+FROM debian:trixie-slim@sha256:26f98ccd92fd0a44d6928ce8ff8f4921b4d2f535bfa07555ee5d18f61429cf0c
 
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/build/building/best-practices/#user
