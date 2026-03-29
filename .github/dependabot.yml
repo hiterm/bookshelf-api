@@ -16,3 +16,15 @@ updates:
     # Rust toolchain version is manually managed to maintain consistent build environment
     ignore:
       - dependency-name: "dtolnay/rust-toolchain"
+
+  # Rust/Cargo dependencies: minor and patch updates
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+      time: "12:00"
+    groups:
+      all:
+        patterns:
+          - "*"
