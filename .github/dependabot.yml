@@ -24,20 +24,7 @@ updates:
       interval: "weekly"
       day: "friday"
       time: "12:00"
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - "version-update:semver-major"
-
-  # Rust/Cargo dependencies: major updates
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "friday"
-      time: "12:00"
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
