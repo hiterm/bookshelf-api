@@ -410,7 +410,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
- "thiserror 1.0.69",
+ "thiserror 2.0.6",
  "time",
  "time-macros",
  "tokio",
