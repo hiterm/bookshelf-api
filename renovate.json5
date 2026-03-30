@@ -2,6 +2,23 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:best-practices",
-    "group:allNonMajor"
+    ":pinVersions",
   ],
+  "packageRules": [
+    {
+      // Group minor/patch updates by manager (e.g. npm, github-actions).
+      // Excludes 0.x.y since minor bumps may contain breaking changes.
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchCurrentVersion": "!/^0\\./",
+      "groupName": "{{manager}} non-major"
+    },
+    {
+      // Group patch-only updates for 0.x.y packages by manager.
+      // Minor and major are left as individual PRs due to potential breaking changes.
+      "matchUpdateTypes": ["patch"],
+      "matchCurrentVersion": "/^0\\./",
+      "groupName": "{{manager}} non-major"
+    }
+  ],
+  "reviewers": ["hiterm"],
 }
