@@ -22,7 +22,7 @@ jobs:
           cargo set-version ${{ steps.release_drafter.outputs.tag_name }}
         continue-on-error: true
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
         with:
           commit-message: Bump version to ${{ steps.release_drafter.outputs.tag_name }}
           branch: chore/bump-version
