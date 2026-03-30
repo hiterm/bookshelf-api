@@ -1,5 +1,4 @@
 use crate::presentation::app_state::AppState;
-use async_trait::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
@@ -85,7 +84,6 @@ pub struct Claims {
     pub _permissions: Option<HashSet<String>>,
 }
 
-#[async_trait]
 impl FromRequestParts<Arc<AppState>> for Claims {
     type Rejection = ClientError;
 
