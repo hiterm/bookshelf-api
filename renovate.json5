@@ -18,6 +18,10 @@
       "matchUpdateTypes": ["patch"],
       "matchCurrentVersion": "/^0\\./",
       "groupName": "{{manager}} non-major"
+    },
+    {
+      "matchManagers": ["cargo"],
+      "minimumReleaseAge": "3 days"
     }
   ],
   "reviewers": ["hiterm"],
