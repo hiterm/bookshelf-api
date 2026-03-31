@@ -11,8 +11,8 @@ test-with-database = []
 
 [dependencies]
 anyhow = { version = "1.0.89", features = ["backtrace"] }
-async-graphql = { version = "=7.2.0", features = ["dataloader"] }
-async-graphql-axum = "=7.2.0"
+async-graphql = { version = "=7.2.1", features = ["dataloader"] }
+async-graphql-axum = "=7.2.1"
 async-trait = "0.1.83"
 axum = { version = "0.8" }
 axum-extra = { version = "0.10", features = ["typed-header"] }
