@@ -10,8 +10,19 @@ git --no-pager diff
 
 ## Branch Workflow
 
-Always create a working branch from `main` before making changes.
-Do not work directly on the `main` branch.
+Before making any changes, verify you are not on `main`:
+
+```bash
+git branch --show-current
+```
+
+If the output is `main`, create and switch to a feature branch first:
+
+```bash
+git checkout -b <branch-name>
+```
+
+Never commit or make file changes while on the `main` branch.
 
 ## Commit Messages
 
