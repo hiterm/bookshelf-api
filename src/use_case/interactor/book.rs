@@ -138,3 +138,201 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use mockall::predicate::always;
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    use crate::{
+        common::types::{BookFormat, BookStore},
+        domain::{
+            entity::book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+            repository::book_repository::MockBookRepository,
+        },
+        use_case::{
+            dto::book::{CreateBookDto, UpdateBookDto},
+            error::UseCaseError,
+            interactor::book::{CreateBookInteractor, DeleteBookInteractor, UpdateBookInteractor},
+            traits::book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
+        },
+    };
+
+    fn make_book(uuid: Uuid) -> Book {
+        Book::new(
+            BookId::new(uuid).unwrap(),
+            BookTitle::new("Test Book".to_string()).unwrap(),
+            vec![],
+            Isbn::new("".to_string()).unwrap(),
+            ReadFlag::new(false),
+            OwnedFlag::new(true),
+            Priority::new(50).unwrap(),
+            BookFormat::Unknown,
+            BookStore::Unknown,
+            OffsetDateTime::now_utc(),
+            OffsetDateTime::now_utc(),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn create_book_success() {
+        // Given
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_create()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = CreateBookInteractor::new(book_repository);
+        let book_data = CreateBookDto::new(
+            "New Book".to_string(),
+            vec![],
+            "".to_string(),
+            false,
+            true,
+            50,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        // When
+        let result = interactor.create("user1", book_data).await;
+
+        // Then
+        assert!(result.is_ok());
+        let dto = result.unwrap();
+        assert_eq!(dto.title, "New Book");
+        assert!(dto.owned);
+    }
+
+    #[tokio::test]
+    async fn create_book_fails_with_empty_title() {
+        // Given
+        let book_repository = MockBookRepository::new();
+        let interactor = CreateBookInteractor::new(book_repository);
+        let book_data = CreateBookDto::new(
+            "".to_string(),
+            vec![],
+            "".to_string(),
+            false,
+            false,
+            0,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        // When
+        let result = interactor.create("user1", book_data).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn update_book_success() {
+        // Given
+        let book_uuid = Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+        let book = make_book(book_uuid);
+
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_find_by_id()
+            .with(always(), always())
+            .returning(move |_, _| Ok(Some(book.clone())));
+        book_repository
+            .expect_update()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = UpdateBookInteractor::new(book_repository);
+        let book_data = UpdateBookDto::new(
+            book_id_str,
+            "Updated Book".to_string(),
+            vec![],
+            "".to_string(),
+            true,
+            false,
+            70,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        // When
+        let result = interactor.update("user1", book_data).await;
+
+        // Then
+        assert!(result.is_ok());
+        let dto = result.unwrap();
+        assert_eq!(dto.title, "Updated Book");
+        assert_eq!(dto.priority, 70);
+    }
+
+    #[tokio::test]
+    async fn update_book_returns_not_found_error_when_book_missing() {
+        // Given
+        let book_uuid = Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_find_by_id()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let interactor = UpdateBookInteractor::new(book_repository);
+        let book_data = UpdateBookDto::new(
+            book_id_str,
+            "Updated Book".to_string(),
+            vec![],
+            "".to_string(),
+            false,
+            false,
+            0,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        // When
+        let result = interactor.update("user1", book_data).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn delete_book_success() {
+        // Given
+        let book_uuid = Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_delete()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = DeleteBookInteractor::new(book_repository);
+
+        // When
+        let result = interactor.delete("user1", &book_id_str).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn delete_book_fails_with_invalid_book_id() {
+        // Given
+        let book_repository = MockBookRepository::new();
+        let interactor = DeleteBookInteractor::new(book_repository);
+
+        // When
+        let result = interactor.delete("user1", "not-a-valid-uuid").await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+}

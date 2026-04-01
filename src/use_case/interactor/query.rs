@@ -107,13 +107,21 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
 
     use mockall::predicate::always;
+    use time::OffsetDateTime;
+    use uuid::Uuid;
 
     use crate::{
+        common::types::{BookFormat, BookStore},
         domain::{
             self,
-            entity::author::{AuthorId, AuthorName},
+            entity::{
+                author::{Author, AuthorId, AuthorName},
+                book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                user::{User, UserId},
+            },
             repository::{
                 author_repository::MockAuthorRepository, book_repository::MockBookRepository,
                 user_repository::MockUserRepository,
@@ -123,6 +131,32 @@ mod tests {
             dto::author::AuthorDto, interactor::query::QueryInteractor, traits::query::QueryUseCase,
         },
     };
+
+    fn make_author(id_str: &str, name: &str) -> Author {
+        Author::new(
+            AuthorId::try_from(id_str).unwrap(),
+            AuthorName::new(name.to_string()).unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn make_book(uuid_str: &str) -> Book {
+        let uuid = Uuid::parse_str(uuid_str).unwrap();
+        Book::new(
+            BookId::new(uuid).unwrap(),
+            BookTitle::new("Test Book".to_string()).unwrap(),
+            vec![],
+            Isbn::new("".to_string()).unwrap(),
+            ReadFlag::new(false),
+            OwnedFlag::new(true),
+            Priority::new(50).unwrap(),
+            BookFormat::Unknown,
+            BookStore::Unknown,
+            OffsetDateTime::now_utc(),
+            OffsetDateTime::now_utc(),
+        )
+        .unwrap()
+    }
 
     #[tokio::test]
     async fn find_author_by_id() {
@@ -161,5 +195,225 @@ mod tests {
         });
 
         assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn find_user_by_id_returns_user_when_found() {
+        // Given
+        let mut user_repository = MockUserRepository::new();
+        let book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+
+        let user_id_str = "user1";
+        user_repository
+            .expect_find_by_id()
+            .with(always())
+            .returning(move |_| {
+                let uid = UserId::new(user_id_str.to_string()).unwrap();
+                Ok(Some(User::new(uid)))
+            });
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let actual = query_interactor.find_user_by_id("user1").await.unwrap();
+
+        // Then
+        assert!(actual.is_some());
+        assert_eq!(actual.unwrap().id, "user1");
+    }
+
+    #[tokio::test]
+    async fn find_user_by_id_returns_none_when_not_found() {
+        // Given
+        let mut user_repository = MockUserRepository::new();
+        let book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+
+        user_repository
+            .expect_find_by_id()
+            .with(always())
+            .returning(|_| Ok(None));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let actual = query_interactor.find_user_by_id("user1").await.unwrap();
+
+        // Then
+        assert!(actual.is_none());
+    }
+
+    #[tokio::test]
+    async fn find_book_by_id_returns_book_when_found() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let mut book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+
+        let book_id_str = "a1b2c3d4-e5f6-4890-abcd-ef1234567890";
+        let book = make_book(book_id_str);
+
+        book_repository
+            .expect_find_by_id()
+            .with(always(), always())
+            .returning(move |_, _| Ok(Some(book.clone())));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let actual = query_interactor
+            .find_book_by_id("user1", book_id_str)
+            .await
+            .unwrap();
+
+        // Then
+        assert!(actual.is_some());
+        assert_eq!(actual.unwrap().id, book_id_str);
+    }
+
+    #[tokio::test]
+    async fn find_book_by_id_returns_none_when_not_found() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let mut book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+
+        book_repository
+            .expect_find_by_id()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let actual = query_interactor
+            .find_book_by_id("user1", "a1b2c3d4-e5f6-4890-abcd-ef1234567890")
+            .await
+            .unwrap();
+
+        // Then
+        assert!(actual.is_none());
+    }
+
+    #[tokio::test]
+    async fn find_all_books_returns_list() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let mut book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+
+        let book = make_book("a1b2c3d4-e5f6-4890-abcd-ef1234567890");
+
+        book_repository
+            .expect_find_all()
+            .with(always())
+            .returning(move |_| Ok(vec![book.clone()]));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let actual = query_interactor.find_all_books("user1").await.unwrap();
+
+        // Then
+        assert_eq!(actual.len(), 1);
+        assert_eq!(actual[0].title, "Test Book");
+    }
+
+    #[tokio::test]
+    async fn find_all_authors_returns_list() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let book_repository = MockBookRepository::new();
+        let mut author_repository = MockAuthorRepository::new();
+
+        let author = make_author("006099b4-6c42-4ec4-8645-f6bd5b63eddc", "author1");
+
+        author_repository
+            .expect_find_all()
+            .with(always())
+            .returning(move |_| Ok(vec![author.clone()]));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let actual = query_interactor.find_all_authors("user1").await.unwrap();
+
+        // Then
+        assert_eq!(actual.len(), 1);
+        assert_eq!(
+            actual[0],
+            AuthorDto {
+                id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                name: "author1".to_string(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn find_author_by_ids_as_hash_map_returns_map() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let book_repository = MockBookRepository::new();
+        let mut author_repository = MockAuthorRepository::new();
+
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let author = make_author(author_id_str, "author1");
+        let author_id = AuthorId::try_from(author_id_str).unwrap();
+
+        author_repository
+            .expect_find_by_ids_as_hash_map()
+            .with(always(), always())
+            .returning(move |_, _| {
+                let mut map = HashMap::new();
+                map.insert(author_id.clone(), author.clone());
+                Ok(map)
+            });
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let actual = query_interactor
+            .find_author_by_ids_as_hash_map("user1", &[author_id_str.to_string()])
+            .await
+            .unwrap();
+
+        // Then
+        assert_eq!(actual.len(), 1);
+        assert_eq!(
+            actual.get(author_id_str).unwrap(),
+            &AuthorDto {
+                id: author_id_str.to_string(),
+                name: "author1".to_string(),
+            }
+        );
     }
 }
