@@ -21,7 +21,16 @@
     {
       "matchManagers": ["cargo"],
       "minimumReleaseAge": "3 days"
-    }
+    },
+    {
+      "matchPackageNames": ["ghcr.io/hiterm/bookshelf-api"],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": ["rust"],
+      "matchManagers": ["dockerfile"],
+      "enabled": false
+    },
   ],
   "reviewers": ["hiterm"],
 }
