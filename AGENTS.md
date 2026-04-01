@@ -50,13 +50,9 @@ cargo test
 
 ## ExecPlans
 
-For complex features, create a planning document in `.agent/plans/` using the format:
+When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
 
-```
-yyyymmdd-kebab-case-description.md
-```
-
-Use the creation date even if the task spans multiple sessions.
+Store all ExecPlan files in `.agent/plans/`. Name each file with a `yyyymmdd-` prefix (the creation date) followed by a short kebab-case description of the task (e.g. `.agent/plans/20251001-add-auth-flow.md`). Always use the creation date, even for long-running tasks.
 
 ## File Format
 
