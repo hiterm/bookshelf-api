@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use async_graphql::{Context, Object, ID};
+use async_graphql::{Context, ID, Object};
 
 use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},

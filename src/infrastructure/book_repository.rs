@@ -278,7 +278,7 @@ impl BookRepository for PgBookRepository {
             _ => {
                 return Err(DomainError::Unexpected(String::from(
                     "rows_affected is greater than 1.",
-                )))
+                )));
             }
         }
 
@@ -336,7 +336,7 @@ impl BookRepository for PgBookRepository {
             _ => {
                 return Err(DomainError::Unexpected(String::from(
                     "rows_affected is greater than 1.",
-                )))
+                )));
             }
         }
 
@@ -363,8 +363,8 @@ mod tests {
 
     use super::*;
     use time::{
-        macros::{date, time},
         PrimitiveDateTime,
+        macros::{date, time},
     };
 
     #[sqlx::test]

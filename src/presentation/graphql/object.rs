@@ -1,6 +1,6 @@
 use async_graphql::dataloader::DataLoader;
 use async_graphql::{ComplexObject, Context, Enum, Result};
-use async_graphql::{InputObject, SimpleObject, ID};
+use async_graphql::{ID, InputObject, SimpleObject};
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::QI;

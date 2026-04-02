@@ -3,15 +3,14 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use axum::{Json, RequestPartsExt};
-use axum_extra::headers::authorization::Bearer;
-use axum_extra::headers::Authorization;
 use axum_extra::TypedHeader;
+use axum_extra::headers::Authorization;
+use axum_extra::headers::authorization::Bearer;
 use derive_more::Display;
 use http::{StatusCode, Uri};
 use jsonwebtoken::{
-    decode, decode_header,
+    Algorithm, DecodingKey, Validation, decode, decode_header,
     jwk::{AlgorithmParameters, JwkSet},
-    Algorithm, DecodingKey, Validation,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -153,7 +152,7 @@ async fn fetch_jwks(domain: &str) -> Result<JwkSet, MyError> {
         Err(e) => {
             return Err(MyError {
                 message: format!("TODO1: {}", e),
-            })
+            });
         }
     };
     match response.json().await {

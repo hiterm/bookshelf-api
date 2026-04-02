@@ -1,7 +1,7 @@
 [package]
 name = "bookshelf-e2e"
 version = "2.2.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 anyhow = "1.0"

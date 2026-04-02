@@ -1,12 +1,12 @@
 use async_graphql::{
-    dataloader::DataLoader,
-    http::{playground_source, GraphQLPlaygroundConfig},
     EmptySubscription, Schema,
+    dataloader::DataLoader,
+    http::{GraphQLPlaygroundConfig, playground_source},
 };
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
-    response::{Html, IntoResponse},
     Extension,
+    response::{Html, IntoResponse},
 };
 
 use crate::{
