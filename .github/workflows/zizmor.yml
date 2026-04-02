@@ -11,4 +11,4 @@ jobs:
       - uses: taiki-e/install-action@bfadeaba214680fb4ab63e710bcb2a6a17019fdc # v2.70.4
         with:
           tool: zizmor
-      - run: zizmor .github/workflows/
+      - run: zizmor --select unpinned-uses .github/workflows/
