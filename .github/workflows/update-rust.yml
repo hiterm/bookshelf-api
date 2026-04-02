@@ -1,0 +1,107 @@
+name: Update Rust Version
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-rust:
+    name: Update Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Get latest stable Rust version
+        id: latest
+        run: |
+          VERSION=$(curl -sS "https://static.rust-lang.org/dist/channel-rust-stable.toml" \
+            | awk '/^\[pkg\.rust\]/{found=1} found && /^version/{print; exit}' \
+            | sed 's/version = "\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current Rust version
+        id: current
+        run: |
+          VERSION=$(grep '^channel' rust-toolchain.toml | sed 's/channel = "\([^"]*\)"/\1/')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if update is needed
+        id: check
+        run: |
+          if [ "${{ steps.latest.outputs.version }}" = "${{ steps.current.outputs.version }}" ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get dtolnay/rust-toolchain hash
+        if: steps.check.outputs.needed == 'true'
+        id: toolchain-hash
+        run: |
+          NEW_VERSION="${{ steps.latest.outputs.version }}"
+          HASH=$(curl -sf \
+            "https://api.github.com/repos/dtolnay/rust-toolchain/git/ref/heads/${NEW_VERSION}" \
+            | jq -r '.object.sha')
+          echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
+
+      - name: Get Docker image digest
+        if: steps.check.outputs.needed == 'true'
+        id: docker-digest
+        run: |
+          NEW_VERSION="${{ steps.latest.outputs.version }}"
+          TOKEN=$(curl -sf \
+            "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/rust:pull" \
+            | jq -r '.token')
+          DIGEST=$(curl -sf \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json" \
+            --head \
+            "https://registry-1.docker.io/v2/library/rust/manifests/${NEW_VERSION}-trixie" \
+            | grep -i 'docker-content-digest' | awk '{print $2}' | tr -d '\r')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Update rust-toolchain.toml
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          OLD="${{ steps.current.outputs.version }}"
+          NEW="${{ steps.latest.outputs.version }}"
+          sed -i "s/channel = \"${OLD}\"/channel = \"${NEW}\"/" rust-toolchain.toml
+
+      - name: Update Dockerfile
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          OLD="${{ steps.current.outputs.version }}"
+          NEW="${{ steps.latest.outputs.version }}"
+          DIGEST="${{ steps.docker-digest.outputs.digest }}"
+          sed -i "s|FROM rust:${OLD}-trixie@sha256:[a-f0-9]*|FROM rust:${NEW}-trixie@${DIGEST}|" Dockerfile
+
+      - name: Update workflow files
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          OLD="${{ steps.current.outputs.version }}"
+          NEW="${{ steps.latest.outputs.version }}"
+          HASH="${{ steps.toolchain-hash.outputs.hash }}"
+          sed -i \
+            "s|dtolnay/rust-toolchain@[a-f0-9]* # ${OLD}|dtolnay/rust-toolchain@${HASH} # ${NEW}|g" \
+            .github/workflows/*.yml
+
+      - uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
+        if: steps.check.outputs.needed == 'true'
+        with:
+          commit-message: "chore: update Rust to ${{ steps.latest.outputs.version }}"
+          title: "chore: update Rust to ${{ steps.latest.outputs.version }}"
+          body: |
+            Update Rust from `${{ steps.current.outputs.version }}` to `${{ steps.latest.outputs.version }}`.
+
+            - `rust-toolchain.toml`
+            - `Dockerfile` (image digest updated)
+            - GitHub Actions workflows (`dtolnay/rust-toolchain` hash updated)
+
+            https://github.com/rust-lang/rust/blob/stable/RELEASES.md
+          branch: update/rust-${{ steps.latest.outputs.version }}
+          delete-branch: true
