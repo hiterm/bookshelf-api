@@ -35,7 +35,6 @@ Never commit or make file changes while on the `main` branch.
 ## Code Quality
 
 - Follow existing codebase conventions and reuse available libraries
-- Avoid adding comments unless explicitly requested
 - Never introduce code that exposes or logs secrets
 
 ## Pre-commit Checks
