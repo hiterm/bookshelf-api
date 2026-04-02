@@ -47,7 +47,7 @@ jobs:
         run: sudo systemctl start postgresql.service
       - name: Wait for Postgres
         run: |
-          for i in {1..30}; do
+          for _ in {1..30}; do
             if pg_isready; then
               exit 0
             fi
@@ -77,7 +77,7 @@ jobs:
         run: |
           cargo run --locked > server.log 2>&1 &
           # Wait for server to be ready
-          for i in {1..600}; do
+          for _ in {1..600}; do
             if curl -s http://localhost:8080/health > /dev/null; then
               echo "Server is ready"
               exit 0
