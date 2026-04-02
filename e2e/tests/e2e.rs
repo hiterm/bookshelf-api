@@ -4,6 +4,7 @@
 #![cfg(test)]
 
 use anyhow::{Context, Result};
+use bookshelf_e2e::generate_test_token;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serial_test::serial;
@@ -69,14 +70,12 @@ async fn e2e_me_endpoint_without_auth_returns_401() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_me_endpoint_with_valid_token_returns_user_info() -> Result<()> {
     // Given: A valid JWT token
     let base_url = get_server_url()?;
     let me_addr = format!("{}/me", base_url);
-
-    // Get valid token from environment
-    let token = std::env::var("TEST_JWT_TOKEN").context("TEST_JWT_TOKEN must be set")?;
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id);
 
     // When: Requesting /me with valid authentication
     let client = Client::new();
@@ -95,10 +94,7 @@ async fn e2e_me_endpoint_with_valid_token_returns_user_info() -> Result<()> {
     );
 
     let body = res.json::<MeResponse>().await.context("invalid JSON")?;
-    assert!(
-        !body.id.is_empty(),
-        "Response should contain non-empty user ID"
-    );
+    assert_eq!(body.id, user_id, "Response ID should match the token subject");
     Ok(())
 }
 
@@ -151,14 +147,12 @@ async fn e2e_me_endpoint_with_malformed_auth_header_returns_401() -> Result<()> 
 }
 
 #[tokio::test]
-#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_me_endpoint_response_contains_required_fields() -> Result<()> {
     // Given: A valid JWT token and running server
     let base_url = get_server_url()?;
     let me_addr = format!("{}/me", base_url);
-
-    // Get valid token from environment
-    let token = std::env::var("TEST_JWT_TOKEN").context("TEST_JWT_TOKEN must be set")?;
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id);
 
     // When: Requesting /me with valid authentication
     let client = Client::new();
@@ -201,11 +195,6 @@ fn get_graphql_url() -> Result<String> {
     Ok(format!("{}/graphql", base_url))
 }
 
-fn get_token() -> Result<String> {
-    std::env::var("TEST_JWT_TOKEN")
-        .context("TEST_JWT_TOKEN environment variable must be set for this test")
-}
-
 async fn graphql_request(query: &str, token: Option<&str>) -> Result<(u16, serde_json::Value)> {
     let client = Client::new();
     let url = get_graphql_url()?;
@@ -232,10 +221,9 @@ async fn graphql_request(query: &str, token: Option<&str>) -> Result<(u16, serde
     Ok((status, body))
 }
 
-async fn delete_test_book(book_id: &str) -> Result<()> {
-    let token = get_token()?;
+async fn delete_test_book(book_id: &str, token: &str) -> Result<()> {
     let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
-    let (status, response) = graphql_request(&query, Some(&token)).await?;
+    let (status, response) = graphql_request(&query, Some(token)).await?;
 
     if status != 200 {
         anyhow::bail!("deleteBook should return 200, got {}", status);
@@ -262,10 +250,9 @@ async fn delete_test_book(book_id: &str) -> Result<()> {
     Ok(())
 }
 
-async fn ensure_user_registered() -> Result<()> {
-    let token = get_token()?;
+async fn ensure_user_registered(token: &str) -> Result<()> {
     let query = r#"mutation { registerUser { id } }"#;
-    let (status, response) = graphql_request(query, Some(&token)).await?;
+    let (status, response) = graphql_request(query, Some(token)).await?;
 
     // Always check for GraphQL errors, regardless of HTTP status
     if let Some(errors) = response.get("errors") {
@@ -306,9 +293,12 @@ async fn e2e_graphql_without_auth_returns_error() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_books_empty() -> Result<()> {
-    let token = get_token()?;
+    // Use a fresh user ID so the books list is always empty for this user
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id);
+    ensure_user_registered(&token).await?;
+
     let query = r#"{ books { id title } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
 
@@ -317,17 +307,17 @@ async fn e2e_graphql_books_empty() -> Result<()> {
     let books_array = books.as_array().context("books should be an array")?;
     assert!(
         books_array.is_empty(),
-        "books should be empty after cleanup by other tests"
+        "books should be empty for a new user"
     );
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_crud_book() -> Result<()> {
-    let token = get_token()?;
-    ensure_user_registered().await?;
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id);
+    ensure_user_registered(&token).await?;
 
     // Create author first
     let author_name = format!("Test Author for CRUD {}", uuid::Uuid::new_v4());
@@ -501,7 +491,7 @@ async fn e2e_graphql_crud_book() -> Result<()> {
     );
 
     // Delete book
-    delete_test_book(book_id).await?;
+    delete_test_book(book_id, &token).await?;
 
     // Verify deletion
     let query = format!(r#"{{ book(id: "{}") {{ id title }} }}"#, book_id);
@@ -514,10 +504,10 @@ async fn e2e_graphql_crud_book() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_book_by_id() -> Result<()> {
-    let token = get_token()?;
-    ensure_user_registered().await?;
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id);
+    ensure_user_registered(&token).await?;
 
     // Create author first
     let author_name = format!("Test Author for BookByID {}", uuid::Uuid::new_v4());
@@ -588,15 +578,16 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
     );
 
     // Clean up
-    delete_test_book(book_id).await?;
+    delete_test_book(book_id, &token).await?;
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_authors() -> Result<()> {
-    let token = get_token()?;
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id);
+
     let query = r#"{ authors { id name } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
 
@@ -608,13 +599,13 @@ async fn e2e_graphql_authors() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_create_author() -> Result<()> {
-    // Note: Author in the current Graph deletion is not supportedQL API.
+    // Note: Author deletion is not supported in the current GraphQL API.
     // Created authors will remain in the database.
     // Use random names to avoid conflicts.
-    let token = get_token()?;
-    ensure_user_registered().await?;
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id);
+    ensure_user_registered(&token).await?;
 
     let random_name = format!("Test Author {}", uuid::Uuid::new_v4());
 
@@ -662,9 +653,10 @@ async fn e2e_graphql_create_author() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires TEST_JWT_TOKEN environment variable"]
 async fn e2e_graphql_book_with_invalid_id() -> Result<()> {
-    let token = get_token()?;
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id);
+
     let query = r#"{ book(id: "00000000-0000-0000-0000-000000000000") { id title } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
 

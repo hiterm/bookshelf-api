@@ -1,42 +1,13 @@
 name: E2E tests
 
-# Required GitHub Secrets:
-# - AUTH0_CLIENT_SECRET: Auth0 client secret
-#
-# Required GitHub Variables:
-# - AUTH0_AUDIENCE: Auth0 API Audience (e.g., https://test-bookshelf-api.hiterm.dev)
-# - AUTH0_DOMAIN: Auth0 domain (e.g., hiterm-bookshelf-test.us.auth0.com)
-# - AUTH0_CLIENT_ID: Auth0 Machine to Machine Application Client ID
-#
-# Configuration:
-# 1. Create a GitHub Environment (e.g., "e2e-test"):
-#    - Go to Settings > Environments
-#    - Add new environment "e2e-test"
-#    - Add environment-specific variables and secrets
-#
-# 2. Set variables in the environment:
-#    - Go to Settings > Environments > e2e-test > Environment variables
-#    - Add: AUTH0_AUDIENCE, AUTH0_DOMAIN, AUTH0_CLIENT_ID
-#
-# 3. Set secrets in the environment:
-#    - Go to Settings > Environments > e2e-test > Environment secrets
-#    - Add: AUTH0_CLIENT_SECRET
-#
-# 4. For Dependabot updates:
-#    - Go to Settings > Secrets and variables > Dependabot
-#    - Add: AUTH0_CLIENT_SECRET (Dependabot only supports secrets, not variables)
-
 on: [push]
 
 jobs:
   e2e:
     name: End-to-end tests
     runs-on: ubuntu-latest
-    environment: e2e-test
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
-      AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
-      AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
     permissions:
       contents: read
     steps:
@@ -69,13 +40,28 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run
+      - name: Start JWKS server
+        run: |
+          cargo run --locked -p bookshelf-e2e --bin bookshelf-jwks-server > jwks_server.log 2>&1 &
+          for i in {1..30}; do
+            if curl -s http://localhost:9999/.well-known/jwks.json > /dev/null; then
+              echo "JWKS server is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::JWKS server did not become ready in time"
+          echo "--- JWKS server log ---"
+          cat jwks_server.log
+          exit 1
       - name: Start application server
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           PORT: 8080
           ALLOWED_ORIGINS: 'http://localhost:8080'
-          AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
-          AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
+          JWT_AUDIENCE: test-audience
+          JWT_DOMAIN: test-issuer.local
+          JWKS_URL: http://localhost:9999/.well-known/jwks.json
         run: |
           cargo run --locked > server.log 2>&1 &
           # Wait for server to be ready
@@ -90,33 +76,8 @@ jobs:
           echo "--- Server log ---"
           cat server.log
           exit 1
-      - name: Get Auth0 Access Token
-        id: auth
-        env:
-          AUTH0_CLIENT_ID: ${{ vars.AUTH0_CLIENT_ID }}
-          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
-        run: |
-          set -euo pipefail
-          RESPONSE=$(curl --fail --silent --show-error \
-            --connect-timeout 10 --max-time 30 \
-            --request POST \
-            --url "https://${AUTH0_DOMAIN}/oauth/token" \
-            --header 'content-type: application/json' \
-            --data "{\"client_id\":\"${AUTH0_CLIENT_ID}\",\"client_secret\":\"${AUTH0_CLIENT_SECRET}\",\"audience\":\"${AUTH0_AUDIENCE}\",\"grant_type\":\"client_credentials\"}" \
-          )
-          TOKEN=$(printf '%s' "$RESPONSE" | jq -r '.access_token // empty')
-          if [ -z "$TOKEN" ]; then
-            echo "::error::Auth0 token acquisition failed: empty access_token"
-            exit 1
-          fi
-
-          # Mask token in logs
-          echo "::add-mask::$TOKEN"
-
-          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
       - name: Run tests
         env:
           TEST_SERVER_URL: http://localhost:8080
-          TEST_JWT_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
-          cargo test -p bookshelf-e2e --locked -- --test-threads=1 --include-ignored
+          cargo test -p bookshelf-e2e --locked -- --test-threads=1

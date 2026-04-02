@@ -29,7 +29,7 @@ pub async fn me_handler(claims: Claims, _state: State<Arc<AppState>>) -> Json<Me
 mod tests {
     use super::*;
     use crate::presentation::app_state::AppState;
-    use crate::presentation::extractor::claims::Auth0Config;
+    use crate::presentation::extractor::claims::JwtConfig;
     use std::collections::HashSet;
     use std::sync::Arc;
 
@@ -205,9 +205,9 @@ mod tests {
             _permissions: None,
         };
         let state = State(Arc::new(AppState {
-            auth0_config: Auth0Config {
+            jwt_config: JwtConfig {
                 audience: "test".to_string(),
-                domain: "test.auth0.com".to_string(),
+                domain: "test-issuer.local".to_string(),
             },
         }));
 
@@ -229,9 +229,9 @@ mod tests {
             _permissions: Some(permissions),
         };
         let state = State(Arc::new(AppState {
-            auth0_config: Auth0Config {
+            jwt_config: JwtConfig {
                 audience: "test".to_string(),
-                domain: "test.auth0.com".to_string(),
+                domain: "test-issuer.local".to_string(),
             },
         }));
 

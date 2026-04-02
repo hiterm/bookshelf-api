@@ -17,16 +17,16 @@ use serde_json::json;
 use std::{collections::HashSet, sync::Arc};
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Auth0Config {
+pub struct JwtConfig {
     pub(crate) audience: String,
     pub(crate) domain: String,
 }
 
-impl Default for Auth0Config {
+impl Default for JwtConfig {
     fn default() -> Self {
-        envy::prefixed("AUTH0_")
+        envy::prefixed("JWT_")
             .from_env()
-            .expect("Provide missing environment variables for Auth0Client")
+            .expect("Provide missing environment variables for JWT (JWT_AUDIENCE, JWT_DOMAIN)")
     }
 }
 
@@ -90,7 +90,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let config = state.auth0_config.clone();
+        let config = state.jwt_config.clone();
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
@@ -102,8 +102,6 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .kid
             .ok_or_else(|| ClientError::NotFound("kid not found in token header".to_string()))?;
         let domain = config.domain.as_str();
-        // TODO: サンプル実装の通りに戻せそうなら戻す
-        // https://github.com/auth0-developer-hub/api_actix-web_rust_hello-world/blob/c86861763a4a4f2ad5f0e39bb3c15a7216d3fdba/src/extractors/claims.rs#L107-L119
         let jwks = fetch_jwks(domain).await.unwrap(); // TODO
         let jwk = jwks
             .find(&kid)
@@ -136,17 +134,13 @@ struct MyError {
 }
 
 async fn fetch_jwks(domain: &str) -> Result<JwkSet, MyError> {
-    let uri = Uri::builder()
-        .scheme("https")
-        .authority(domain)
-        .path_and_query("/.well-known/jwks.json")
-        .build()
-        .unwrap();
+    let uri = std::env::var("JWKS_URL")
+        .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
     let client = reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .build()
         .unwrap();
-    let response = client.get(uri.to_string()).send().await;
+    let response = client.get(uri).send().await;
     let response = match response {
         Ok(response) => response,
         Err(e) => {
