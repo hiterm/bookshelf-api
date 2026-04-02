@@ -30,3 +30,48 @@ where
         Ok(UserDto::new(user.id.into_string()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use mockall::predicate::always;
+
+    use crate::{
+        domain::repository::user_repository::MockUserRepository,
+        use_case::{
+            error::UseCaseError, interactor::user::RegisterUserInteractor,
+            traits::user::RegisterUserUseCase,
+        },
+    };
+
+    #[tokio::test]
+    async fn register_user_success() {
+        // Given
+        let mut user_repository = MockUserRepository::new();
+        user_repository
+            .expect_create()
+            .with(always())
+            .returning(|_| Ok(()));
+
+        let interactor = RegisterUserInteractor::new(user_repository);
+
+        // When
+        let result = interactor.register_user("user1").await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().id, "user1");
+    }
+
+    #[tokio::test]
+    async fn register_user_fails_with_empty_id() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let interactor = RegisterUserInteractor::new(user_repository);
+
+        // When
+        let result = interactor.register_user("").await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+}

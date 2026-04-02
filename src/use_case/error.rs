@@ -36,3 +36,42 @@ impl From<DomainError> for UseCaseError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::error::DomainError;
+
+    use super::UseCaseError;
+
+    #[test]
+    fn domain_validation_error_becomes_use_case_validation_error() {
+        let domain_err = DomainError::Validation("invalid input".to_string());
+        let use_case_err = UseCaseError::from(domain_err);
+        assert!(matches!(use_case_err, UseCaseError::Validation(_)));
+    }
+
+    #[test]
+    fn domain_not_found_error_becomes_use_case_not_found_error() {
+        let domain_err = DomainError::NotFound {
+            entity_type: "book",
+            entity_id: "123".to_string(),
+            user_id: "user1".to_string(),
+        };
+        let use_case_err = UseCaseError::from(domain_err);
+        assert!(matches!(use_case_err, UseCaseError::NotFound { .. }));
+    }
+
+    #[test]
+    fn domain_infrastructure_error_becomes_use_case_other_error() {
+        let domain_err = DomainError::InfrastructureError(anyhow::anyhow!("db error"));
+        let use_case_err = UseCaseError::from(domain_err);
+        assert!(matches!(use_case_err, UseCaseError::Other(_)));
+    }
+
+    #[test]
+    fn domain_unexpected_error_becomes_use_case_unexpected_error() {
+        let domain_err = DomainError::Unexpected("something went wrong".to_string());
+        let use_case_err = UseCaseError::from(domain_err);
+        assert!(matches!(use_case_err, UseCaseError::Unexpected(_)));
+    }
+}
