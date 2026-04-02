@@ -53,6 +53,14 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 
 Store all ExecPlan files in `.agent/plans/`. Name each file with a `yyyymmdd-` prefix (the creation date) followed by a short kebab-case description of the task (e.g. `.agent/plans/20251001-add-auth-flow.md`). Always use the creation date, even for long-running tasks.
 
+## Renovate Config
+
+When editing `renovate.json5`, validate the config using the Renovate config validator:
+
+```bash
+npx --yes renovate-config-validator renovate.json5
+```
+
 ## File Format
 
 Always add a trailing newline at the end of files.
