@@ -3,7 +3,7 @@
 //! This module provides the handler for retrieving the current authenticated
 //! user's information from JWT claims.
 
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

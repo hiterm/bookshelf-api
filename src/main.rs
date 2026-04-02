@@ -1,18 +1,18 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
-    routing::{get, post},
     Extension, Router,
+    routing::{get, post},
 };
 use bookshelf_api::{
-    dependency_injection::{dependency_injection, MI, QI},
+    dependency_injection::{MI, QI, dependency_injection},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
     presentation::handler::user::me_handler,
     presentation::{app_state::AppState, extractor::claims::Auth0Config},
 };
 use http::{
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
     HeaderValue, Method,
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
 };
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;

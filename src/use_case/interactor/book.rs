@@ -80,7 +80,7 @@ where
                     entity_type: "book",
                     entity_id: book_data.id,
                     user_id: user_id.into_string(),
-                })
+                });
             }
         };
 
