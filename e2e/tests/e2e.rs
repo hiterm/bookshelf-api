@@ -94,7 +94,10 @@ async fn e2e_me_endpoint_with_valid_token_returns_user_info() -> Result<()> {
     );
 
     let body = res.json::<MeResponse>().await.context("invalid JSON")?;
-    assert_eq!(body.id, user_id, "Response ID should match the token subject");
+    assert_eq!(
+        body.id, user_id,
+        "Response ID should match the token subject"
+    );
     Ok(())
 }
 
