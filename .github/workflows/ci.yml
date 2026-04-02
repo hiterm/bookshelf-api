@@ -103,6 +103,30 @@ jobs:
           docker network remove test-network
           exit 1
 
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@2ea1b3bdd0261867664fd125505456a7b9c3385c # 1.93.1
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: taiki-e/install-action@735e5933943122bc89878bce93fb2cb5ef870864 # cargo-llvm-cov
+        with:
+          tool: cargo-llvm-cov
+      - run: sudo systemctl start postgresql.service
+      - run: pg_isready
+      - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
+      - run: sudo -u postgres createdb --owner=bookshelf bookshelf
+      - run: cargo llvm-cov --all-features --locked --lcov --output-path lcov.info
+      - uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
+
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
