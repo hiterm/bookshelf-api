@@ -1,0 +1,20 @@
+name: Setup Rust toolchain
+description: Read Rust version from rust-toolchain.toml and install via dtolnay/rust-toolchain
+
+inputs:
+  components:
+    description: Comma-separated list of components to install
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Read Rust toolchain version
+      id: read_rust_toolchain
+      shell: bash
+      run: echo "value=$(python3 .github/scripts/rust-toolchain-channel.py)" >> "$GITHUB_OUTPUT"
+    # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
+    - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable # zizmor: ignore[superfluous-actions]
+      with:
+        toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
+        components: ${{ inputs.components }}
