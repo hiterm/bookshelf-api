@@ -159,6 +159,152 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn find_book_by_id_passes_correct_user_id_to_repository() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let mut book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+
+        let expected_user_id = "user1";
+        let book_id_str = "a1b2c3d4-e5f6-4890-abcd-ef1234567890";
+        let book = make_book(book_id_str);
+
+        book_repository
+            .expect_find_by_id()
+            .withf(move |uid, _| uid.as_str() == expected_user_id)
+            .returning(move |_, _| Ok(Some(book.clone())));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let result = query_interactor.find_book_by_id("user1", book_id_str).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn find_all_books_passes_correct_user_id_to_repository() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let mut book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+
+        let expected_user_id = "user1";
+
+        book_repository
+            .expect_find_all()
+            .withf(move |uid| uid.as_str() == expected_user_id)
+            .returning(|_| Ok(vec![]));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let result = query_interactor.find_all_books("user1").await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn find_author_by_id_passes_correct_user_id_to_repository() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let book_repository = MockBookRepository::new();
+        let mut author_repository = MockAuthorRepository::new();
+
+        let expected_user_id = "user1";
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+
+        author_repository
+            .expect_find_by_id()
+            .withf(move |uid, _| uid.as_str() == expected_user_id)
+            .returning(|_, _| Ok(None));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let result = query_interactor
+            .find_author_by_id("user1", author_id_str)
+            .await;
+
+        // Then
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn find_all_authors_passes_correct_user_id_to_repository() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let book_repository = MockBookRepository::new();
+        let mut author_repository = MockAuthorRepository::new();
+
+        let expected_user_id = "user1";
+
+        author_repository
+            .expect_find_all()
+            .withf(move |uid| uid.as_str() == expected_user_id)
+            .returning(|_| Ok(vec![]));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let result = query_interactor.find_all_authors("user1").await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn find_author_by_ids_as_hash_map_passes_correct_user_id_to_repository() {
+        // Given
+        let user_repository = MockUserRepository::new();
+        let book_repository = MockBookRepository::new();
+        let mut author_repository = MockAuthorRepository::new();
+
+        let expected_user_id = "user1";
+
+        author_repository
+            .expect_find_by_ids_as_hash_map()
+            .withf(move |uid, _| uid.as_str() == expected_user_id)
+            .returning(|_, _| Ok(HashMap::new()));
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+        };
+
+        // When
+        let result = query_interactor
+            .find_author_by_ids_as_hash_map(
+                "user1",
+                &["006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string()],
+            )
+            .await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
     async fn find_author_by_id() {
         let user_repository = MockUserRepository::new();
         let book_repository = MockBookRepository::new();
