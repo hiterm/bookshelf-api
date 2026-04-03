@@ -19,7 +19,7 @@ jobs:
           file: rust-toolchain.toml
           field: toolchain.channel
       # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1 # zizmor: ignore[superfluous-actions]
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable # zizmor: ignore[superfluous-actions]
         with:
           toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -40,7 +40,7 @@ jobs:
           file: rust-toolchain.toml
           field: toolchain.channel
       # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1 # zizmor: ignore[superfluous-actions]
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable # zizmor: ignore[superfluous-actions]
         with:
           toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -141,7 +141,7 @@ jobs:
           file: rust-toolchain.toml
           field: toolchain.channel
       # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1 # zizmor: ignore[superfluous-actions]
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable # zizmor: ignore[superfluous-actions]
         with:
           toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
           components: rustfmt
@@ -161,7 +161,7 @@ jobs:
           file: rust-toolchain.toml
           field: toolchain.channel
       # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1 # zizmor: ignore[superfluous-actions]
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable # zizmor: ignore[superfluous-actions]
         with:
           toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
           components: clippy
