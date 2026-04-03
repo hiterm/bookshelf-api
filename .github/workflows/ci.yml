@@ -13,13 +13,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: SebRollen/toml-action@v1.2.0
+      - uses: SebRollen/toml-action@b1b3628f55fc3a28208d4203ada8b737e9687876 # v1.2.0
         id: read_rust_toolchain
         with:
           file: rust-toolchain.toml
           field: toolchain.channel
       # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@v1 # zizmor: ignore[superfluous-actions]
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1 # zizmor: ignore[superfluous-actions]
         with:
           toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -34,13 +34,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: SebRollen/toml-action@v1.2.0
+      - uses: SebRollen/toml-action@b1b3628f55fc3a28208d4203ada8b737e9687876 # v1.2.0
         id: read_rust_toolchain
         with:
           file: rust-toolchain.toml
           field: toolchain.channel
       # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@v1 # zizmor: ignore[superfluous-actions]
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1 # zizmor: ignore[superfluous-actions]
         with:
           toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -135,13 +135,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: SebRollen/toml-action@v1.2.0
+      - uses: SebRollen/toml-action@b1b3628f55fc3a28208d4203ada8b737e9687876 # v1.2.0
         id: read_rust_toolchain
         with:
           file: rust-toolchain.toml
           field: toolchain.channel
       # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@v1 # zizmor: ignore[superfluous-actions]
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1 # zizmor: ignore[superfluous-actions]
         with:
           toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
           components: rustfmt
@@ -155,13 +155,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: SebRollen/toml-action@v1.2.0
+      - uses: SebRollen/toml-action@b1b3628f55fc3a28208d4203ada8b737e9687876 # v1.2.0
         id: read_rust_toolchain
         with:
           file: rust-toolchain.toml
           field: toolchain.channel
       # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@v1 # zizmor: ignore[superfluous-actions]
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1 # zizmor: ignore[superfluous-actions]
         with:
           toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
           components: clippy
