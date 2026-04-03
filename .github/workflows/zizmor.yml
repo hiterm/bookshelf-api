@@ -1,0 +1,17 @@
+name: zizmor
+
+on: [push]
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install zizmor
+        run: pip install zizmor==1.23.1
+      - name: Run zizmor
+        run: zizmor .
