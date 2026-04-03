@@ -1,47 +1,62 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:best-practices",
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:best-practices',
   ],
-  "customManagers": [
+  customManagers: [
     {
-      "customType": "regex",
-      "fileMatch": ["(^|/)rust-toolchain(\\.toml)?$"],
-      "matchStrings": ["channel\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
-      "depNameTemplate": "rust",
-      "packageNameTemplate": "rust-lang/rust",
-      "datasourceTemplate": "github-releases",
-    },
-  ],
-  "packageRules": [
-    {
-      // Group minor/patch updates by manager (e.g. npm, github-actions).
-      // Excludes 0.x.y since minor bumps may contain breaking changes.
-      "matchUpdateTypes": ["minor", "patch"],
-      "matchCurrentVersion": "!/^0\\./",
-      "groupName": "{{manager}} non-major"
-    },
-    {
-      // Group patch-only updates for 0.x.y packages by manager.
-      // Minor and major are left as individual PRs due to potential breaking changes.
-      "matchUpdateTypes": ["patch"],
-      "matchCurrentVersion": "/^0\\./",
-      "groupName": "{{manager}} non-major"
-    },
-    {
-      "matchManagers": ["cargo"],
-      "minimumReleaseAge": "3 days"
-    },
-    {
-      "matchPackageNames": ["ghcr.io/hiterm/bookshelf-api"],
-      "enabled": false
-    },
-    {
-      // Keep rust-toolchain.toml and Dockerfile rust base image in sync
-      "matchDepNames": ["rust"],
-      "matchManagers": ["custom.regex", "dockerfile"],
-      "groupName": "rust version"
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)rust-toolchain(\\.toml)?$/',
+      ],
+      matchStrings: [
+        'channel\\s*=\\s*"(?<currentValue>\\d+\\.\\d+\\.\\d+)"',
+      ],
+      depNameTemplate: 'rust',
+      packageNameTemplate: 'rust-lang/rust',
+      datasourceTemplate: 'github-releases',
     },
   ],
-  "reviewers": ["hiterm"],
+  packageRules: [
+    {
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      matchCurrentVersion: '!/^0\\./',
+      groupName: '{{manager}} non-major',
+    },
+    {
+      matchUpdateTypes: [
+        'patch',
+      ],
+      matchCurrentVersion: '/^0\\./',
+      groupName: '{{manager}} non-major',
+    },
+    {
+      matchManagers: [
+        'cargo',
+      ],
+      minimumReleaseAge: '3 days',
+    },
+    {
+      matchPackageNames: [
+        'ghcr.io/hiterm/bookshelf-api',
+      ],
+      enabled: false,
+    },
+    {
+      matchDepNames: [
+        'rust',
+      ],
+      matchManagers: [
+        'custom.regex',
+        'dockerfile',
+      ],
+      groupName: 'rust version',
+    },
+  ],
+  reviewers: [
+    'hiterm',
+  ],
 }
