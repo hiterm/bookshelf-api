@@ -38,7 +38,7 @@
     },
     {
       // Keep rust-toolchain.toml and Dockerfile rust base image in sync
-      "matchPackageNames": ["rust"],
+      "matchDepNames": ["rust"],
       "matchManagers": ["custom.regex", "dockerfile"],
       "groupName": "rust version"
     },
