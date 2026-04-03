@@ -14,7 +14,7 @@ runs:
       shell: bash
       run: echo "value=$(python3 .github/scripts/rust-toolchain-channel.py)" >> "$GITHUB_OUTPUT"
     # superfluous-actions: needed to install the Rust version pinned in rust-toolchain.toml
-    - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable # zizmor: ignore[superfluous-actions]
+    - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable # zizmor: ignore[superfluous-actions]
       with:
         toolchain: ${{ steps.read_rust_toolchain.outputs.value }}
         components: ${{ inputs.components }}
