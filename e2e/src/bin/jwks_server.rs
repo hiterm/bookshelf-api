@@ -1,4 +1,4 @@
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 
 const TEST_JWKS: &str = include_str!("../../../testdata/test_jwks.json");
 
