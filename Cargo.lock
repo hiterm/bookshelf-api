@@ -378,6 +378,8 @@ name = "bookshelf-e2e"
 version = "2.2.0"
 dependencies = [
  "anyhow",
+ "axum",
+ "jsonwebtoken",
  "reqwest",
  "serde",
  "serde_json",

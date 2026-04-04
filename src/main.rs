@@ -8,7 +8,7 @@ use bookshelf_api::{
     dependency_injection::{MI, QI, dependency_injection},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
     presentation::handler::user::me_handler,
-    presentation::{app_state::AppState, extractor::claims::Auth0Config},
+    presentation::{app_state::AppState, extractor::claims::JwtConfig},
 };
 use http::{
     HeaderValue, Method,
@@ -41,8 +41,8 @@ async fn main() {
 
     let (query_use_case, schema) = dependency_injection(pool);
 
-    let auth0_config = Auth0Config::default();
-    let state = Arc::new(AppState { auth0_config });
+    let jwt_config = JwtConfig::default();
+    let state = Arc::new(AppState { jwt_config });
 
     let allowed_origins: Vec<_> = fetch_allowed_origins()
         .into_iter()

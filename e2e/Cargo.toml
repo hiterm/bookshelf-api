@@ -3,11 +3,21 @@ name = "bookshelf-e2e"
 version = "2.2.0"
 edition = "2024"
 
+[lib]
+name = "bookshelf_e2e"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bookshelf-jwks-server"
+path = "src/bin/jwks_server.rs"
+
 [dependencies]
 anyhow = "1.0"
+axum = { version = "0.8" }
+jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", default-features = false, features = ["json","rustls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serial_test = "3"
-tokio = { version = "1", features = ["rt-multi-thread","macros","process"] }
+tokio = { version = "1", features = ["rt-multi-thread","macros","net","process"] }
 uuid = { version = "1.0", features = ["v4"] }

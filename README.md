@@ -64,19 +64,18 @@ sqlx migrate run
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE ROLE bookshelf WITH LOGIN PASSWORD 'password';"
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE DATABASE bookshelf OWNER bookshelf;"
 
-# 3) Start application server (in a separate terminal)
-PORT=8080 AUTH0_AUDIENCE=<your-auth0-audience> AUTH0_DOMAIN=<your-auth0-domain> DATABASE_URL=<your-database-url> ALLOWED_ORIGINS=http://localhost:8080 \
+# 3) Start JWKS server (in a separate terminal)
+cargo run -p bookshelf-e2e --bin bookshelf-jwks-server
+
+# 4) Start application server (in a separate terminal)
+PORT=8080 JWT_AUDIENCE=test-audience JWT_DOMAIN=test-issuer.local \
+  JWKS_URL=http://localhost:9999/.well-known/jwks.json \
+  DATABASE_URL=postgres://bookshelf:password@localhost:5432/bookshelf ALLOWED_ORIGINS=http://localhost:8080 \
   cargo run
 
-# 4) Run E2E tests
+# 5) Run E2E tests
 TEST_SERVER_URL=http://localhost:8080 \
   cargo test -p bookshelf-e2e -- --test-threads=1
-```
-
-### token
-
-```sh
-auth0 test token --no-input <client-id> -a <your-auth0-audience>
 ```
 
 ## GraphQL Playground

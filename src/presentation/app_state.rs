@@ -1,6 +1,6 @@
-use super::extractor::claims::Auth0Config;
+use super::extractor::claims::JwtConfig;
 
 #[derive(Debug, Clone)]
 pub struct AppState {
-    pub auth0_config: Auth0Config,
+    pub jwt_config: JwtConfig,
 }
