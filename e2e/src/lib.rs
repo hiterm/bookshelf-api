@@ -1,3 +1,4 @@
+use anyhow::Result;
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,12 +23,8 @@ struct TestClaims {
 /// The token is valid for 1 hour and uses the audience/issuer values that
 /// match the test server configuration (JWT_AUDIENCE=test-audience,
 /// JWT_DOMAIN=test-issuer.local).
-pub fn generate_test_token(user_id: &str) -> String {
-    let exp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-        + 3600;
+pub fn generate_test_token(user_id: &str) -> Result<String> {
+    let exp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + 3600;
 
     let claims = TestClaims {
         sub: user_id.to_string(),
@@ -39,8 +36,7 @@ pub fn generate_test_token(user_id: &str) -> String {
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(TEST_KID.to_string());
 
-    let key = EncodingKey::from_rsa_pem(TEST_PRIVATE_KEY_PEM.as_bytes())
-        .expect("Failed to load test private key");
-
-    encode(&header, &claims, &key).expect("Failed to generate test JWT")
+    let key = EncodingKey::from_rsa_pem(TEST_PRIVATE_KEY_PEM.as_bytes())?;
+    let token = encode(&header, &claims, &key)?;
+    Ok(token)
 }

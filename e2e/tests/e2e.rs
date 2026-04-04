@@ -75,7 +75,7 @@ async fn e2e_me_endpoint_with_valid_token_returns_user_info() -> Result<()> {
     let base_url = get_server_url()?;
     let me_addr = format!("{}/me", base_url);
     let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id);
+    let token = generate_test_token(&user_id)?;
 
     // When: Requesting /me with valid authentication
     let client = Client::new();
@@ -155,7 +155,7 @@ async fn e2e_me_endpoint_response_contains_required_fields() -> Result<()> {
     let base_url = get_server_url()?;
     let me_addr = format!("{}/me", base_url);
     let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id);
+    let token = generate_test_token(&user_id)?;
 
     // When: Requesting /me with valid authentication
     let client = Client::new();
@@ -299,7 +299,7 @@ async fn e2e_graphql_without_auth_returns_error() -> Result<()> {
 async fn e2e_graphql_books_empty() -> Result<()> {
     // Use a fresh user ID so the books list is always empty for this user
     let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id);
+    let token = generate_test_token(&user_id)?;
     ensure_user_registered(&token).await?;
 
     let query = r#"{ books { id title } }"#;
@@ -319,7 +319,7 @@ async fn e2e_graphql_books_empty() -> Result<()> {
 #[serial]
 async fn e2e_graphql_crud_book() -> Result<()> {
     let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id);
+    let token = generate_test_token(&user_id)?;
     ensure_user_registered(&token).await?;
 
     // Create author first
@@ -509,7 +509,7 @@ async fn e2e_graphql_crud_book() -> Result<()> {
 #[serial]
 async fn e2e_graphql_book_by_id() -> Result<()> {
     let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id);
+    let token = generate_test_token(&user_id)?;
     ensure_user_registered(&token).await?;
 
     // Create author first
@@ -589,7 +589,7 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
 #[serial]
 async fn e2e_graphql_authors() -> Result<()> {
     let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id);
+    let token = generate_test_token(&user_id)?;
 
     let query = r#"{ authors { id name } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
@@ -607,7 +607,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
     // Created authors will remain in the database.
     // Use random names to avoid conflicts.
     let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id);
+    let token = generate_test_token(&user_id)?;
     ensure_user_registered(&token).await?;
 
     let random_name = format!("Test Author {}", uuid::Uuid::new_v4());
@@ -658,7 +658,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
 #[serial]
 async fn e2e_graphql_book_with_invalid_id() -> Result<()> {
     let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id);
+    let token = generate_test_token(&user_id)?;
 
     let query = r#"{ book(id: "00000000-0000-0000-0000-000000000000") { id title } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
