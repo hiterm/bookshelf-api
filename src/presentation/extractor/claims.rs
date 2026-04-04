@@ -36,6 +36,8 @@ pub enum ClientError {
     Authentication,
     #[display("decode")]
     Decode(jsonwebtoken::errors::Error),
+    #[display("jwks_fetch")]
+    JwksFetch(String),
     #[display("not_found")]
     NotFound(String),
     #[display("unsupported_algorithm")]
@@ -44,9 +46,15 @@ pub enum ClientError {
 
 impl IntoResponse for ClientError {
     fn into_response(self) -> Response {
-        let (error, error_description, message) = match self {
-            Self::Authentication => (None, None, "Requires authentication".to_string()),
+        let (status, error, error_description, message) = match self {
+            Self::Authentication => (
+                StatusCode::UNAUTHORIZED,
+                None,
+                None,
+                "Requires authentication".to_string(),
+            ),
             Self::Decode(_) => (
+                StatusCode::UNAUTHORIZED,
                 Some("invalid_token".to_string()),
                 Some(
                     "Authorization header value must follow this format: Bearer access-token"
@@ -54,12 +62,20 @@ impl IntoResponse for ClientError {
                 ),
                 "Bad credentials".to_string(),
             ),
+            Self::JwksFetch(msg) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Some("server_error".to_string()),
+                Some(msg),
+                "Service temporarily unavailable".to_string(),
+            ),
             Self::NotFound(msg) => (
+                StatusCode::UNAUTHORIZED,
                 Some("invalid_token".to_string()),
                 Some(msg),
                 "Bad credentials".to_string(),
             ),
             Self::UnsupportedAlgortithm(alg) => (
+                StatusCode::UNAUTHORIZED,
                 Some("invalid_token".to_string()),
                 Some(format!(
                     "Unsupported encryption algortithm expected RSA got {:?}",
@@ -73,7 +89,7 @@ impl IntoResponse for ClientError {
             "error_description": error_description,
             "message": message
         }));
-        (StatusCode::UNAUTHORIZED, body).into_response()
+        (status, body).into_response()
     }
 }
 
@@ -102,7 +118,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .kid
             .ok_or_else(|| ClientError::NotFound("kid not found in token header".to_string()))?;
         let domain = config.domain.as_str();
-        let jwks = fetch_jwks(domain).await.unwrap(); // TODO
+        let jwks = fetch_jwks(domain).await?;
         let jwk = jwks
             .find(&kid)
             .ok_or_else(|| ClientError::NotFound("No JWK found for kid".to_string()))?;
@@ -127,71 +143,38 @@ impl FromRequestParts<Arc<AppState>> for Claims {
     }
 }
 
-#[derive(Debug, Display, derive_more::Error)]
-#[display("my error: {message}")]
-struct MyError {
-    message: String,
+/// Validates that the JWKS URL is safe to fetch: `http://` is only permitted
+/// for loopback addresses.
+fn validate_jwks_url(url: &str) -> Result<(), ClientError> {
+    let uri: Uri = url
+        .parse()
+        .map_err(|_| ClientError::JwksFetch(format!("invalid JWKS_URL: {url}")))?;
+    if uri.scheme_str() == Some("http") {
+        let host = uri.host().unwrap_or("");
+        if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+            return Err(ClientError::JwksFetch(
+                "http:// JWKS_URL is only permitted for loopback addresses".to_string(),
+            ));
+        }
+    }
+    Ok(())
 }
 
-async fn fetch_jwks(domain: &str) -> Result<JwkSet, MyError> {
+async fn fetch_jwks(domain: &str) -> Result<JwkSet, ClientError> {
     let uri = std::env::var("JWKS_URL")
         .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
+    validate_jwks_url(&uri)?;
     let client = reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .build()
         .unwrap();
-    let response = client.get(uri).send().await;
-    let response = match response {
-        Ok(response) => response,
-        Err(e) => {
-            return Err(MyError {
-                message: format!("TODO1: {}", e),
-            });
-        }
-    };
-    match response.json().await {
-        Ok(jwks) => Ok(jwks),
-        Err(_) => Err(MyError {
-            message: "TODO2".to_string(),
-        }),
-    }
-}
-
-#[derive(Debug)]
-pub enum AuthError {
-    WrongCredentials,
-    MissingCredentials,
-    TokenCreation,
-    InvalidToken,
-}
-
-impl IntoResponse for AuthError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = match self {
-            AuthError::WrongCredentials => (StatusCode::UNAUTHORIZED, "Wrong credentials"),
-            AuthError::MissingCredentials => (StatusCode::BAD_REQUEST, "Missing credentials"),
-            AuthError::TokenCreation => (StatusCode::INTERNAL_SERVER_ERROR, "Token creation error"),
-            AuthError::InvalidToken => (StatusCode::BAD_REQUEST, "Invalid token"),
-        };
-        let body = Json(json!({
-            "error": error_message,
-        }));
-        (status, body).into_response()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::presentation::extractor::claims::MyError;
-
-    #[test]
-    fn my_error_to_string() {
-        assert_eq!(
-            MyError {
-                message: "test".to_string()
-            }
-            .to_string(),
-            "my error: test"
-        );
-    }
+    let response = client
+        .get(&uri)
+        .send()
+        .await
+        .map_err(|e| ClientError::JwksFetch(format!("request failed: {e}")))?;
+    response
+        .json()
+        .await
+        .map_err(|e| ClientError::JwksFetch(format!("invalid JWKS response: {e}")))
 }

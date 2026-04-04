@@ -44,7 +44,7 @@ jobs:
         run: |
           cargo run --locked -p bookshelf-e2e --bin bookshelf-jwks-server > jwks_server.log 2>&1 &
           for _ in {1..30}; do
-            if curl -s http://localhost:9999/.well-known/jwks.json > /dev/null; then
+            if curl -fs http://localhost:9999/.well-known/jwks.json > /dev/null; then
               echo "JWKS server is ready"
               exit 0
             fi
@@ -66,7 +66,7 @@ jobs:
           cargo run --locked > server.log 2>&1 &
           # Wait for server to be ready
           for _ in {1..600}; do
-            if curl -s http://localhost:8080/health > /dev/null; then
+            if curl -fs http://localhost:8080/health > /dev/null; then
               echo "Server is ready"
               exit 0
             fi
