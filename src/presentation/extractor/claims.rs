@@ -165,9 +165,8 @@ async fn fetch_jwks(domain: &str) -> Result<JwkSet, ClientError> {
         .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
     validate_jwks_url(&uri)?;
     let client = reqwest::ClientBuilder::new()
-        .use_rustls_tls()
         .build()
-        .unwrap();
+        .map_err(|e| ClientError::JwksFetch(format!("failed to build HTTP client: {e}")))?;
     let response = client
         .get(&uri)
         .send()
