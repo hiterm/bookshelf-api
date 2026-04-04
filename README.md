@@ -7,6 +7,12 @@ Backend server for [Bookshelf](https://github.com/hiterm/bookshelf/).
 
 ## How to run server
 
+### Set up Auth0
+
+Set up auth0 by following:
+
+https://auth0.com/developers/hub/code-samples/api/actix-web-rust/basic-authorization
+
 ### Setup .env
 
 ```sh
