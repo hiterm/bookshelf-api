@@ -237,6 +237,8 @@ impl BookRepository for PgBookRepository {
     }
 
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
         let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
@@ -262,7 +264,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.created_at())
         .bind(book.updated_at())
         .bind(book.id().to_uuid())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         let rows_affected = result.rows_affected();
@@ -295,7 +297,7 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
@@ -307,8 +309,10 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
 
         Ok(())
     }
@@ -505,12 +509,47 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
-        let book = book_entity1(&author_ids)?;
-        book_repository.create(&user1_id, &book).await?;
+        // Both users own the same book UUID but with distinct author associations.
+        // This exercises the book_author.user_id filter inside the
+        // authors_of_book_and_user CTE: if that CTE ignored user_id, one user's
+        // find_all would return the other user's author_ids.
+        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book1 = book_entity1(&user1_author_ids)?;
+        book_repository.create(&user1_id, &book1).await?;
 
-        let result = book_repository.find_all(&user2_id).await?;
-        assert_eq!(result.len(), 0);
+        let user2_author_ids = prepare_authors2(&user2_id, &author_repository).await?;
+        let book2 = book_entity1(&user2_author_ids)?;
+        book_repository.create(&user2_id, &book2).await?;
+
+        // user1's find_all must contain only user1's authors
+        let user1_books = book_repository.find_all(&user1_id).await?;
+        assert_eq!(user1_books.len(), 1);
+        assert!(
+            user1_author_ids
+                .iter()
+                .all(|id| user1_books[0].author_ids().contains(id))
+        );
+        assert!(
+            !user1_books[0]
+                .author_ids()
+                .iter()
+                .any(|id| user2_author_ids.contains(id))
+        );
+
+        // user2's find_all must contain only user2's authors
+        let user2_books = book_repository.find_all(&user2_id).await?;
+        assert_eq!(user2_books.len(), 1);
+        assert!(
+            user2_author_ids
+                .iter()
+                .all(|id| user2_books[0].author_ids().contains(id))
+        );
+        assert!(
+            !user2_books[0]
+                .author_ids()
+                .iter()
+                .any(|id| user1_author_ids.contains(id))
+        );
 
         Ok(())
     }
@@ -575,9 +614,17 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
-        // user1's book must still exist
+        // user1's book row must still exist
         let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
-        assert!(still_exists.is_some());
+        let existing_book = still_exists.unwrap();
+
+        // user1's book_author rows must also be intact: a buggy delete that
+        // omits the user_id guard would have wiped them for all users.
+        assert!(
+            author_ids
+                .iter()
+                .all(|id| existing_book.author_ids().contains(id))
+        );
 
         Ok(())
     }
