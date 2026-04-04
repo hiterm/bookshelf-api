@@ -70,7 +70,7 @@ cargo run -p bookshelf-e2e --bin bookshelf-jwks-server
 # 4) Start application server (in a separate terminal)
 PORT=8080 JWT_AUDIENCE=test-audience JWT_DOMAIN=test-issuer.local \
   JWKS_URL=http://localhost:9999/.well-known/jwks.json \
-  DATABASE_URL=<your-database-url> ALLOWED_ORIGINS=http://localhost:8080 \
+  DATABASE_URL=postgres://bookshelf:password@localhost:5432/bookshelf ALLOWED_ORIGINS=http://localhost:8080 \
   cargo run
 
 # 5) Run E2E tests
