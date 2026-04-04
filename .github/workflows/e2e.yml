@@ -43,7 +43,7 @@ jobs:
       - name: Start JWKS server
         run: |
           cargo run --locked -p bookshelf-e2e --bin bookshelf-jwks-server > jwks_server.log 2>&1 &
-          for i in {1..30}; do
+          for _ in {1..30}; do
             if curl -s http://localhost:9999/.well-known/jwks.json > /dev/null; then
               echo "JWKS server is ready"
               exit 0
