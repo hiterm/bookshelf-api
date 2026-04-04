@@ -524,18 +524,36 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
-        let mut book = book_entity1(&author_ids)?;
+        // user1 owns book X with authors [A, B]
+        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book = book_entity1(&user1_author_ids)?;
         book_repository.create(&user1_id, &book).await?;
 
-        book.set_title(BookTitle::new("tampered title".to_owned())?);
-        let result = book_repository.update(&user2_id, &book).await;
-        assert!(result.is_err());
-        assert!(matches!(result, Err(DomainError::NotFound { .. })));
+        // user2 also owns book X (same UUID; composite PK (id, user_id) allows this)
+        // with their own author rows [A, B]
+        let user2_author_ids = prepare_authors1(&user2_id, &author_repository).await?;
+        let book_copy = book_entity1(&user2_author_ids)?;
+        book_repository.create(&user2_id, &book_copy).await?;
 
-        // user1's book must remain unchanged
-        let original = book_repository.find_by_id(&user1_id, book.id()).await?;
-        assert_eq!(original.unwrap().title().as_str(), "title1");
+        // user2 updates their book keeping only author A (drops B).
+        // The resulting DELETE FROM book_author must not touch user1's rows.
+        // With the old buggy guard (no user_id check) this would delete user1's B row.
+        let book_for_update = book_entity1(&user2_author_ids[..1])?;
+        let result = book_repository.update(&user2_id, &book_for_update).await;
+        assert!(result.is_ok()); // user2 owns this book, so update succeeds
+
+        // user1's book must remain fully intact: title and both authors [A, B]
+        let user1_book = book_repository
+            .find_by_id(&user1_id, book.id())
+            .await?
+            .unwrap();
+        assert_eq!(user1_book.title().as_str(), "title1");
+        assert_eq!(user1_book.author_ids().len(), user1_author_ids.len());
+        assert!(
+            user1_author_ids
+                .iter()
+                .all(|id| user1_book.author_ids().contains(id))
+        );
 
         Ok(())
     }
