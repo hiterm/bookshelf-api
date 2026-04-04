@@ -14,6 +14,7 @@ use jsonwebtoken::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -165,6 +166,7 @@ async fn fetch_jwks(domain: &str) -> Result<JwkSet, ClientError> {
         .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
     validate_jwks_url(&uri)?;
     let client = reqwest::ClientBuilder::new()
+        .timeout(Duration::from_secs(10))
         .build()
         .map_err(|e| ClientError::JwksFetch(format!("failed to build HTTP client: {e}")))?;
     let response = client
