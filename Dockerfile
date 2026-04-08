@@ -29,7 +29,11 @@ cp ./target/release/check_tls /bin/check_tls
 EOF
 
 
-FROM debian:trixie-slim@sha256:26f98ccd92fd0a44d6928ce8ff8f4921b4d2f535bfa07555ee5d18f61429cf0c
+# Shared base for the production image and the TLS regression-test image.
+# Both stages inherit ca-certificates from here, ensuring that the regression
+# test (tls-check) exercises the exact same certificate environment as
+# production. Removing ca-certificates from this stage breaks both.
+FROM debian:trixie-slim@sha256:26f98ccd92fd0a44d6928ce8ff8f4921b4d2f535bfa07555ee5d18f61429cf0c AS base
 
 # https://ianwwagner.com/reqwest-0-13-upgrade-and-webpki.html
 RUN apt-get update \
@@ -42,24 +46,23 @@ ARG UID=10001
 RUN useradd -l -M -u "${UID}" -d "/nonexistent" -s "/sbin/nologin" appuser
 USER appuser
 
-COPY --from=build-stage /bin/server /bin/
 
-CMD ["/bin/server"]
-
-
-# Regression test image for CA certificate fix (PR #187).
-# Verifies that reqwest can make HTTPS connections using the system trust store.
-# Usage: docker build --target tls-check -t bookshelf-api:tls-check . && docker run --rm bookshelf-api:tls-check
-FROM debian:trixie-slim@sha256:26f98ccd92fd0a44d6928ce8ff8f4921b4d2f535bfa07555ee5d18f61429cf0c AS tls-check
-
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-ARG UID=10001
-RUN useradd -l -M -u "${UID}" -d "/nonexistent" -s "/sbin/nologin" appuser
-USER appuser
+# Regression test image for the CA certificate fix (PR #187).
+# Verifies that reqwest can establish an HTTPS connection using the system
+# trust store inherited from the base stage. Placed before the production
+# stage so that the production image remains the default build target.
+# Usage: docker build --target tls-check -t bookshelf-api:tls-check .
+#        docker run --rm bookshelf-api:tls-check
+FROM base AS tls-check
 
 COPY --from=build-stage /bin/check_tls /bin/
 
 CMD ["/bin/check_tls"]
+
+
+# Production image — default build target (must be the last stage).
+FROM base
+
+COPY --from=build-stage /bin/server /bin/
+
+CMD ["/bin/server"]
