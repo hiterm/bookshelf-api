@@ -67,6 +67,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify HTTPS connectivity via reqwest
+        run: |
+          docker build --target tls-check -t bookshelf-api:tls-check \
+            --cache-from type=gha .
+          docker run --rm bookshelf-api:tls-check
+
       - name: Run container and health check
         run: |
           docker network create test-network
