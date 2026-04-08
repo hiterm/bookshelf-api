@@ -1,3 +1,4 @@
+use crate::common::http::build_http_client;
 use crate::presentation::app_state::AppState;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -14,7 +15,6 @@ use jsonwebtoken::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -165,9 +165,7 @@ async fn fetch_jwks(domain: &str) -> Result<JwkSet, ClientError> {
     let uri = std::env::var("JWKS_URL")
         .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
     validate_jwks_url(&uri)?;
-    let client = reqwest::ClientBuilder::new()
-        .timeout(Duration::from_secs(10))
-        .build()
+    let client = build_http_client()
         .map_err(|e| ClientError::JwksFetch(format!("failed to build HTTP client: {e}")))?;
     let response = client
         .get(&uri)
