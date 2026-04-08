@@ -67,11 +67,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build tls-check image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          push: false
+          load: true
+          tags: bookshelf-api:tls-check
+          target: tls-check
       - name: Verify HTTPS connectivity via reqwest
-        run: |
-          docker build --target tls-check -t bookshelf-api:tls-check \
-            --cache-from type=gha .
-          docker run --rm bookshelf-api:tls-check
+        run: docker run --rm bookshelf-api:tls-check
 
       - name: Run container and health check
         run: |
