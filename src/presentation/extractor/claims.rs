@@ -120,20 +120,21 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .ok_or_else(|| ClientError::NotFound("kid not found in token header".to_string()))?;
         let domain = config.domain.as_str();
 
-        // キャッシュから取得（miss時は fetch_jwks を1回だけ実行）
+        // Fetch JWKS from cache; on cache miss, fetch_jwks is called exactly once
+        // (try_get_with deduplicates concurrent requests for the same key)
         let jwks = state
             .jwks_cache
             .try_get_with((), fetch_jwks(domain))
             .await
             .map_err(|e| ClientError::JwksFetch(format!("JWKS fetch failed: {e}")))?;
 
-        // kid が見つかれば検証して返す
+        // Validate token if the matching key is found in the cached JWKS
         if let Some(jwk) = jwks.find(&kid) {
             return validate_claims(jwk, token, domain, &config.audience);
         }
 
-        // kid miss: キャッシュを無効化して1回だけ再フェッチ（鍵ローテーション対応）
-        // try_get_with を使うことで並行リクエストのフェッチを1回に集約する
+        // kid not found: the provider may have rotated keys; invalidate the cache and
+        // re-fetch once. try_get_with ensures only one in-flight fetch even under concurrency.
         state.jwks_cache.invalidate(&()).await;
         let jwks = state
             .jwks_cache
@@ -183,7 +184,9 @@ fn validate_jwks_url(url: &str) -> Result<(), ClientError> {
         .map_err(|_| ClientError::JwksFetch(format!("invalid JWKS_URL: {url}")))?;
     if uri.scheme_str() == Some("http") {
         let host = uri.host().unwrap_or("");
-        // uri.host() may include brackets for IPv6 (e.g. "[::1]"); strip them before parsing
+        // uri.host() preserves brackets for IPv6 addresses (e.g. "[::1]"), so we strip them
+        // manually before parsing into IpAddr. Using the `url` crate would avoid this via its
+        // Host enum, but adding that dependency solely for this function is not warranted.
         let bare_host = host
             .strip_prefix('[')
             .and_then(|h| h.strip_suffix(']'))
