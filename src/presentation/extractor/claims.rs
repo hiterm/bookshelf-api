@@ -133,9 +133,13 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         }
 
         // kid miss: キャッシュを無効化して1回だけ再フェッチ（鍵ローテーション対応）
+        // try_get_with を使うことで並行リクエストのフェッチを1回に集約する
         state.jwks_cache.invalidate(&()).await;
-        let jwks = fetch_jwks(domain).await?;
-        state.jwks_cache.insert((), jwks.clone()).await;
+        let jwks = state
+            .jwks_cache
+            .try_get_with((), fetch_jwks(domain))
+            .await
+            .map_err(|e| ClientError::JwksFetch(format!("JWKS fetch failed: {e}")))?;
 
         let jwk = jwks
             .find(&kid)
@@ -178,7 +182,12 @@ fn validate_jwks_url(url: &str) -> Result<(), ClientError> {
         .map_err(|_| ClientError::JwksFetch(format!("invalid JWKS_URL: {url}")))?;
     if uri.scheme_str() == Some("http") {
         let host = uri.host().unwrap_or("");
-        if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+        let is_loopback = host == "localhost"
+            || host
+                .parse::<std::net::IpAddr>()
+                .map(|ip| ip.is_loopback())
+                .unwrap_or(false);
+        if !is_loopback {
             return Err(ClientError::JwksFetch(
                 "http:// JWKS_URL is only permitted for loopback addresses".to_string(),
             ));

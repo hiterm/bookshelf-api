@@ -35,6 +35,20 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    fn make_test_state() -> State<Arc<AppState>> {
+        let jwks_cache = Cache::builder()
+            .max_capacity(1)
+            .time_to_live(Duration::from_hours(1))
+            .build();
+        State(Arc::new(AppState {
+            jwt_config: JwtConfig {
+                audience: "test".to_string(),
+                domain: "test-issuer.local".to_string(),
+            },
+            jwks_cache,
+        }))
+    }
+
     // ============================================
     // Given-When-Then Structure
     // ============================================
@@ -206,17 +220,7 @@ mod tests {
             sub: "auth0|123".to_string(),
             _permissions: None,
         };
-        let jwks_cache = Cache::builder()
-            .max_capacity(1)
-            .time_to_live(Duration::from_hours(1))
-            .build();
-        let state = State(Arc::new(AppState {
-            jwt_config: JwtConfig {
-                audience: "test".to_string(),
-                domain: "test-issuer.local".to_string(),
-            },
-            jwks_cache,
-        }));
+        let state = make_test_state();
 
         // When: Calling me_handler
         let response = me_handler(claims, state).await;
@@ -235,17 +239,7 @@ mod tests {
             sub: "auth0|admin456".to_string(),
             _permissions: Some(permissions),
         };
-        let jwks_cache = Cache::builder()
-            .max_capacity(1)
-            .time_to_live(Duration::from_hours(1))
-            .build();
-        let state = State(Arc::new(AppState {
-            jwt_config: JwtConfig {
-                audience: "test".to_string(),
-                domain: "test-issuer.local".to_string(),
-            },
-            jwks_cache,
-        }));
+        let state = make_test_state();
 
         // When: Calling me_handler
         let response = me_handler(claims, state).await;
