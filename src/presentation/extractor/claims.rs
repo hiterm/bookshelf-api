@@ -183,8 +183,13 @@ fn validate_jwks_url(url: &str) -> Result<(), ClientError> {
         .map_err(|_| ClientError::JwksFetch(format!("invalid JWKS_URL: {url}")))?;
     if uri.scheme_str() == Some("http") {
         let host = uri.host().unwrap_or("");
-        let is_loopback = host == "localhost"
-            || host
+        // uri.host() may include brackets for IPv6 (e.g. "[::1]"); strip them before parsing
+        let bare_host = host
+            .strip_prefix('[')
+            .and_then(|h| h.strip_suffix(']'))
+            .unwrap_or(host);
+        let is_loopback = bare_host == "localhost"
+            || bare_host
                 .parse::<std::net::IpAddr>()
                 .map(|ip| ip.is_loopback())
                 .unwrap_or(false);
@@ -195,6 +200,51 @@ fn validate_jwks_url(url: &str) -> Result<(), ClientError> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn http_localhost_is_allowed() {
+        assert!(validate_jwks_url("http://localhost/.well-known/jwks.json").is_ok());
+    }
+
+    #[test]
+    fn http_127_0_0_1_is_allowed() {
+        assert!(validate_jwks_url("http://127.0.0.1/.well-known/jwks.json").is_ok());
+    }
+
+    #[test]
+    fn http_ipv6_loopback_is_allowed() {
+        assert!(validate_jwks_url("http://[::1]/.well-known/jwks.json").is_ok());
+    }
+
+    #[test]
+    fn http_ipv6_loopback_full_form_is_allowed() {
+        assert!(validate_jwks_url("http://[0:0:0:0:0:0:0:1]/.well-known/jwks.json").is_ok());
+    }
+
+    #[test]
+    fn http_non_loopback_ip_is_rejected() {
+        assert!(validate_jwks_url("http://192.168.1.1/.well-known/jwks.json").is_err());
+    }
+
+    #[test]
+    fn http_non_loopback_host_is_rejected() {
+        assert!(validate_jwks_url("http://example.com/.well-known/jwks.json").is_err());
+    }
+
+    #[test]
+    fn https_non_loopback_is_allowed() {
+        assert!(validate_jwks_url("https://example.auth0.com/.well-known/jwks.json").is_ok());
+    }
+
+    #[test]
+    fn invalid_url_is_rejected() {
+        assert!(validate_jwks_url("not a url").is_err());
+    }
 }
 
 async fn fetch_jwks(domain: &str) -> Result<Arc<JwkSet>, ClientError> {
