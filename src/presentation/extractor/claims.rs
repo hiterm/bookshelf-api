@@ -158,12 +158,13 @@ fn validate_claims(
         AlgorithmParameters::RSA(rsa) => {
             let mut validation = Validation::new(Algorithm::RS256);
             validation.set_audience(&[audience]);
-            validation.set_issuer(&[Uri::builder()
+            let issuer = Uri::builder()
                 .scheme("https")
                 .authority(domain)
                 .path_and_query("/")
                 .build()
-                .unwrap()]);
+                .map_err(|e| ClientError::JwksFetch(format!("invalid domain: {e}")))?;
+            validation.set_issuer(&[issuer]);
             let key =
                 DecodingKey::from_rsa_components(&rsa.n, &rsa.e).map_err(ClientError::Decode)?;
             let token_data =
