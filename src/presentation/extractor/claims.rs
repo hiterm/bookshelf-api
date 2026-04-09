@@ -119,14 +119,11 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .kid
             .ok_or_else(|| ClientError::NotFound("kid not found in token header".to_string()))?;
         let domain = config.domain.as_str();
-        let jwks_url = std::env::var("JWKS_URL")
-            .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
-        validate_jwks_url(&jwks_url)?;
 
         // キャッシュから取得（miss時は fetch_jwks を1回だけ実行）
         let jwks = state
             .jwks_cache
-            .try_get_with(jwks_url.clone(), fetch_jwks(&jwks_url))
+            .try_get_with((), fetch_jwks(domain))
             .await
             .map_err(|e| ClientError::JwksFetch(format!("JWKS fetch failed: {e}")))?;
 
@@ -136,9 +133,9 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         }
 
         // kid miss: キャッシュを無効化して1回だけ再フェッチ（鍵ローテーション対応）
-        state.jwks_cache.invalidate(&jwks_url).await;
-        let jwks = fetch_jwks(&jwks_url).await?;
-        state.jwks_cache.insert(jwks_url, jwks.clone()).await;
+        state.jwks_cache.invalidate(&()).await;
+        let jwks = fetch_jwks(domain).await?;
+        state.jwks_cache.insert((), jwks.clone()).await;
 
         let jwk = jwks
             .find(&kid)
@@ -190,11 +187,14 @@ fn validate_jwks_url(url: &str) -> Result<(), ClientError> {
     Ok(())
 }
 
-async fn fetch_jwks(url: &str) -> Result<Arc<JwkSet>, ClientError> {
+async fn fetch_jwks(domain: &str) -> Result<Arc<JwkSet>, ClientError> {
+    let url = std::env::var("JWKS_URL")
+        .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
+    validate_jwks_url(&url)?;
     let client = build_http_client()
         .map_err(|e| ClientError::JwksFetch(format!("failed to build HTTP client: {e}")))?;
     let response = client
-        .get(url)
+        .get(&url)
         .send()
         .await
         .map_err(|e| ClientError::JwksFetch(format!("request failed: {e}")))?;

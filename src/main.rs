@@ -14,8 +14,6 @@ use http::{
     HeaderValue, Method,
     header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
 };
-use jsonwebtoken::jwk::JwkSet;
-use moka::future::Cache;
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
@@ -44,8 +42,8 @@ async fn main() {
     let (query_use_case, schema) = dependency_injection(pool);
 
     let jwt_config = JwtConfig::default();
-    let jwks_cache: Cache<String, Arc<JwkSet>> = Cache::builder()
-        .max_capacity(10)
+    let jwks_cache = moka::future::Cache::builder()
+        .max_capacity(1)
         .time_to_live(Duration::from_secs(3600))
         .build();
     let state = Arc::new(AppState {

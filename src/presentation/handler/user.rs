@@ -207,7 +207,7 @@ mod tests {
             _permissions: None,
         };
         let jwks_cache = Cache::builder()
-            .max_capacity(10)
+            .max_capacity(1)
             .time_to_live(Duration::from_secs(3600))
             .build();
         let state = State(Arc::new(AppState {
@@ -236,7 +236,7 @@ mod tests {
             _permissions: Some(permissions),
         };
         let jwks_cache = Cache::builder()
-            .max_capacity(10)
+            .max_capacity(1)
             .time_to_live(Duration::from_secs(3600))
             .build();
         let state = State(Arc::new(AppState {
