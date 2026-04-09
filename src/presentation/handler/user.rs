@@ -30,8 +30,24 @@ mod tests {
     use super::*;
     use crate::presentation::app_state::AppState;
     use crate::presentation::extractor::claims::JwtConfig;
+    use moka::future::Cache;
     use std::collections::HashSet;
     use std::sync::Arc;
+    use std::time::Duration;
+
+    fn make_test_state() -> State<Arc<AppState>> {
+        let jwks_cache = Cache::builder()
+            .max_capacity(1)
+            .time_to_live(Duration::from_hours(1))
+            .build();
+        State(Arc::new(AppState {
+            jwt_config: JwtConfig {
+                audience: "test".to_string(),
+                domain: "test-issuer.local".to_string(),
+            },
+            jwks_cache,
+        }))
+    }
 
     // ============================================
     // Given-When-Then Structure
@@ -204,12 +220,7 @@ mod tests {
             sub: "auth0|123".to_string(),
             _permissions: None,
         };
-        let state = State(Arc::new(AppState {
-            jwt_config: JwtConfig {
-                audience: "test".to_string(),
-                domain: "test-issuer.local".to_string(),
-            },
-        }));
+        let state = make_test_state();
 
         // When: Calling me_handler
         let response = me_handler(claims, state).await;
@@ -228,17 +239,84 @@ mod tests {
             sub: "auth0|admin456".to_string(),
             _permissions: Some(permissions),
         };
-        let state = State(Arc::new(AppState {
-            jwt_config: JwtConfig {
-                audience: "test".to_string(),
-                domain: "test-issuer.local".to_string(),
-            },
-        }));
+        let state = make_test_state();
 
         // When: Calling me_handler
         let response = me_handler(claims, state).await;
 
         // Then: Response ID should match claims subject (permissions are not exposed)
         assert_eq!(response.0.id, "auth0|admin456");
+    }
+
+    // ============================================
+    // make_test_state helper tests
+    // ============================================
+
+    #[test]
+    fn make_test_state_has_correct_audience() {
+        // Given / When: Creating a test state
+        let state = make_test_state();
+
+        // Then: JWT audience should match the test fixture value
+        assert_eq!(state.0.jwt_config.audience, "test");
+    }
+
+    #[test]
+    fn make_test_state_has_correct_domain() {
+        // Given / When: Creating a test state
+        let state = make_test_state();
+
+        // Then: JWT domain should match the test fixture value
+        assert_eq!(state.0.jwt_config.domain, "test-issuer.local");
+    }
+
+    #[tokio::test]
+    async fn make_test_state_cache_is_initially_empty() {
+        // Given / When: A freshly created test state
+        let state = make_test_state();
+
+        // Then: The JWKS cache should contain no entries
+        assert_eq!(state.0.jwks_cache.entry_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn make_test_state_creates_independent_cache_instances() {
+        // Given: Two independently created test states
+        let state_a = make_test_state();
+        let state_b = make_test_state();
+
+        // Populate the cache of state_a by inserting an entry
+        use jsonwebtoken::jwk::JwkSet;
+        let empty_jwks = Arc::new(JwkSet { keys: vec![] });
+        state_a.0.jwks_cache.insert((), empty_jwks).await;
+
+        // Then: state_a should have the entry
+        assert!(
+            state_a.0.jwks_cache.get(&()).await.is_some(),
+            "state_a cache should have the inserted entry"
+        );
+        // And state_b's cache must not be affected (they are separate instances)
+        assert!(
+            state_b.0.jwks_cache.get(&()).await.is_none(),
+            "Caches from make_test_state() must be independent"
+        );
+    }
+
+    #[tokio::test]
+    async fn me_handler_response_is_json_serializable() {
+        // Given: A handler response
+        let claims = Claims {
+            sub: "auth0|serialize_test".to_string(),
+            _permissions: None,
+        };
+        let state = make_test_state();
+
+        // When: Calling me_handler and serializing the inner value
+        let response = me_handler(claims, state).await;
+        let json = serde_json::to_string(&response.0).unwrap();
+
+        // Then: The JSON should contain the user ID
+        assert!(json.contains("auth0|serialize_test"));
+        assert!(json.contains("\"id\""));
     }
 }
