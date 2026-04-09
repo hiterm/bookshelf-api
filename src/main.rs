@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{
     Extension, Router,
@@ -42,7 +42,14 @@ async fn main() {
     let (query_use_case, schema) = dependency_injection(pool);
 
     let jwt_config = JwtConfig::default();
-    let state = Arc::new(AppState { jwt_config });
+    let jwks_cache = moka::future::Cache::builder()
+        .max_capacity(1)
+        .time_to_live(Duration::from_hours(1))
+        .build();
+    let state = Arc::new(AppState {
+        jwt_config,
+        jwks_cache,
+    });
 
     let allowed_origins: Vec<_> = fetch_allowed_origins()
         .into_iter()
