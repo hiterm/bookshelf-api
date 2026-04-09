@@ -42,7 +42,7 @@ pub enum ClientError {
     #[display("not_found")]
     NotFound(String),
     #[display("unsupported_algorithm")]
-    UnsupportedAlgortithm(AlgorithmParameters),
+    UnsupportedAlgorithm(AlgorithmParameters),
 }
 
 impl IntoResponse for ClientError {
@@ -75,11 +75,11 @@ impl IntoResponse for ClientError {
                 Some(msg),
                 "Bad credentials".to_string(),
             ),
-            Self::UnsupportedAlgortithm(alg) => (
+            Self::UnsupportedAlgorithm(alg) => (
                 StatusCode::UNAUTHORIZED,
                 Some("invalid_token".to_string()),
                 Some(format!(
-                    "Unsupported encryption algortithm expected RSA got {:?}",
+                    "Unsupported encryption algorithm expected RSA got {:?}",
                     alg
                 )),
                 "Bad credentials".to_string(),
@@ -171,7 +171,7 @@ fn validate_claims(
                 decode::<Claims>(token, &key, &validation).map_err(ClientError::Decode)?;
             Ok(token_data.claims)
         }
-        algorithm => Err(ClientError::UnsupportedAlgortithm(algorithm.clone())),
+        algorithm => Err(ClientError::UnsupportedAlgorithm(algorithm.clone())),
     }
 }
 
