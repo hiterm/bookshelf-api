@@ -11,7 +11,7 @@ use derive_more::Display;
 use http::{StatusCode, Uri};
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header,
-    jwk::{AlgorithmParameters, JwkSet},
+    jwk::{AlgorithmParameters, Jwk, JwkSet},
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -119,28 +119,57 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .kid
             .ok_or_else(|| ClientError::NotFound("kid not found in token header".to_string()))?;
         let domain = config.domain.as_str();
-        let jwks = fetch_jwks(domain).await?;
+        let jwks_url = std::env::var("JWKS_URL")
+            .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
+        validate_jwks_url(&jwks_url)?;
+
+        // キャッシュから取得（miss時は fetch_jwks を1回だけ実行）
+        let jwks = state
+            .jwks_cache
+            .try_get_with(jwks_url.clone(), fetch_jwks(&jwks_url))
+            .await
+            .map_err(|e| ClientError::JwksFetch(format!("JWKS fetch failed: {e}")))?;
+
+        // kid が見つかれば検証して返す
+        if let Some(jwk) = jwks.find(&kid) {
+            return validate_claims(jwk, token, domain, &config.audience);
+        }
+
+        // kid miss: キャッシュを無効化して1回だけ再フェッチ（鍵ローテーション対応）
+        state.jwks_cache.invalidate(&jwks_url).await;
+        let jwks = fetch_jwks(&jwks_url).await?;
+        state.jwks_cache.insert(jwks_url, jwks.clone()).await;
+
         let jwk = jwks
             .find(&kid)
             .ok_or_else(|| ClientError::NotFound("No JWK found for kid".to_string()))?;
-        match jwk.clone().algorithm {
-            AlgorithmParameters::RSA(ref rsa) => {
-                let mut validation = Validation::new(Algorithm::RS256);
-                validation.set_audience(&[config.audience]);
-                validation.set_issuer(&[Uri::builder()
-                    .scheme("https")
-                    .authority(domain)
-                    .path_and_query("/")
-                    .build()
-                    .unwrap()]);
-                let key = DecodingKey::from_rsa_components(&rsa.n, &rsa.e)
-                    .map_err(ClientError::Decode)?;
-                let token =
-                    decode::<Claims>(token, &key, &validation).map_err(ClientError::Decode)?;
-                Ok(token.claims)
-            }
-            algorithm => Err(ClientError::UnsupportedAlgortithm(algorithm)),
+        validate_claims(jwk, token, domain, &config.audience)
+    }
+}
+
+fn validate_claims(
+    jwk: &Jwk,
+    token: &str,
+    domain: &str,
+    audience: &str,
+) -> Result<Claims, ClientError> {
+    match &jwk.algorithm {
+        AlgorithmParameters::RSA(rsa) => {
+            let mut validation = Validation::new(Algorithm::RS256);
+            validation.set_audience(&[audience]);
+            validation.set_issuer(&[Uri::builder()
+                .scheme("https")
+                .authority(domain)
+                .path_and_query("/")
+                .build()
+                .unwrap()]);
+            let key =
+                DecodingKey::from_rsa_components(&rsa.n, &rsa.e).map_err(ClientError::Decode)?;
+            let token_data =
+                decode::<Claims>(token, &key, &validation).map_err(ClientError::Decode)?;
+            Ok(token_data.claims)
         }
+        algorithm => Err(ClientError::UnsupportedAlgortithm(algorithm.clone())),
     }
 }
 
@@ -161,19 +190,17 @@ fn validate_jwks_url(url: &str) -> Result<(), ClientError> {
     Ok(())
 }
 
-async fn fetch_jwks(domain: &str) -> Result<JwkSet, ClientError> {
-    let uri = std::env::var("JWKS_URL")
-        .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
-    validate_jwks_url(&uri)?;
+async fn fetch_jwks(url: &str) -> Result<Arc<JwkSet>, ClientError> {
     let client = build_http_client()
         .map_err(|e| ClientError::JwksFetch(format!("failed to build HTTP client: {e}")))?;
     let response = client
-        .get(&uri)
+        .get(url)
         .send()
         .await
         .map_err(|e| ClientError::JwksFetch(format!("request failed: {e}")))?;
-    response
-        .json()
+    let jwks = response
+        .json::<JwkSet>()
         .await
-        .map_err(|e| ClientError::JwksFetch(format!("invalid JWKS response: {e}")))
+        .map_err(|e| ClientError::JwksFetch(format!("invalid JWKS response: {e}")))?;
+    Ok(Arc::new(jwks))
 }

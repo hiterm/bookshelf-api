@@ -30,8 +30,10 @@ mod tests {
     use super::*;
     use crate::presentation::app_state::AppState;
     use crate::presentation::extractor::claims::JwtConfig;
+    use moka::future::Cache;
     use std::collections::HashSet;
     use std::sync::Arc;
+    use std::time::Duration;
 
     // ============================================
     // Given-When-Then Structure
@@ -204,11 +206,16 @@ mod tests {
             sub: "auth0|123".to_string(),
             _permissions: None,
         };
+        let jwks_cache = Cache::builder()
+            .max_capacity(10)
+            .time_to_live(Duration::from_secs(3600))
+            .build();
         let state = State(Arc::new(AppState {
             jwt_config: JwtConfig {
                 audience: "test".to_string(),
                 domain: "test-issuer.local".to_string(),
             },
+            jwks_cache,
         }));
 
         // When: Calling me_handler
@@ -228,11 +235,16 @@ mod tests {
             sub: "auth0|admin456".to_string(),
             _permissions: Some(permissions),
         };
+        let jwks_cache = Cache::builder()
+            .max_capacity(10)
+            .time_to_live(Duration::from_secs(3600))
+            .build();
         let state = State(Arc::new(AppState {
             jwt_config: JwtConfig {
                 audience: "test".to_string(),
                 domain: "test-issuer.local".to_string(),
             },
+            jwks_cache,
         }));
 
         // When: Calling me_handler
