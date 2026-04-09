@@ -44,7 +44,7 @@ async fn main() {
     let jwt_config = JwtConfig::default();
     let jwks_cache = moka::future::Cache::builder()
         .max_capacity(1)
-        .time_to_live(Duration::from_secs(3600))
+        .time_to_live(Duration::from_hours(1))
         .build();
     let state = Arc::new(AppState {
         jwt_config,

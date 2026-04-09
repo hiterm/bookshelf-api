@@ -208,7 +208,7 @@ mod tests {
         };
         let jwks_cache = Cache::builder()
             .max_capacity(1)
-            .time_to_live(Duration::from_secs(3600))
+            .time_to_live(Duration::from_hours(1))
             .build();
         let state = State(Arc::new(AppState {
             jwt_config: JwtConfig {
@@ -237,7 +237,7 @@ mod tests {
         };
         let jwks_cache = Cache::builder()
             .max_capacity(1)
-            .time_to_live(Duration::from_secs(3600))
+            .time_to_live(Duration::from_hours(1))
             .build();
         let state = State(Arc::new(AppState {
             jwt_config: JwtConfig {
