@@ -490,12 +490,47 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
-        let book = book_entity1(&author_ids)?;
-        book_repository.create(&user1_id, &book).await?;
+        // Both users own the same book UUID but with distinct author associations.
+        // This exercises the book_author.user_id filter inside the
+        // authors_of_book_and_user CTE in find_by_id: if that CTE ignored user_id,
+        // one user's find_by_id would return the other user's author_ids.
+        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book1 = book_entity1(&user1_author_ids)?;
+        book_repository.create(&user1_id, &book1).await?;
 
-        let result = book_repository.find_by_id(&user2_id, book.id()).await?;
-        assert_eq!(result, None);
+        let user2_author_ids = prepare_authors2(&user2_id, &author_repository).await?;
+        let book2 = book_entity1(&user2_author_ids)?;
+        book_repository.create(&user2_id, &book2).await?;
+
+        // user1's find_by_id must return only user1's authors
+        let user1_result = book_repository.find_by_id(&user1_id, book1.id()).await?;
+        let user1_book = user1_result.unwrap();
+        assert!(
+            user1_author_ids
+                .iter()
+                .all(|id| user1_book.author_ids().contains(id))
+        );
+        assert!(
+            !user1_book
+                .author_ids()
+                .iter()
+                .any(|id| user2_author_ids.contains(id))
+        );
+
+        // user2's find_by_id must return only user2's authors
+        let user2_result = book_repository.find_by_id(&user2_id, book2.id()).await?;
+        let user2_book = user2_result.unwrap();
+        assert!(
+            user2_author_ids
+                .iter()
+                .all(|id| user2_book.author_ids().contains(id))
+        );
+        assert!(
+            !user2_book
+                .author_ids()
+                .iter()
+                .any(|id| user1_author_ids.contains(id))
+        );
 
         Ok(())
     }
