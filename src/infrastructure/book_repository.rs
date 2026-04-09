@@ -598,6 +598,36 @@ mod tests {
     }
 
     #[sqlx::test]
+    async fn test_update_returns_not_found_for_other_users_book(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        // Only user1 owns book X; user2 does not.
+        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user1_id, &book).await?;
+
+        // user2 attempts to update user1's book.
+        // The WHERE id = $11 AND user_id = $1 guard must return NotFound.
+        // Without the AND user_id = $1 clause the UPDATE would silently mutate
+        // user1's row and return Ok(()).
+        let result = book_repository.update(&user2_id, &book).await;
+        assert!(matches!(result, Err(DomainError::NotFound { .. })));
+
+        // user1's book must be untouched
+        let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
+        assert!(still_exists.is_some());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn test_delete_does_not_affect_other_users_book(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
