@@ -131,7 +131,7 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
 
-        let user_id = prepare_user(&user_repository).await?;
+        let user_id = prepare_user(&user_repository, "user1").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author_name = AuthorName::new(String::from("author1"))?;
@@ -150,7 +150,7 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
 
-        let user_id = prepare_user(&user_repository).await?;
+        let user_id = prepare_user(&user_repository, "user1").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author_name = AuthorName::new(String::from("author1"))?;
@@ -175,7 +175,7 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
 
-        let user_id = prepare_user(&user_repository).await?;
+        let user_id = prepare_user(&user_repository, "user1").await?;
 
         let author_id1 = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author_name = AuthorName::new(String::from("author1"))?;
@@ -201,8 +201,66 @@ mod tests {
         Ok(())
     }
 
-    async fn prepare_user(repository: &PgUserRepository) -> Result<UserId, DomainError> {
-        let user_id = UserId::new(String::from("user1"))?;
+    #[sqlx::test]
+    async fn find_by_id_does_not_return_other_users_author(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        author_repository.create(&user1_id, &author).await?;
+
+        let result = author_repository.find_by_id(&user2_id, &author_id).await?;
+        assert_eq!(result, None);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_all_does_not_return_other_users_authors(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id, AuthorName::new("author1".to_string())?)?;
+        author_repository.create(&user1_id, &author).await?;
+
+        let result = author_repository.find_all(&user2_id).await?;
+        assert_eq!(result.len(), 0);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_ids_as_hash_map_does_not_return_other_users_authors(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        author_repository.create(&user1_id, &author).await?;
+
+        let result = author_repository
+            .find_by_ids_as_hash_map(&user2_id, &[author_id])
+            .await?;
+        assert_eq!(result.len(), 0);
+
+        Ok(())
+    }
+
+    async fn prepare_user(repository: &PgUserRepository, id: &str) -> Result<UserId, DomainError> {
+        let user_id = UserId::new(String::from(id))?;
         let user = User::new(user_id.clone());
         repository.create(&user).await?;
 

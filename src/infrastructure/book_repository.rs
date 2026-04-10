@@ -237,6 +237,8 @@ impl BookRepository for PgBookRepository {
     }
 
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
         let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
@@ -249,7 +251,7 @@ impl BookRepository for PgBookRepository {
                store = $8,
                created_at = $9,
                updated_at = $10
-            WHERE id = $11",
+            WHERE id = $11 AND user_id = $1",
         )
         .bind(user_id.as_str())
         .bind(book.title().as_str())
@@ -262,7 +264,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.created_at())
         .bind(book.updated_at())
         .bind(book.id().to_uuid())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         let rows_affected = result.rows_affected();
@@ -289,11 +291,14 @@ impl BookRepository for PgBookRepository {
             .collect();
 
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
-        sqlx::query("DELETE FROM book_author WHERE book_id = $1 AND author_id != ALL($2)")
-            .bind(book.id().to_uuid())
-            .bind(&author_ids)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "DELETE FROM book_author WHERE user_id = $1 AND book_id = $2 AND author_id != ALL($3)",
+        )
+        .bind(user_id.as_str())
+        .bind(book.id().to_uuid())
+        .bind(&author_ids)
+        .execute(&mut *tx)
+        .await?;
 
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
@@ -304,8 +309,10 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
 
         Ok(())
     }
@@ -354,6 +361,7 @@ mod tests {
                 author::{Author, AuthorName},
                 user::User,
             },
+            error::DomainError,
             repository::{author_repository::AuthorRepository, user_repository::UserRepository},
         },
         infrastructure::{
@@ -373,7 +381,7 @@ mod tests {
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
 
-        let user_id = prepare_user(&user_repository).await?;
+        let user_id = prepare_user(&user_repository, "user1").await?;
         let author_ids = prepare_authors1(&user_id, &author_repository).await?;
 
         let all_books = book_repository.find_all(&user_id).await?;
@@ -394,7 +402,7 @@ mod tests {
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
 
-        let user_id = prepare_user(&user_repository).await?;
+        let user_id = prepare_user(&user_repository, "user1").await?;
 
         let author_ids1 = prepare_authors1(&user_id, &author_repository).await?;
         let author_ids2 = prepare_authors2(&user_id, &author_repository).await?;
@@ -427,7 +435,7 @@ mod tests {
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
 
-        let user_id = prepare_user(&user_repository).await?;
+        let user_id = prepare_user(&user_repository, "user1").await?;
         let mut author_ids = prepare_authors1(&user_id, &author_repository).await?;
         let mut book = book_entity1(&author_ids)?;
         book_repository.create(&user_id, &book).await?;
@@ -459,7 +467,7 @@ mod tests {
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
 
-        let user_id = prepare_user(&user_repository).await?;
+        let user_id = prepare_user(&user_repository, "user1").await?;
         let author_ids = prepare_authors1(&user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         book_repository.create(&user_id, &book).await?;
@@ -473,8 +481,221 @@ mod tests {
         Ok(())
     }
 
-    async fn prepare_user(repository: &PgUserRepository) -> Result<UserId, DomainError> {
-        let user_id = UserId::new(String::from("user1"))?;
+    #[sqlx::test]
+    async fn test_find_by_id_does_not_return_other_users_book(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        // Both users own the same book UUID but with distinct author associations.
+        // This exercises the book_author.user_id filter inside the
+        // authors_of_book_and_user CTE in find_by_id: if that CTE ignored user_id,
+        // one user's find_by_id would return the other user's author_ids.
+        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book1 = book_entity1(&user1_author_ids)?;
+        book_repository.create(&user1_id, &book1).await?;
+
+        let user2_author_ids = prepare_authors2(&user2_id, &author_repository).await?;
+        let book2 = book_entity1(&user2_author_ids)?;
+        book_repository.create(&user2_id, &book2).await?;
+
+        // user1's find_by_id must return only user1's authors
+        let user1_result = book_repository.find_by_id(&user1_id, book1.id()).await?;
+        let user1_book = user1_result.unwrap();
+        assert!(
+            user1_author_ids
+                .iter()
+                .all(|id| user1_book.author_ids().contains(id))
+        );
+        assert!(
+            !user1_book
+                .author_ids()
+                .iter()
+                .any(|id| user2_author_ids.contains(id))
+        );
+
+        // user2's find_by_id must return only user2's authors
+        let user2_result = book_repository.find_by_id(&user2_id, book2.id()).await?;
+        let user2_book = user2_result.unwrap();
+        assert!(
+            user2_author_ids
+                .iter()
+                .all(|id| user2_book.author_ids().contains(id))
+        );
+        assert!(
+            !user2_book
+                .author_ids()
+                .iter()
+                .any(|id| user1_author_ids.contains(id))
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_find_all_does_not_return_other_users_books(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        // Both users own the same book UUID but with distinct author associations.
+        // This exercises the book_author.user_id filter inside the
+        // authors_of_book_and_user CTE: if that CTE ignored user_id, one user's
+        // find_all would return the other user's author_ids.
+        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book1 = book_entity1(&user1_author_ids)?;
+        book_repository.create(&user1_id, &book1).await?;
+
+        let user2_author_ids = prepare_authors2(&user2_id, &author_repository).await?;
+        let book2 = book_entity1(&user2_author_ids)?;
+        book_repository.create(&user2_id, &book2).await?;
+
+        // user1's find_all must contain only user1's authors
+        let user1_books = book_repository.find_all(&user1_id).await?;
+        assert_eq!(user1_books.len(), 1);
+        assert!(
+            user1_author_ids
+                .iter()
+                .all(|id| user1_books[0].author_ids().contains(id))
+        );
+        assert!(
+            !user1_books[0]
+                .author_ids()
+                .iter()
+                .any(|id| user2_author_ids.contains(id))
+        );
+
+        // user2's find_all must contain only user2's authors
+        let user2_books = book_repository.find_all(&user2_id).await?;
+        assert_eq!(user2_books.len(), 1);
+        assert!(
+            user2_author_ids
+                .iter()
+                .all(|id| user2_books[0].author_ids().contains(id))
+        );
+        assert!(
+            !user2_books[0]
+                .author_ids()
+                .iter()
+                .any(|id| user1_author_ids.contains(id))
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_does_not_affect_other_users_book(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        // user1 owns book X with authors [A, B]
+        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book = book_entity1(&user1_author_ids)?;
+        book_repository.create(&user1_id, &book).await?;
+
+        // user2 also owns book X (same UUID; composite PK (id, user_id) allows this)
+        // with their own author rows [A, B]
+        let user2_author_ids = prepare_authors1(&user2_id, &author_repository).await?;
+        let book_copy = book_entity1(&user2_author_ids)?;
+        book_repository.create(&user2_id, &book_copy).await?;
+
+        // user2 updates their book keeping only author A (drops B).
+        // The resulting DELETE FROM book_author must not touch user1's rows.
+        // With the old buggy guard (no user_id check) this would delete user1's B row.
+        let book_for_update = book_entity1(&user2_author_ids[..1])?;
+        let result = book_repository.update(&user2_id, &book_for_update).await;
+        assert!(result.is_ok()); // user2 owns this book, so update succeeds
+
+        // user1's book must remain fully intact: title and both authors [A, B]
+        let user1_book = book_repository
+            .find_by_id(&user1_id, book.id())
+            .await?
+            .unwrap();
+        assert_eq!(user1_book.title().as_str(), "title1");
+        assert_eq!(user1_book.author_ids().len(), user1_author_ids.len());
+        assert!(
+            user1_author_ids
+                .iter()
+                .all(|id| user1_book.author_ids().contains(id))
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_returns_not_found_for_other_users_book(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        // Only user1 owns book X; user2 does not.
+        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user1_id, &book).await?;
+
+        // user2 attempts to update user1's book.
+        // The WHERE id = $11 AND user_id = $1 guard must return NotFound.
+        // Without the AND user_id = $1 clause the UPDATE would silently mutate
+        // user1's row and return Ok(()).
+        let result = book_repository.update(&user2_id, &book).await;
+        assert!(matches!(result, Err(DomainError::NotFound { .. })));
+
+        // user1's book must be untouched
+        let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
+        assert!(still_exists.is_some());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_delete_does_not_affect_other_users_book(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+
+        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user1_id, &book).await?;
+
+        let result = book_repository.delete(&user2_id, book.id()).await;
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DomainError::NotFound { .. })));
+
+        // user1's book row must still exist
+        let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
+        let existing_book = still_exists.unwrap();
+
+        // user1's book_author rows must also be intact: a buggy delete that
+        // omits the user_id guard would have wiped them for all users.
+        assert!(
+            author_ids
+                .iter()
+                .all(|id| existing_book.author_ids().contains(id))
+        );
+
+        Ok(())
+    }
+
+    async fn prepare_user(repository: &PgUserRepository, id: &str) -> Result<UserId, DomainError> {
+        let user_id = UserId::new(String::from(id))?;
         let user = User::new(user_id.clone());
         repository.create(&user).await?;
 
