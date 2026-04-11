@@ -1,6 +1,6 @@
 use getset::{Getters, Setters};
-use std::sync::LazyLock;
 use regex::Regex;
+use std::sync::LazyLock;
 use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
