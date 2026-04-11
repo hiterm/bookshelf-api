@@ -56,7 +56,9 @@ pub struct BookTitle {
 
 impl_string_value_object!(BookTitle);
 
-static ISBN_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(^$|^(\d-?){12}\d$)").unwrap());
+static ISBN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(^$|^(\d-?){12}\d$)").expect("ISBN_REGEX is a hardcoded valid pattern")
+});
 
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct Isbn {

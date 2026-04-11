@@ -17,17 +17,19 @@ use serde::Deserialize;
 use serde_json::json;
 use std::{collections::HashSet, sync::Arc};
 
+use anyhow::Context as _;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct JwtConfig {
     pub(crate) audience: String,
     pub(crate) domain: String,
 }
 
-impl Default for JwtConfig {
-    fn default() -> Self {
+impl JwtConfig {
+    pub fn from_env() -> Result<Self, anyhow::Error> {
         envy::prefixed("JWT_")
-            .from_env()
-            .expect("Provide missing environment variables for JWT (JWT_AUDIENCE, JWT_DOMAIN)")
+            .from_env::<Self>()
+            .context("missing JWT environment variables (JWT_AUDIENCE, JWT_DOMAIN)")
     }
 }
 
