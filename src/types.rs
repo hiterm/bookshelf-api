@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -14,7 +15,6 @@ fn default_host() -> String {
 
 impl Config {
     pub fn from_env() -> Result<Self, anyhow::Error> {
-        use anyhow::Context as _;
         envy::from_env::<Self>().context("missing environment variables for Config")
     }
 }

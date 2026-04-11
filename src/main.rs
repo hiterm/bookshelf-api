@@ -20,6 +20,8 @@ use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tower_http::{cors::CorsLayer, trace::DefaultOnRequest};
 use tracing::Level;
 
+use anyhow::Context as _;
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
@@ -50,7 +52,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let allowed_origins = fetch_allowed_origins()?
         .into_iter()
         .map(|origin| {
-            use anyhow::Context as _;
             origin
                 .parse::<HeaderValue>()
                 .with_context(|| format!("invalid ALLOWED_ORIGINS value: \"{origin}\""))
@@ -91,7 +92,6 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 fn fetch_port() -> Result<u16, anyhow::Error> {
-    use anyhow::Context as _;
     std::env::var("PORT")
         .context("environment variable PORT is required")?
         .parse()
@@ -99,12 +99,10 @@ fn fetch_port() -> Result<u16, anyhow::Error> {
 }
 
 fn fetch_database_url() -> Result<String, anyhow::Error> {
-    use anyhow::Context as _;
     std::env::var("DATABASE_URL").context("environment variable DATABASE_URL is required")
 }
 
 fn fetch_allowed_origins() -> Result<Vec<String>, anyhow::Error> {
-    use anyhow::Context as _;
     Ok(std::env::var("ALLOWED_ORIGINS")
         .context("environment variable ALLOWED_ORIGINS is required")?
         .split(',')

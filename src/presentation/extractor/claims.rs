@@ -17,6 +17,8 @@ use serde::Deserialize;
 use serde_json::json;
 use std::{collections::HashSet, sync::Arc};
 
+use anyhow::Context as _;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct JwtConfig {
     pub(crate) audience: String,
@@ -25,7 +27,6 @@ pub struct JwtConfig {
 
 impl JwtConfig {
     pub fn from_env() -> Result<Self, anyhow::Error> {
-        use anyhow::Context as _;
         envy::prefixed("JWT_")
             .from_env::<Self>()
             .context("missing JWT environment variables (JWT_AUDIENCE, JWT_DOMAIN)")
