@@ -1,6 +1,6 @@
 use getset::{Getters, Setters};
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
@@ -56,7 +56,7 @@ pub struct BookTitle {
 
 impl_string_value_object!(BookTitle);
 
-static ISBN_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(^$|^(\d-?){12}\d$)").unwrap());
+static ISBN_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(^$|^(\d-?){12}\d$)").unwrap());
 
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
 pub struct Isbn {

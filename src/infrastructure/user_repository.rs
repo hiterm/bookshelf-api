@@ -51,7 +51,7 @@ mod tests {
 
     #[sqlx::test]
     async fn test_user_repository(pool: PgPool) -> anyhow::Result<()> {
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
 
         let repository = PgUserRepository::new(pool);
 

@@ -5,7 +5,7 @@ use bookshelf_api::{
 
 #[tokio::main]
 async fn main() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let query_use_case = MockQueryUseCase::new();
     let query = Query::new(query_use_case);

@@ -22,7 +22,7 @@ use tracing::Level;
 
 #[tokio::main]
 async fn main() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt::init();
 
