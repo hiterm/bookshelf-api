@@ -14,7 +14,8 @@ fn default_host() -> String {
 
 impl Config {
     pub fn from_env() -> Result<Self, anyhow::Error> {
-        envy::from_env::<Self>().map_err(anyhow::Error::from)
+        use anyhow::Context as _;
+        envy::from_env::<Self>().context("missing environment variables for Config")
     }
 }
 

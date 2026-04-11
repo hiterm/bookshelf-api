@@ -25,9 +25,10 @@ pub struct JwtConfig {
 
 impl JwtConfig {
     pub fn from_env() -> Result<Self, anyhow::Error> {
+        use anyhow::Context as _;
         envy::prefixed("JWT_")
             .from_env::<Self>()
-            .map_err(anyhow::Error::from)
+            .context("missing JWT environment variables (JWT_AUDIENCE, JWT_DOMAIN)")
     }
 }
 

@@ -1,6 +1,5 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use anyhow::anyhow;
 use axum::{
     Extension, Router,
     routing::{get, post},
@@ -51,9 +50,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let allowed_origins = fetch_allowed_origins()?
         .into_iter()
         .map(|origin| {
+            use anyhow::Context as _;
             origin
                 .parse::<HeaderValue>()
-                .map_err(|e| anyhow!("Invalid ALLOWED_ORIGINS value \"{origin}\": {e}"))
+                .with_context(|| format!("invalid ALLOWED_ORIGINS value: \"{origin}\""))
         })
         .collect::<Result<Vec<_>, _>>()?;
     let cors_layer = CorsLayer::new()
@@ -91,39 +91,23 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 fn fetch_port() -> Result<u16, anyhow::Error> {
-    use std::env::VarError;
-
-    match std::env::var("PORT") {
-        Ok(s) => s
-            .parse()
-            .map_err(|e| anyhow!("Failed to parse environment variable PORT: {e}")),
-        Err(VarError::NotPresent) => Err(anyhow!("Environment variable PORT is required.")),
-        Err(VarError::NotUnicode(_)) => Err(anyhow!("Environment variable PORT is not unicode.")),
-    }
+    use anyhow::Context as _;
+    std::env::var("PORT")
+        .context("environment variable PORT is required")?
+        .parse()
+        .context("failed to parse PORT as a port number")
 }
 
 fn fetch_database_url() -> Result<String, anyhow::Error> {
-    use std::env::VarError;
-
-    match std::env::var("DATABASE_URL") {
-        Ok(s) => Ok(s),
-        Err(VarError::NotPresent) => Err(anyhow!("Environment variable DATABASE_URL is required.")),
-        Err(VarError::NotUnicode(_)) => {
-            Err(anyhow!("Environment variable DATABASE_URL is not unicode."))
-        }
-    }
+    use anyhow::Context as _;
+    std::env::var("DATABASE_URL").context("environment variable DATABASE_URL is required")
 }
 
 fn fetch_allowed_origins() -> Result<Vec<String>, anyhow::Error> {
-    use std::env::VarError;
-
-    match std::env::var("ALLOWED_ORIGINS") {
-        Ok(s) => Ok(s.split(',').map(|s| s.to_owned()).collect()),
-        Err(VarError::NotPresent) => {
-            Err(anyhow!("Environment variable ALLOWED_ORIGINS is required."))
-        }
-        Err(VarError::NotUnicode(_)) => Err(anyhow!(
-            "Environment variable ALLOWED_ORIGINS is not unicode."
-        )),
-    }
+    use anyhow::Context as _;
+    Ok(std::env::var("ALLOWED_ORIGINS")
+        .context("environment variable ALLOWED_ORIGINS is required")?
+        .split(',')
+        .map(|s| s.to_owned())
+        .collect())
 }
