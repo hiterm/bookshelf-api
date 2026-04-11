@@ -12,9 +12,9 @@ fn default_host() -> String {
     "127.0.0.1".to_string()
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        envy::from_env::<Config>().expect("Provide missing environment variables for Config")
+impl Config {
+    pub fn from_env() -> Result<Self, anyhow::Error> {
+        envy::from_env::<Self>().map_err(anyhow::Error::from)
     }
 }
 

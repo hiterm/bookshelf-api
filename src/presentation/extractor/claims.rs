@@ -23,11 +23,11 @@ pub struct JwtConfig {
     pub(crate) domain: String,
 }
 
-impl Default for JwtConfig {
-    fn default() -> Self {
+impl JwtConfig {
+    pub fn from_env() -> Result<Self, anyhow::Error> {
         envy::prefixed("JWT_")
-            .from_env()
-            .expect("Provide missing environment variables for JWT (JWT_AUDIENCE, JWT_DOMAIN)")
+            .from_env::<Self>()
+            .map_err(anyhow::Error::from)
     }
 }
 

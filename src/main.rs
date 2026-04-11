@@ -1,5 +1,6 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
+use anyhow::anyhow;
 use axum::{
     Extension, Router,
     routing::{get, post},
@@ -21,27 +22,23 @@ use tower_http::{cors::CorsLayer, trace::DefaultOnRequest};
 use tracing::Level;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt::init();
 
-    let db_url = fetch_database_url();
+    let db_url = fetch_database_url()?;
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
-        .await
-        .unwrap();
+        .await?;
 
-    sqlx::migrate!()
-        .run(&pool)
-        .await
-        .expect("Migration failed.");
+    sqlx::migrate!().run(&pool).await?;
 
     let (query_use_case, schema) = dependency_injection(pool);
 
-    let jwt_config = JwtConfig::default();
+    let jwt_config = JwtConfig::from_env()?;
     let jwks_cache = moka::future::Cache::builder()
         .max_capacity(1)
         .time_to_live(Duration::from_hours(1))
@@ -51,10 +48,14 @@ async fn main() {
         jwks_cache,
     });
 
-    let allowed_origins: Vec<_> = fetch_allowed_origins()
+    let allowed_origins = fetch_allowed_origins()?
         .into_iter()
-        .map(|origin| origin.parse::<HeaderValue>().unwrap())
-        .collect();
+        .map(|origin| {
+            origin
+                .parse::<HeaderValue>()
+                .map_err(|e| anyhow!("Invalid ALLOWED_ORIGINS value \"{origin}\": {e}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let cors_layer = CorsLayer::new()
         .allow_origin(allowed_origins)
         .allow_methods([Method::GET, Method::POST])
@@ -80,43 +81,49 @@ async fn main() {
                 .layer(cors_layer),
         );
 
-    let port = fetch_port();
+    let port = fetch_port()?;
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("Server started on port {}", port);
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }
 
-fn fetch_port() -> u16 {
+fn fetch_port() -> Result<u16, anyhow::Error> {
     use std::env::VarError;
 
     match std::env::var("PORT") {
         Ok(s) => s
             .parse()
-            .expect("Failed to parse environment variable PORT."),
-        Err(VarError::NotPresent) => panic!("Environment variable PORT is required."),
-        Err(VarError::NotUnicode(_)) => panic!("Environment variable PORT is not unicode."),
+            .map_err(|e| anyhow!("Failed to parse environment variable PORT: {e}")),
+        Err(VarError::NotPresent) => Err(anyhow!("Environment variable PORT is required.")),
+        Err(VarError::NotUnicode(_)) => Err(anyhow!("Environment variable PORT is not unicode.")),
     }
 }
 
-fn fetch_database_url() -> String {
+fn fetch_database_url() -> Result<String, anyhow::Error> {
     use std::env::VarError;
 
     match std::env::var("DATABASE_URL") {
-        Ok(s) => s,
-        Err(VarError::NotPresent) => panic!("Environment variable DATABASE_URL is required."),
-        Err(VarError::NotUnicode(_)) => panic!("Environment variable DATABASE_URL is not unicode."),
+        Ok(s) => Ok(s),
+        Err(VarError::NotPresent) => Err(anyhow!("Environment variable DATABASE_URL is required.")),
+        Err(VarError::NotUnicode(_)) => {
+            Err(anyhow!("Environment variable DATABASE_URL is not unicode."))
+        }
     }
 }
 
-fn fetch_allowed_origins() -> Vec<String> {
+fn fetch_allowed_origins() -> Result<Vec<String>, anyhow::Error> {
     use std::env::VarError;
 
     match std::env::var("ALLOWED_ORIGINS") {
-        Ok(s) => s.split(',').map(|s| s.to_owned()).collect(),
-        Err(VarError::NotPresent) => panic!("Environment variable ALLOWED_ORIGINS is required."),
-        Err(VarError::NotUnicode(_)) => {
-            panic!("Environment variable ALLOWED_ORIGINS is not unicode.")
+        Ok(s) => Ok(s.split(',').map(|s| s.to_owned()).collect()),
+        Err(VarError::NotPresent) => {
+            Err(anyhow!("Environment variable ALLOWED_ORIGINS is required."))
         }
+        Err(VarError::NotUnicode(_)) => Err(anyhow!(
+            "Environment variable ALLOWED_ORIGINS is not unicode."
+        )),
     }
 }
