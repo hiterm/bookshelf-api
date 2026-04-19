@@ -69,6 +69,7 @@ where
     ) -> Result<AuthorDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let author_id = AuthorId::try_from(author_data.id.as_str())?;
+        let author_name = AuthorName::new(author_data.name)?;
         let existing = self
             .author_repository
             .find_by_id(&user_id, &author_id)
@@ -76,11 +77,10 @@ where
         if existing.is_none() {
             return Err(UseCaseError::NotFound {
                 entity_type: "author",
-                entity_id: author_data.id,
+                entity_id: author_id.to_string(),
                 user_id: user_id.into_string(),
             });
         }
-        let author_name = AuthorName::new(author_data.name)?;
         let author = Author::new(author_id, author_name)?;
         self.author_repository.update(&user_id, &author).await?;
         Ok(author.into())
@@ -115,10 +115,18 @@ mod tests {
     use mockall::predicate::always;
 
     use crate::{
-        domain::repository::author_repository::MockAuthorRepository,
+        domain::{
+            entity::author::{Author, AuthorId, AuthorName},
+            error::DomainError,
+            repository::author_repository::MockAuthorRepository,
+        },
         use_case::{
-            dto::author::CreateAuthorDto, error::UseCaseError,
-            interactor::author::CreateAuthorInteractor, traits::author::CreateAuthorUseCase,
+            dto::author::{CreateAuthorDto, UpdateAuthorDto},
+            error::UseCaseError,
+            interactor::author::{
+                CreateAuthorInteractor, DeleteAuthorInteractor, UpdateAuthorInteractor,
+            },
+            traits::author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
         },
     };
 
@@ -166,6 +174,146 @@ mod tests {
 
         // When
         let result = interactor.create("", author_data).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn update_author_success() {
+        // Given
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let existing = Author::new(
+            AuthorId::try_from(author_id_str).unwrap(),
+            AuthorName::new("Old Name".to_string()).unwrap(),
+        )
+        .unwrap();
+
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_by_id()
+            .with(always(), always())
+            .returning(move |_, _| Ok(Some(existing.clone())));
+        author_repository
+            .expect_update()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
+
+        // When
+        let result = interactor.update("user1", author_data).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "New Name");
+    }
+
+    #[tokio::test]
+    async fn update_author_not_found() {
+        // Given
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_by_id()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
+
+        // When
+        let result = interactor.update("user1", author_data).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn update_author_fails_with_invalid_author_id() {
+        // Given
+        let author_repository = MockAuthorRepository::new();
+        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let author_data = UpdateAuthorDto::new("not-a-uuid".to_string(), "New Name".to_string());
+
+        // When
+        let result = interactor.update("user1", author_data).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn update_author_fails_with_empty_name() {
+        // Given
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let author_repository = MockAuthorRepository::new();
+        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "".to_string());
+
+        // When
+        let result = interactor.update("user1", author_data).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn delete_author_success() {
+        // Given
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_delete()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = DeleteAuthorInteractor::new(author_repository);
+
+        // When
+        let result = interactor.delete("user1", author_id_str).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn delete_author_propagates_not_found() {
+        // Given
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_delete()
+            .with(always(), always())
+            .returning(|_, _| {
+                Err(DomainError::NotFound {
+                    entity_type: "author",
+                    entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
+
+        let interactor = DeleteAuthorInteractor::new(author_repository);
+
+        // When
+        let result = interactor.delete("user1", author_id_str).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn delete_author_fails_with_invalid_author_id() {
+        // Given
+        let author_repository = MockAuthorRepository::new();
+        let interactor = DeleteAuthorInteractor::new(author_repository);
+
+        // When
+        let result = interactor.delete("user1", "not-a-uuid").await;
 
         // Then
         assert!(matches!(result, Err(UseCaseError::Validation(_))));

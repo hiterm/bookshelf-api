@@ -330,4 +330,70 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name, "New Author");
     }
+
+    #[tokio::test]
+    async fn update_author_delegates_to_sub_use_case() {
+        // Given
+        let mut mock_update_author = MockUpdateAuthorUseCase::new();
+        mock_update_author
+            .expect_update()
+            .with(always(), always())
+            .returning(|_, data| {
+                Ok(AuthorDto {
+                    id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                    name: data.name.clone(),
+                })
+            });
+
+        let interactor = MutationInteractor::new(
+            MockRegisterUserUseCase::new(),
+            MockCreateBookUseCase::new(),
+            MockUpdateBookUseCase::new(),
+            MockDeleteBookUseCase::new(),
+            MockCreateAuthorUseCase::new(),
+            mock_update_author,
+            MockDeleteAuthorUseCase::new(),
+        );
+
+        use crate::use_case::dto::author::UpdateAuthorDto;
+        let author_data = UpdateAuthorDto::new(
+            "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+            "Updated Author".to_string(),
+        );
+
+        // When
+        let result = interactor.update_author("user1", author_data).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "Updated Author");
+    }
+
+    #[tokio::test]
+    async fn delete_author_delegates_to_sub_use_case() {
+        // Given
+        let mut mock_delete_author = MockDeleteAuthorUseCase::new();
+        mock_delete_author
+            .expect_delete()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = MutationInteractor::new(
+            MockRegisterUserUseCase::new(),
+            MockCreateBookUseCase::new(),
+            MockUpdateBookUseCase::new(),
+            MockDeleteBookUseCase::new(),
+            MockCreateAuthorUseCase::new(),
+            MockUpdateAuthorUseCase::new(),
+            mock_delete_author,
+        );
+
+        // When
+        let result = interactor
+            .delete_author("user1", "006099b4-6c42-4ec4-8645-f6bd5b63eddc")
+            .await;
+
+        // Then
+        assert!(result.is_ok());
+    }
 }
