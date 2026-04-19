@@ -109,6 +109,13 @@ impl AuthorRepository for PgAuthorRepository {
     async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
 
+        // Delete book_author rows first to satisfy the FK constraint on author.
+        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND author_id = $2")
+            .bind(user_id.as_str())
+            .bind(author_id.to_uuid())
+            .execute(&mut *tx)
+            .await?;
+
         let result = sqlx::query("DELETE FROM author WHERE id = $1 AND user_id = $2")
             .bind(author_id.to_uuid())
             .bind(user_id.as_str())
@@ -130,12 +137,6 @@ impl AuthorRepository for PgAuthorRepository {
                 )));
             }
         }
-
-        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND author_id = $2")
-            .bind(user_id.as_str())
-            .bind(author_id.to_uuid())
-            .execute(&mut *tx)
-            .await?;
 
         tx.commit().await?;
 
