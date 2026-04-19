@@ -84,13 +84,14 @@ impl AuthorRepository for PgAuthorRepository {
     }
 
     async fn update(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
-        let result =
-            sqlx::query("UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3")
-                .bind(author.name().as_str())
-                .bind(author.id().to_uuid())
-                .bind(user_id.as_str())
-                .execute(&self.pool)
-                .await?;
+        let result = sqlx::query(
+            "UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
+        )
+        .bind(author.name().as_str())
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .execute(&self.pool)
+        .await?;
 
         match result.rows_affected() {
             0 => Err(DomainError::NotFound {

@@ -114,7 +114,9 @@ where
     }
 
     async fn delete_author(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError> {
-        self.delete_author_use_case.delete(user_id, author_id).await?;
+        self.delete_author_use_case
+            .delete(user_id, author_id)
+            .await?;
         Ok(())
     }
 }
