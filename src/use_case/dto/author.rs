@@ -26,11 +26,22 @@ impl CreateAuthorDto {
     }
 }
 
+pub struct UpdateAuthorDto {
+    pub id: String,
+    pub name: String,
+}
+
+impl UpdateAuthorDto {
+    pub fn new(id: String, name: String) -> Self {
+        Self { id, name }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::domain::entity::author::{Author, AuthorId, AuthorName};
 
-    use super::AuthorDto;
+    use super::{AuthorDto, UpdateAuthorDto};
 
     #[test]
     fn author_dto_from_author() {
@@ -53,5 +64,19 @@ mod tests {
                 name: "Test Author".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn update_author_dto_stores_id_and_name() {
+        // Given
+        let id = "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string();
+        let name = "Updated Author".to_string();
+
+        // When
+        let dto = UpdateAuthorDto::new(id.clone(), name.clone());
+
+        // Then
+        assert_eq!(dto.id, id);
+        assert_eq!(dto.name, name);
     }
 }
