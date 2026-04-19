@@ -10,9 +10,9 @@ use crate::{
         repository::author_repository::AuthorRepository,
     },
     use_case::{
-        dto::author::{AuthorDto, CreateAuthorDto},
+        dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
         error::UseCaseError,
-        traits::author::CreateAuthorUseCase,
+        traits::author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
     },
 };
 
@@ -44,6 +44,69 @@ where
         self.author_repository.create(&user_id, &author).await?;
 
         Ok(author.into())
+    }
+}
+
+pub struct UpdateAuthorInteractor<AR> {
+    author_repository: AR,
+}
+
+impl<AR> UpdateAuthorInteractor<AR> {
+    pub fn new(author_repository: AR) -> Self {
+        Self { author_repository }
+    }
+}
+
+#[async_trait]
+impl<AR> UpdateAuthorUseCase for UpdateAuthorInteractor<AR>
+where
+    AR: AuthorRepository,
+{
+    async fn update(
+        &self,
+        user_id: &str,
+        author_data: UpdateAuthorDto,
+    ) -> Result<AuthorDto, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let author_id = AuthorId::try_from(author_data.id.as_str())?;
+        let existing = self
+            .author_repository
+            .find_by_id(&user_id, &author_id)
+            .await?;
+        if existing.is_none() {
+            return Err(UseCaseError::NotFound {
+                entity_type: "author",
+                entity_id: author_data.id,
+                user_id: user_id.into_string(),
+            });
+        }
+        let author_name = AuthorName::new(author_data.name)?;
+        let author = Author::new(author_id, author_name)?;
+        self.author_repository.update(&user_id, &author).await?;
+        Ok(author.into())
+    }
+}
+
+pub struct DeleteAuthorInteractor<AR> {
+    author_repository: AR,
+}
+
+impl<AR> DeleteAuthorInteractor<AR> {
+    pub fn new(author_repository: AR) -> Self {
+        Self { author_repository }
+    }
+}
+
+#[async_trait]
+impl<AR> DeleteAuthorUseCase for DeleteAuthorInteractor<AR>
+where
+    AR: AuthorRepository,
+{
+    async fn delete(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let author_id = AuthorId::try_from(author_id)?;
+        self.author_repository.delete(&user_id, &author_id).await?;
+        Ok(())
     }
 }
 

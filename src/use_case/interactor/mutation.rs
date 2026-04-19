@@ -2,34 +2,40 @@ use async_trait::async_trait;
 
 use crate::use_case::{
     dto::{
-        author::{AuthorDto, CreateAuthorDto},
+        author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
         book::{BookDto, CreateBookDto, UpdateBookDto},
         user::UserDto,
     },
     error::UseCaseError,
     traits::{
-        author::CreateAuthorUseCase,
+        author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
         book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
         mutation::MutationUseCase,
         user::RegisterUserUseCase,
     },
 };
 
-pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC> {
+pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> {
     register_user_use_case: RUUC,
     create_book_use_case: CBUC,
     update_book_use_case: UBUC,
     delete_book_use_case: DBUC,
     create_author_use_case: CAUC,
+    update_author_use_case: UAUC,
+    delete_author_use_case: DAUC,
 }
 
-impl<RUUC, CBUC, UBUC, DBUC, CAUC> MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC> {
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
+    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
+{
     pub fn new(
         register_user_use_case: RUUC,
         create_book_use_case: CBUC,
         update_book_use_case: UBUC,
         delete_book_use_case: DBUC,
         create_author_use_case: CAUC,
+        update_author_use_case: UAUC,
+        delete_author_use_case: DAUC,
     ) -> Self {
         Self {
             register_user_use_case,
@@ -37,19 +43,23 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC> MutationInteractor<RUUC, CBUC, UBUC, DBUC, CA
             update_book_use_case,
             delete_book_use_case,
             create_author_use_case,
+            update_author_use_case,
+            delete_author_use_case,
         }
     }
 }
 
 #[async_trait]
-impl<RUUC, CBUC, UBUC, DBUC, CAUC> MutationUseCase
-    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> MutationUseCase
+    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
 where
     RUUC: RegisterUserUseCase,
     CBUC: CreateBookUseCase,
     UBUC: UpdateBookUseCase,
     DBUC: DeleteBookUseCase,
     CAUC: CreateAuthorUseCase,
+    UAUC: UpdateAuthorUseCase,
+    DAUC: DeleteAuthorUseCase,
 {
     async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError> {
         let user = self.register_user_use_case.register_user(user_id).await?;
@@ -90,6 +100,23 @@ where
             .await?;
         Ok(author)
     }
+
+    async fn update_author(
+        &self,
+        user_id: &str,
+        author_data: UpdateAuthorDto,
+    ) -> Result<AuthorDto, UseCaseError> {
+        let author = self
+            .update_author_use_case
+            .update(user_id, author_data)
+            .await?;
+        Ok(author)
+    }
+
+    async fn delete_author(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError> {
+        self.delete_author_use_case.delete(user_id, author_id).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -105,7 +132,7 @@ mod tests {
         },
         interactor::mutation::MutationInteractor,
         traits::{
-            author::MockCreateAuthorUseCase,
+            author::{MockCreateAuthorUseCase, MockDeleteAuthorUseCase, MockUpdateAuthorUseCase},
             book::{MockCreateBookUseCase, MockDeleteBookUseCase, MockUpdateBookUseCase},
             mutation::MutationUseCase,
             user::MockRegisterUserUseCase,
@@ -145,6 +172,8 @@ mod tests {
             MockUpdateBookUseCase::new(),
             MockDeleteBookUseCase::new(),
             MockCreateAuthorUseCase::new(),
+            MockUpdateAuthorUseCase::new(),
+            MockDeleteAuthorUseCase::new(),
         );
 
         // When
@@ -173,6 +202,8 @@ mod tests {
             MockUpdateBookUseCase::new(),
             MockDeleteBookUseCase::new(),
             MockCreateAuthorUseCase::new(),
+            MockUpdateAuthorUseCase::new(),
+            MockDeleteAuthorUseCase::new(),
         );
 
         let book_data = CreateBookDto::new(
@@ -212,6 +243,8 @@ mod tests {
             mock_update_book,
             MockDeleteBookUseCase::new(),
             MockCreateAuthorUseCase::new(),
+            MockUpdateAuthorUseCase::new(),
+            MockDeleteAuthorUseCase::new(),
         );
 
         let book_data = UpdateBookDto::new(
@@ -249,6 +282,8 @@ mod tests {
             MockUpdateBookUseCase::new(),
             mock_delete_book,
             MockCreateAuthorUseCase::new(),
+            MockUpdateAuthorUseCase::new(),
+            MockDeleteAuthorUseCase::new(),
         );
 
         // When
@@ -280,6 +315,8 @@ mod tests {
             MockUpdateBookUseCase::new(),
             MockDeleteBookUseCase::new(),
             mock_create_author,
+            MockUpdateAuthorUseCase::new(),
+            MockDeleteAuthorUseCase::new(),
         );
 
         let author_data = CreateAuthorDto::new("New Author".to_string());

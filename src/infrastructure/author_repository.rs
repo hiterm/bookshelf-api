@@ -83,6 +83,54 @@ impl AuthorRepository for PgAuthorRepository {
         authors
     }
 
+    async fn update(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
+        let result =
+            sqlx::query("UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3")
+                .bind(author.name().as_str())
+                .bind(author.id().to_uuid())
+                .bind(user_id.as_str())
+                .execute(&self.pool)
+                .await?;
+
+        match result.rows_affected() {
+            0 => Err(DomainError::NotFound {
+                entity_type: "author",
+                entity_id: author.id().to_string(),
+                user_id: user_id.to_owned().into_string(),
+            }),
+            1 => Ok(()),
+            _ => Err(DomainError::Unexpected(String::from(
+                "rows_affected is greater than 1.",
+            ))),
+        }
+    }
+
+    async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError> {
+        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND author_id = $2")
+            .bind(user_id.as_str())
+            .bind(author_id.to_uuid())
+            .execute(&self.pool)
+            .await?;
+
+        let result = sqlx::query("DELETE FROM author WHERE id = $1 AND user_id = $2")
+            .bind(author_id.to_uuid())
+            .bind(user_id.as_str())
+            .execute(&self.pool)
+            .await?;
+
+        match result.rows_affected() {
+            0 => Err(DomainError::NotFound {
+                entity_type: "author",
+                entity_id: author_id.to_string(),
+                user_id: user_id.to_owned().into_string(),
+            }),
+            1 => Ok(()),
+            _ => Err(DomainError::Unexpected(String::from(
+                "rows_affected is greater than 1.",
+            ))),
+        }
+    }
+
     async fn find_by_ids_as_hash_map(
         &self,
         user_id: &UserId,

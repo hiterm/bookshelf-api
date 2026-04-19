@@ -8,7 +8,7 @@ use crate::{
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
-        author::CreateAuthorInteractor,
+        author::{CreateAuthorInteractor, DeleteAuthorInteractor, UpdateAuthorInteractor},
         book::{CreateBookInteractor, DeleteBookInteractor, UpdateBookInteractor},
         mutation::MutationInteractor,
         query::QueryInteractor,
@@ -23,6 +23,8 @@ pub type MI = MutationInteractor<
     UpdateBookInteractor<PgBookRepository>,
     DeleteBookInteractor<PgBookRepository>,
     CreateAuthorInteractor<PgAuthorRepository>,
+    UpdateAuthorInteractor<PgAuthorRepository>,
+    DeleteAuthorInteractor<PgAuthorRepository>,
 >;
 
 pub fn dependency_injection(
@@ -41,13 +43,17 @@ pub fn dependency_injection(
     let create_book_use_case = CreateBookInteractor::new(book_repository.clone());
     let update_book_use_case = UpdateBookInteractor::new(book_repository.clone());
     let delete_book_use_case = DeleteBookInteractor::new(book_repository);
-    let create_author_use_case = CreateAuthorInteractor::new(author_repository);
+    let create_author_use_case = CreateAuthorInteractor::new(author_repository.clone());
+    let update_author_use_case = UpdateAuthorInteractor::new(author_repository.clone());
+    let delete_author_use_case = DeleteAuthorInteractor::new(author_repository);
     let mutation_use_case = MutationInteractor::new(
         register_user_use_case,
         create_book_use_case,
         update_book_use_case,
         delete_book_use_case,
         create_author_use_case,
+        update_author_use_case,
+        delete_author_use_case,
     );
 
     let query = Query::new(query_use_case.clone());
