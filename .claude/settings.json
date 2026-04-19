@@ -3,7 +3,10 @@
     "allow": [
       "Bash(cargo test *)",
       "Bash(cargo fmt *)",
-      "Bash(cargo clippy *)"
+      "Bash(cargo clippy *)",
+      "Bash(git --no-pager status *)",
+      "Bash(git --no-pager diff *)",
+      "Bash(git --no-pager log *)"
     ]
   }
 }
