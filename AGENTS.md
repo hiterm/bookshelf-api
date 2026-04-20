@@ -42,13 +42,20 @@ Never commit or make file changes while on the `main` branch.
 
 ## Pre-commit Checks
 
-Before committing, run the following and ensure all pass:
+**MANDATORY — do not skip under any circumstances**, except:
+- The user explicitly grants permission to skip
+- The commit contains only documentation changes (e.g. `.md` files)
+
+Before EVERY commit, run ALL of the following in order and ensure ALL pass.
+If any command fails, fix the issue before committing. Do not commit with failures.
 
 ```bash
 cargo fmt --check
 cargo clippy
 cargo test
 ```
+
+If `cargo fmt --check` fails, run `cargo fmt` to fix formatting, then re-run the check.
 
 ## ExecPlans
 
