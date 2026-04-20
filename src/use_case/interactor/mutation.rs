@@ -128,7 +128,7 @@ mod tests {
     use crate::common::types::{BookFormat, BookStore};
     use crate::use_case::{
         dto::{
-            author::{AuthorDto, CreateAuthorDto},
+            author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
             book::{BookDto, CreateBookDto, UpdateBookDto},
             user::UserDto,
         },
@@ -355,7 +355,6 @@ mod tests {
             MockDeleteAuthorUseCase::new(),
         );
 
-        use crate::use_case::dto::author::UpdateAuthorDto;
         let author_data = UpdateAuthorDto::new(
             "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
             "Updated Author".to_string(),
