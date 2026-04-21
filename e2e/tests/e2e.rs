@@ -862,6 +862,46 @@ async fn e2e_graphql_update_author() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+async fn e2e_graphql_update_nonexistent_author_returns_error() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let nonexistent_id = uuid::Uuid::new_v4().to_string();
+    let query = format!(
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Ghost" }}) {{ id name }} }}"#,
+        nonexistent_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_some(),
+        "updateAuthor should return errors for a non-existent author"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_delete_nonexistent_author_returns_error() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let nonexistent_id = uuid::Uuid::new_v4().to_string();
+    let query = format!(
+        r#"mutation {{ deleteAuthor(authorId: "{}") }}"#,
+        nonexistent_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_some(),
+        "deleteAuthor should return errors for a non-existent author"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn e2e_graphql_create_book_without_auth() -> Result<()> {
     let query = r#"
         mutation {

@@ -243,6 +243,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_author_fails_with_invalid_user_id() {
+        // Given
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let author_repository = MockAuthorRepository::new();
+        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
+
+        // When
+        let result = interactor.update("", author_data).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
     async fn delete_author_success() {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
@@ -321,6 +336,20 @@ mod tests {
 
         // When
         let result = interactor.delete("user1", "not-a-uuid").await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn delete_author_fails_with_invalid_user_id() {
+        // Given
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let author_repository = MockAuthorRepository::new();
+        let interactor = DeleteAuthorInteractor::new(author_repository);
+
+        // When
+        let result = interactor.delete("", author_id_str).await;
 
         // Then
         assert!(matches!(result, Err(UseCaseError::Validation(_))));
