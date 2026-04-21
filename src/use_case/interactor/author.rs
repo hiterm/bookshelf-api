@@ -289,6 +289,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_author_propagates_has_associated_books() {
+        // Given
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_delete()
+            .with(always(), always())
+            .returning(|_, _| {
+                Err(DomainError::HasAssociatedBooks {
+                    author_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
+
+        let interactor = DeleteAuthorInteractor::new(author_repository);
+
+        // When
+        let result = interactor.delete("user1", author_id_str).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Conflict(_))));
+    }
+
+    #[tokio::test]
     async fn delete_author_fails_with_invalid_author_id() {
         // Given
         let author_repository = MockAuthorRepository::new();

@@ -13,6 +13,8 @@ pub enum DomainError {
         entity_id: String,
         user_id: String,
     },
+    #[error(r#"author "{author_id}" has associated books and cannot be deleted."#)]
+    HasAssociatedBooks { author_id: String, user_id: String },
     #[error(transparent)]
     InfrastructureError(anyhow::Error),
     #[error("{0}")]

@@ -109,12 +109,20 @@ impl AuthorRepository for PgAuthorRepository {
     async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
 
-        // book_author references author via FK with no CASCADE, so delete it first.
-        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND author_id = $2")
-            .bind(user_id.as_str())
-            .bind(author_id.to_uuid())
-            .execute(&mut *tx)
-            .await?;
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_author WHERE user_id = $1 AND author_id = $2",
+        )
+        .bind(user_id.as_str())
+        .bind(author_id.to_uuid())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if count > 0 {
+            return Err(DomainError::HasAssociatedBooks {
+                author_id: author_id.to_string(),
+                user_id: user_id.to_owned().into_string(),
+            });
+        }
 
         let result = sqlx::query("DELETE FROM author WHERE id = $1 AND user_id = $2")
             .bind(author_id.to_uuid())
@@ -390,7 +398,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn delete_removes_author_and_book_author_rows(pool: PgPool) -> anyhow::Result<()> {
+    async fn delete_fails_when_author_has_associated_books(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
@@ -404,16 +412,36 @@ mod tests {
         let book = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
         book_repository.create(&user_id, &book).await?;
 
+        let result = author_repository.delete(&user_id, &author_id).await;
+        assert!(matches!(
+            result,
+            Err(DomainError::HasAssociatedBooks { .. })
+        ));
+
+        // author and book_author must still exist
+        let found = author_repository.find_by_id(&user_id, &author_id).await?;
+        assert!(found.is_some());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn delete_succeeds_when_author_has_no_associated_books(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        author_repository.create(&user_id, &author).await?;
+
         author_repository.delete(&user_id, &author_id).await?;
 
         let found = author_repository.find_by_id(&user_id, &author_id).await?;
         assert_eq!(found, None);
-
-        // book_author row must be gone — find_by_id returns the book with no authors
-        let book_after = book_repository.find_by_id(&user_id, book.id()).await?;
-        assert!(book_after.is_some());
-        let book_after = book_after.unwrap();
-        assert!(book_after.author_ids().is_empty());
 
         Ok(())
     }
@@ -433,7 +461,9 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn delete_does_not_touch_other_users_book_author(pool: PgPool) -> anyhow::Result<()> {
+    async fn delete_does_not_affect_other_users_when_book_association_blocks(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
@@ -453,9 +483,14 @@ mod tests {
         let book2 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
         book_repository.create(&user2_id, &book2).await?;
 
-        // user2 deletes their copy of the author — must not affect user1's book_author
-        author_repository.delete(&user2_id, &author_id).await?;
+        // user2 has an associated book, so delete must fail
+        let result = author_repository.delete(&user2_id, &author_id).await;
+        assert!(matches!(
+            result,
+            Err(DomainError::HasAssociatedBooks { .. })
+        ));
 
+        // user1's book_author row must be intact
         let user1_book = book_repository
             .find_by_id(&user1_id, book1.id())
             .await?
