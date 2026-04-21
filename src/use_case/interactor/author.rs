@@ -69,24 +69,8 @@ where
     ) -> Result<AuthorDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let author_id = AuthorId::try_from(author_data.id.as_str())?;
-
-        let mut author = match self
-            .author_repository
-            .find_by_id(&user_id, &author_id)
-            .await?
-        {
-            Some(author) => author,
-            None => {
-                return Err(UseCaseError::NotFound {
-                    entity_type: "author",
-                    entity_id: author_data.id,
-                    user_id: user_id.into_string(),
-                });
-            }
-        };
-
         let author_name = AuthorName::new(author_data.name)?;
-        author.set_name(author_name);
+        let author = Author::new(author_id, author_name)?;
         self.author_repository.update(&user_id, &author).await?;
         Ok(author.into())
     }
@@ -120,11 +104,7 @@ mod tests {
     use mockall::predicate::always;
 
     use crate::{
-        domain::{
-            entity::author::{Author, AuthorId, AuthorName},
-            error::DomainError,
-            repository::author_repository::MockAuthorRepository,
-        },
+        domain::{error::DomainError, repository::author_repository::MockAuthorRepository},
         use_case::{
             dto::author::{CreateAuthorDto, UpdateAuthorDto},
             error::UseCaseError,
@@ -188,17 +168,8 @@ mod tests {
     async fn update_author_success() {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
-        let existing_author = Author::new(
-            AuthorId::try_from(author_id_str).unwrap(),
-            AuthorName::new("Old Name".to_string()).unwrap(),
-        )
-        .unwrap();
 
         let mut author_repository = MockAuthorRepository::new();
-        author_repository
-            .expect_find_by_id()
-            .with(always(), always())
-            .returning(move |_, _| Ok(Some(existing_author.clone())));
         author_repository
             .expect_update()
             .with(always(), always())
@@ -222,9 +193,15 @@ mod tests {
 
         let mut author_repository = MockAuthorRepository::new();
         author_repository
-            .expect_find_by_id()
+            .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(None));
+            .returning(|_, _| {
+                Err(DomainError::NotFound {
+                    entity_type: "author",
+                    entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
 
         let interactor = UpdateAuthorInteractor::new(author_repository);
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -254,18 +231,7 @@ mod tests {
     async fn update_author_fails_with_empty_name() {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
-        let existing_author = Author::new(
-            AuthorId::try_from(author_id_str).unwrap(),
-            AuthorName::new("Old Name".to_string()).unwrap(),
-        )
-        .unwrap();
-
-        let mut author_repository = MockAuthorRepository::new();
-        author_repository
-            .expect_find_by_id()
-            .with(always(), always())
-            .returning(move |_, _| Ok(Some(existing_author.clone())));
-
+        let author_repository = MockAuthorRepository::new();
         let interactor = UpdateAuthorInteractor::new(author_repository);
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "".to_string());
 

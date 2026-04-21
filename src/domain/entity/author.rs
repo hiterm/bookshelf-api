@@ -74,10 +74,6 @@ impl Author {
         Ok(Author { id, name })
     }
 
-    pub fn set_name(&mut self, name: AuthorName) {
-        self.name = name;
-    }
-
     pub fn destructure(self) -> DestructureAuthor {
         DestructureAuthor {
             id: self.id,
