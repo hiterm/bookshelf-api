@@ -781,6 +781,87 @@ async fn e2e_graphql_delete_author_with_associated_books_fails() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+async fn e2e_graphql_update_author() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    // Create author
+    let original_name = format!("Author Before Update {}", uuid::Uuid::new_v4());
+    let create_query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id name }} }}"#,
+        original_name
+    );
+    let (_, response) = graphql_request(&create_query, Some(&token)).await?;
+    let author_id = response["data"]["createAuthor"]["id"]
+        .as_str()
+        .context("id should be string")?
+        .to_owned();
+
+    // Create book associated with the author
+    let create_book_query = format!(
+        r#"
+        mutation {{
+            createBook(bookData: {{
+                title: "Book For Author Update Test"
+                authorIds: ["{}"]
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ id }}
+        }}
+        "#,
+        author_id
+    );
+    let (_, response) = graphql_request(&create_book_query, Some(&token)).await?;
+    let book_id = response["data"]["createBook"]["id"]
+        .as_str()
+        .context("id should be string")?
+        .to_owned();
+
+    // Update author name while the author has an associated book
+    let updated_name = format!("Author After Update {}", uuid::Uuid::new_v4());
+    let update_query = format!(
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ id name }} }}"#,
+        author_id, updated_name
+    );
+    let (_, response) = graphql_request(&update_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "updateAuthor should not return errors"
+    );
+    let update_result = &response["data"]["updateAuthor"];
+    assert_eq!(
+        update_result["id"].as_str(),
+        Some(author_id.as_str()),
+        "updated author id should match"
+    );
+    assert_eq!(
+        update_result["name"].as_str(),
+        Some(updated_name.as_str()),
+        "updated author name should match"
+    );
+
+    // Verify update by fetching the author
+    let query = format!(r#"{{ author(id: "{}") {{ id name }} }}"#, author_id);
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert_eq!(
+        response["data"]["author"]["name"].as_str(),
+        Some(updated_name.as_str()),
+        "author name should reflect the update"
+    );
+
+    // Clean up: delete book first, then author
+    delete_test_book(&book_id, &token).await?;
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn e2e_graphql_create_book_without_auth() -> Result<()> {
     let query = r#"
         mutation {
