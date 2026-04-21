@@ -104,11 +104,7 @@ mod tests {
     use mockall::predicate::always;
 
     use crate::{
-        domain::{
-            entity::author::{AuthorId, AuthorName},
-            error::DomainError,
-            repository::author_repository::MockAuthorRepository,
-        },
+        domain::{error::DomainError, repository::author_repository::MockAuthorRepository},
         use_case::{
             dto::author::{CreateAuthorDto, UpdateAuthorDto},
             error::UseCaseError,
