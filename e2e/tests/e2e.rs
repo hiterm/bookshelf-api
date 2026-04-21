@@ -224,6 +224,21 @@ async fn graphql_request(query: &str, token: Option<&str>) -> Result<(u16, serde
     Ok((status, body))
 }
 
+async fn delete_test_author(author_id: &str, token: &str) -> Result<()> {
+    let query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
+    let (status, response) = graphql_request(&query, Some(token)).await?;
+
+    if status != 200 {
+        anyhow::bail!("deleteAuthor should return 200, got {}", status);
+    }
+
+    if let Some(errors) = response.get("errors") {
+        anyhow::bail!("deleteAuthor has errors: {:?}", errors);
+    }
+
+    Ok(())
+}
+
 async fn delete_test_book(book_id: &str, token: &str) -> Result<()> {
     let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
     let (status, response) = graphql_request(&query, Some(token)).await?;
@@ -666,6 +681,101 @@ async fn e2e_graphql_book_with_invalid_id() -> Result<()> {
     let data = response.get("data").context("data field must exist")?;
     let book = data.get("book").context("book field must exist")?;
     assert!(book.is_null(), "book with invalid ID should be null");
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_delete_author_without_books_succeeds() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let random_name = format!("Author To Delete {}", uuid::Uuid::new_v4());
+    let create_query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        random_name
+    );
+    let (_, response) = graphql_request(&create_query, Some(&token)).await?;
+    let author_id = response["data"]["createAuthor"]["id"]
+        .as_str()
+        .context("id should be string")?
+        .to_owned();
+
+    delete_test_author(&author_id, &token).await?;
+
+    // Verify author no longer exists
+    let query = format!(r#"{{ author(id: "{}") {{ id }} }}"#, author_id);
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert!(
+        response["data"]["author"].is_null(),
+        "author should be null after deletion"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_delete_author_with_associated_books_fails() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    // Create author
+    let random_name = format!("Author With Book {}", uuid::Uuid::new_v4());
+    let create_author_query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        random_name
+    );
+    let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
+    let author_id = response["data"]["createAuthor"]["id"]
+        .as_str()
+        .context("id should be string")?
+        .to_owned();
+
+    // Create book associated with the author
+    let create_book_query = format!(
+        r#"
+        mutation {{
+            createBook(bookData: {{
+                title: "Book Blocking Author Delete"
+                authorIds: ["{}"]
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ id }}
+        }}
+        "#,
+        author_id
+    );
+    let (_, response) = graphql_request(&create_book_query, Some(&token)).await?;
+    let book_id = response["data"]["createBook"]["id"]
+        .as_str()
+        .context("id should be string")?
+        .to_owned();
+
+    // Attempt to delete the author — must fail
+    let delete_author_query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
+    let (_, response) = graphql_request(&delete_author_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_some(),
+        "deleteAuthor should return errors when author has associated books"
+    );
+
+    // Verify the author still exists
+    let query = format!(r#"{{ author(id: "{}") {{ id }} }}"#, author_id);
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert!(
+        !response["data"]["author"].is_null(),
+        "author should still exist after failed deletion"
+    );
+
+    // Clean up: delete book first, then author
+    delete_test_book(&book_id, &token).await?;
+    delete_test_author(&author_id, &token).await?;
     Ok(())
 }
 
