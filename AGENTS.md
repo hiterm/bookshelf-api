@@ -32,6 +32,15 @@ Never commit or make file changes while on the `main` branch.
 - Keep commits granular — commit at logical breakpoints rather than batching all changes together
 - Separate renames from edits: do not combine file renaming with content changes in the same commit
 
+## Testing
+
+When adding or modifying features, always include tests:
+
+- **Unit tests** — mandatory. Cover the logic being added or changed.
+- **E2E tests** — mandatory when a new API endpoint is added. For other
+  changes, assess whether E2E tests are needed, present your conclusion to
+  the user, and let the user make the final decision.
+
 ## Code Quality
 
 - Follow existing codebase conventions and reuse available libraries
