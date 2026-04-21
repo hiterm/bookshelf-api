@@ -143,6 +143,87 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::Uuid;
 
+    type DefaultInteractor = MutationInteractor<
+        MockRegisterUserUseCase,
+        MockCreateBookUseCase,
+        MockUpdateBookUseCase,
+        MockDeleteBookUseCase,
+        MockCreateAuthorUseCase,
+        MockUpdateAuthorUseCase,
+        MockDeleteAuthorUseCase,
+    >;
+
+    struct InteractorBuilder {
+        register_user: MockRegisterUserUseCase,
+        create_book: MockCreateBookUseCase,
+        update_book: MockUpdateBookUseCase,
+        delete_book: MockDeleteBookUseCase,
+        create_author: MockCreateAuthorUseCase,
+        update_author: MockUpdateAuthorUseCase,
+        delete_author: MockDeleteAuthorUseCase,
+    }
+
+    impl InteractorBuilder {
+        fn new() -> Self {
+            Self {
+                register_user: MockRegisterUserUseCase::new(),
+                create_book: MockCreateBookUseCase::new(),
+                update_book: MockUpdateBookUseCase::new(),
+                delete_book: MockDeleteBookUseCase::new(),
+                create_author: MockCreateAuthorUseCase::new(),
+                update_author: MockUpdateAuthorUseCase::new(),
+                delete_author: MockDeleteAuthorUseCase::new(),
+            }
+        }
+
+        fn with_register_user(mut self, mock: MockRegisterUserUseCase) -> Self {
+            self.register_user = mock;
+            self
+        }
+
+        fn with_create_book(mut self, mock: MockCreateBookUseCase) -> Self {
+            self.create_book = mock;
+            self
+        }
+
+        fn with_update_book(mut self, mock: MockUpdateBookUseCase) -> Self {
+            self.update_book = mock;
+            self
+        }
+
+        fn with_delete_book(mut self, mock: MockDeleteBookUseCase) -> Self {
+            self.delete_book = mock;
+            self
+        }
+
+        fn with_create_author(mut self, mock: MockCreateAuthorUseCase) -> Self {
+            self.create_author = mock;
+            self
+        }
+
+        fn with_update_author(mut self, mock: MockUpdateAuthorUseCase) -> Self {
+            self.update_author = mock;
+            self
+        }
+
+        fn with_delete_author(mut self, mock: MockDeleteAuthorUseCase) -> Self {
+            self.delete_author = mock;
+            self
+        }
+
+        fn build(self) -> DefaultInteractor {
+            MutationInteractor::new(
+                self.register_user,
+                self.create_book,
+                self.update_book,
+                self.delete_book,
+                self.create_author,
+                self.update_author,
+                self.delete_author,
+            )
+        }
+    }
+
     fn make_book_dto(id: &str) -> BookDto {
         BookDto {
             id: id.to_string(),
@@ -168,15 +249,9 @@ mod tests {
             .with(always())
             .returning(|id| Ok(UserDto::new(id.to_string())));
 
-        let interactor = MutationInteractor::new(
-            mock_register_user,
-            MockCreateBookUseCase::new(),
-            MockUpdateBookUseCase::new(),
-            MockDeleteBookUseCase::new(),
-            MockCreateAuthorUseCase::new(),
-            MockUpdateAuthorUseCase::new(),
-            MockDeleteAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_register_user(mock_register_user)
+            .build();
 
         // When
         let result = interactor.register_user("user1").await;
@@ -198,15 +273,9 @@ mod tests {
             .with(always(), always())
             .returning(move |_, _| Ok(make_book_dto(&book_id)));
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            mock_create_book,
-            MockUpdateBookUseCase::new(),
-            MockDeleteBookUseCase::new(),
-            MockCreateAuthorUseCase::new(),
-            MockUpdateAuthorUseCase::new(),
-            MockDeleteAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_create_book(mock_create_book)
+            .build();
 
         let book_data = CreateBookDto::new(
             "New Book".to_string(),
@@ -239,15 +308,9 @@ mod tests {
             .with(always(), always())
             .returning(move |_, _| Ok(make_book_dto(&book_id)));
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            MockCreateBookUseCase::new(),
-            mock_update_book,
-            MockDeleteBookUseCase::new(),
-            MockCreateAuthorUseCase::new(),
-            MockUpdateAuthorUseCase::new(),
-            MockDeleteAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_update_book(mock_update_book)
+            .build();
 
         let book_data = UpdateBookDto::new(
             expected_dto.id.clone(),
@@ -278,15 +341,9 @@ mod tests {
             .with(always(), always())
             .returning(|_, _| Ok(()));
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            MockCreateBookUseCase::new(),
-            MockUpdateBookUseCase::new(),
-            mock_delete_book,
-            MockCreateAuthorUseCase::new(),
-            MockUpdateAuthorUseCase::new(),
-            MockDeleteAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_delete_book(mock_delete_book)
+            .build();
 
         // When
         let result = interactor
@@ -311,15 +368,9 @@ mod tests {
                 })
             });
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            MockCreateBookUseCase::new(),
-            MockUpdateBookUseCase::new(),
-            MockDeleteBookUseCase::new(),
-            mock_create_author,
-            MockUpdateAuthorUseCase::new(),
-            MockDeleteAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_create_author(mock_create_author)
+            .build();
 
         let author_data = CreateAuthorDto::new("New Author".to_string());
 
@@ -345,15 +396,9 @@ mod tests {
                 })
             });
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            MockCreateBookUseCase::new(),
-            MockUpdateBookUseCase::new(),
-            MockDeleteBookUseCase::new(),
-            MockCreateAuthorUseCase::new(),
-            mock_update_author,
-            MockDeleteAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_update_author(mock_update_author)
+            .build();
 
         let author_data = UpdateAuthorDto::new(
             "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
@@ -377,15 +422,9 @@ mod tests {
             .with(always(), always())
             .returning(|_, _| Ok(()));
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            MockCreateBookUseCase::new(),
-            MockUpdateBookUseCase::new(),
-            MockDeleteBookUseCase::new(),
-            MockCreateAuthorUseCase::new(),
-            MockUpdateAuthorUseCase::new(),
-            mock_delete_author,
-        );
+        let interactor = InteractorBuilder::new()
+            .with_delete_author(mock_delete_author)
+            .build();
 
         // When
         let result = interactor

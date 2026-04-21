@@ -109,22 +109,6 @@ impl AuthorRepository for PgAuthorRepository {
     async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
 
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM author WHERE id = $1 AND user_id = $2)",
-        )
-        .bind(author_id.to_uuid())
-        .bind(user_id.as_str())
-        .fetch_one(&mut *tx)
-        .await?;
-
-        if !exists {
-            return Err(DomainError::NotFound {
-                entity_type: "author",
-                entity_id: author_id.to_string(),
-                user_id: user_id.to_owned().into_string(),
-            });
-        }
-
         // book_author references author via FK with no CASCADE, so delete it first.
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND author_id = $2")
             .bind(user_id.as_str())
@@ -140,9 +124,11 @@ impl AuthorRepository for PgAuthorRepository {
 
         match result.rows_affected() {
             0 => {
-                return Err(DomainError::Unexpected(String::from(
-                    "Author disappeared between existence check and delete.",
-                )));
+                return Err(DomainError::NotFound {
+                    entity_type: "author",
+                    entity_id: author_id.to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
             }
             1 => {}
             _ => {
@@ -425,11 +411,9 @@ mod tests {
 
         // book_author row must be gone — find_by_id returns the book with no authors
         let book_after = book_repository.find_by_id(&user_id, book.id()).await?;
-        assert!(
-            book_after
-                .map(|b| b.author_ids().is_empty())
-                .unwrap_or(true)
-        );
+        assert!(book_after.is_some());
+        let book_after = book_after.unwrap();
+        assert!(book_after.author_ids().is_empty());
 
         Ok(())
     }
