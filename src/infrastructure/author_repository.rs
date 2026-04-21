@@ -109,6 +109,22 @@ impl AuthorRepository for PgAuthorRepository {
     async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
 
+        // Lock the author row to prevent concurrent inserts into book_author after the count check.
+        let locked: Option<(Uuid,)> =
+            sqlx::query_as("SELECT id FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
+                .bind(author_id.to_uuid())
+                .bind(user_id.as_str())
+                .fetch_optional(&mut *tx)
+                .await?;
+
+        if locked.is_none() {
+            return Err(DomainError::NotFound {
+                entity_type: "author",
+                entity_id: author_id.to_string(),
+                user_id: user_id.to_owned().into_string(),
+            });
+        }
+
         let (count,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM book_author WHERE user_id = $1 AND author_id = $2",
         )

@@ -236,6 +236,20 @@ async fn delete_test_author(author_id: &str, token: &str) -> Result<()> {
         anyhow::bail!("deleteAuthor has errors: {:?}", errors);
     }
 
+    let data = response.get("data").context("data field must exist")?;
+    let delete_result = data
+        .get("deleteAuthor")
+        .context("deleteAuthor field must exist")?;
+
+    let delete_result_str = delete_result
+        .as_str()
+        .context("deleteAuthor result should be a string")?;
+
+    assert_eq!(
+        delete_result_str, author_id,
+        "deleted author id should match the requested author_id"
+    );
+
     Ok(())
 }
 
