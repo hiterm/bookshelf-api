@@ -212,48 +212,48 @@ mod test {
     #[test]
     fn valid_isbn_with_hyphen() {
         let isbn = Isbn::new("978-4062758574".to_owned());
-        assert!(matches!(isbn, Ok(_)));
+        assert!(isbn.is_ok());
     }
 
     #[test]
     fn valid_isbn_without_hyphen() {
         let isbn = Isbn::new("9784062758574".to_owned());
-        assert!(matches!(isbn, Ok(_)));
+        assert!(isbn.is_ok());
     }
 
     #[test]
     fn empty_isbn_is_valid() {
         let isbn = Isbn::new("".to_owned());
-        assert!(matches!(isbn, Ok(_)));
+        assert!(isbn.is_ok());
     }
 
     #[test]
     fn isbn_too_short() {
         let isbn = Isbn::new("1".to_owned());
-        assert!(matches!(isbn, Err(_)));
+        assert!(isbn.is_err());
     }
 
     #[test]
     fn priority_0_is_valid() {
         let priority = Priority::new(0);
-        assert!(matches!(priority, Ok(_)));
+        assert!(priority.is_ok());
     }
 
     #[test]
     fn priority_100_is_valid() {
         let priority = Priority::new(100);
-        assert!(matches!(priority, Ok(_)));
+        assert!(priority.is_ok());
     }
 
     #[test]
     fn priority_negative1_is_invalid() {
         let priority = Priority::new(-1);
-        assert!(matches!(priority, Err(_)));
+        assert!(priority.is_err());
     }
 
     #[test]
     fn priority_101_is_invalid() {
         let priority = Priority::new(101);
-        assert!(matches!(priority, Err(_)));
+        assert!(priority.is_err());
     }
 }
