@@ -26,6 +26,17 @@ impl CreateAuthorDto {
     }
 }
 
+pub struct UpdateAuthorDto {
+    pub id: String,
+    pub name: String,
+}
+
+impl UpdateAuthorDto {
+    pub fn new(id: String, name: String) -> Self {
+        Self { id, name }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::domain::entity::author::{Author, AuthorId, AuthorName};

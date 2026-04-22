@@ -4,8 +4,7 @@ use async_graphql::{ID, InputObject, SimpleObject};
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::QI;
-use crate::use_case::dto::author::AuthorDto;
-use crate::use_case::dto::author::CreateAuthorDto;
+use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{BookDto, CreateBookDto, UpdateBookDto};
 
 use super::loader::AuthorLoader;
@@ -265,5 +264,17 @@ impl CreateAuthorInput {
 impl From<CreateAuthorInput> for CreateAuthorDto {
     fn from(val: CreateAuthorInput) -> Self {
         CreateAuthorDto::new(val.name)
+    }
+}
+
+#[derive(InputObject)]
+pub struct UpdateAuthorInput {
+    pub id: ID,
+    pub name: String,
+}
+
+impl From<UpdateAuthorInput> for UpdateAuthorDto {
+    fn from(val: UpdateAuthorInput) -> Self {
+        UpdateAuthorDto::new(val.id.to_string(), val.name)
     }
 }

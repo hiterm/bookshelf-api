@@ -2,34 +2,40 @@ use async_trait::async_trait;
 
 use crate::use_case::{
     dto::{
-        author::{AuthorDto, CreateAuthorDto},
+        author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
         book::{BookDto, CreateBookDto, UpdateBookDto},
         user::UserDto,
     },
     error::UseCaseError,
     traits::{
-        author::CreateAuthorUseCase,
+        author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
         book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
         mutation::MutationUseCase,
         user::RegisterUserUseCase,
     },
 };
 
-pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC> {
+pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> {
     register_user_use_case: RUUC,
     create_book_use_case: CBUC,
     update_book_use_case: UBUC,
     delete_book_use_case: DBUC,
     create_author_use_case: CAUC,
+    update_author_use_case: UAUC,
+    delete_author_use_case: DAUC,
 }
 
-impl<RUUC, CBUC, UBUC, DBUC, CAUC> MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC> {
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
+    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
+{
     pub fn new(
         register_user_use_case: RUUC,
         create_book_use_case: CBUC,
         update_book_use_case: UBUC,
         delete_book_use_case: DBUC,
         create_author_use_case: CAUC,
+        update_author_use_case: UAUC,
+        delete_author_use_case: DAUC,
     ) -> Self {
         Self {
             register_user_use_case,
@@ -37,19 +43,23 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC> MutationInteractor<RUUC, CBUC, UBUC, DBUC, CA
             update_book_use_case,
             delete_book_use_case,
             create_author_use_case,
+            update_author_use_case,
+            delete_author_use_case,
         }
     }
 }
 
 #[async_trait]
-impl<RUUC, CBUC, UBUC, DBUC, CAUC> MutationUseCase
-    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> MutationUseCase
+    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
 where
     RUUC: RegisterUserUseCase,
     CBUC: CreateBookUseCase,
     UBUC: UpdateBookUseCase,
     DBUC: DeleteBookUseCase,
     CAUC: CreateAuthorUseCase,
+    UAUC: UpdateAuthorUseCase,
+    DAUC: DeleteAuthorUseCase,
 {
     async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError> {
         let user = self.register_user_use_case.register_user(user_id).await?;
@@ -90,6 +100,25 @@ where
             .await?;
         Ok(author)
     }
+
+    async fn update_author(
+        &self,
+        user_id: &str,
+        author_data: UpdateAuthorDto,
+    ) -> Result<AuthorDto, UseCaseError> {
+        let author = self
+            .update_author_use_case
+            .update(user_id, author_data)
+            .await?;
+        Ok(author)
+    }
+
+    async fn delete_author(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError> {
+        self.delete_author_use_case
+            .delete(user_id, author_id)
+            .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -99,13 +128,13 @@ mod tests {
     use crate::common::types::{BookFormat, BookStore};
     use crate::use_case::{
         dto::{
-            author::{AuthorDto, CreateAuthorDto},
+            author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
             book::{BookDto, CreateBookDto, UpdateBookDto},
             user::UserDto,
         },
         interactor::mutation::MutationInteractor,
         traits::{
-            author::MockCreateAuthorUseCase,
+            author::{MockCreateAuthorUseCase, MockDeleteAuthorUseCase, MockUpdateAuthorUseCase},
             book::{MockCreateBookUseCase, MockDeleteBookUseCase, MockUpdateBookUseCase},
             mutation::MutationUseCase,
             user::MockRegisterUserUseCase,
@@ -113,6 +142,87 @@ mod tests {
     };
     use time::OffsetDateTime;
     use uuid::Uuid;
+
+    type DefaultInteractor = MutationInteractor<
+        MockRegisterUserUseCase,
+        MockCreateBookUseCase,
+        MockUpdateBookUseCase,
+        MockDeleteBookUseCase,
+        MockCreateAuthorUseCase,
+        MockUpdateAuthorUseCase,
+        MockDeleteAuthorUseCase,
+    >;
+
+    struct InteractorBuilder {
+        register_user: MockRegisterUserUseCase,
+        create_book: MockCreateBookUseCase,
+        update_book: MockUpdateBookUseCase,
+        delete_book: MockDeleteBookUseCase,
+        create_author: MockCreateAuthorUseCase,
+        update_author: MockUpdateAuthorUseCase,
+        delete_author: MockDeleteAuthorUseCase,
+    }
+
+    impl InteractorBuilder {
+        fn new() -> Self {
+            Self {
+                register_user: MockRegisterUserUseCase::new(),
+                create_book: MockCreateBookUseCase::new(),
+                update_book: MockUpdateBookUseCase::new(),
+                delete_book: MockDeleteBookUseCase::new(),
+                create_author: MockCreateAuthorUseCase::new(),
+                update_author: MockUpdateAuthorUseCase::new(),
+                delete_author: MockDeleteAuthorUseCase::new(),
+            }
+        }
+
+        fn with_register_user(mut self, mock: MockRegisterUserUseCase) -> Self {
+            self.register_user = mock;
+            self
+        }
+
+        fn with_create_book(mut self, mock: MockCreateBookUseCase) -> Self {
+            self.create_book = mock;
+            self
+        }
+
+        fn with_update_book(mut self, mock: MockUpdateBookUseCase) -> Self {
+            self.update_book = mock;
+            self
+        }
+
+        fn with_delete_book(mut self, mock: MockDeleteBookUseCase) -> Self {
+            self.delete_book = mock;
+            self
+        }
+
+        fn with_create_author(mut self, mock: MockCreateAuthorUseCase) -> Self {
+            self.create_author = mock;
+            self
+        }
+
+        fn with_update_author(mut self, mock: MockUpdateAuthorUseCase) -> Self {
+            self.update_author = mock;
+            self
+        }
+
+        fn with_delete_author(mut self, mock: MockDeleteAuthorUseCase) -> Self {
+            self.delete_author = mock;
+            self
+        }
+
+        fn build(self) -> DefaultInteractor {
+            MutationInteractor::new(
+                self.register_user,
+                self.create_book,
+                self.update_book,
+                self.delete_book,
+                self.create_author,
+                self.update_author,
+                self.delete_author,
+            )
+        }
+    }
 
     fn make_book_dto(id: &str) -> BookDto {
         BookDto {
@@ -139,13 +249,9 @@ mod tests {
             .with(always())
             .returning(|id| Ok(UserDto::new(id.to_string())));
 
-        let interactor = MutationInteractor::new(
-            mock_register_user,
-            MockCreateBookUseCase::new(),
-            MockUpdateBookUseCase::new(),
-            MockDeleteBookUseCase::new(),
-            MockCreateAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_register_user(mock_register_user)
+            .build();
 
         // When
         let result = interactor.register_user("user1").await;
@@ -167,13 +273,9 @@ mod tests {
             .with(always(), always())
             .returning(move |_, _| Ok(make_book_dto(&book_id)));
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            mock_create_book,
-            MockUpdateBookUseCase::new(),
-            MockDeleteBookUseCase::new(),
-            MockCreateAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_create_book(mock_create_book)
+            .build();
 
         let book_data = CreateBookDto::new(
             "New Book".to_string(),
@@ -206,13 +308,9 @@ mod tests {
             .with(always(), always())
             .returning(move |_, _| Ok(make_book_dto(&book_id)));
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            MockCreateBookUseCase::new(),
-            mock_update_book,
-            MockDeleteBookUseCase::new(),
-            MockCreateAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_update_book(mock_update_book)
+            .build();
 
         let book_data = UpdateBookDto::new(
             expected_dto.id.clone(),
@@ -243,13 +341,9 @@ mod tests {
             .with(always(), always())
             .returning(|_, _| Ok(()));
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            MockCreateBookUseCase::new(),
-            MockUpdateBookUseCase::new(),
-            mock_delete_book,
-            MockCreateAuthorUseCase::new(),
-        );
+        let interactor = InteractorBuilder::new()
+            .with_delete_book(mock_delete_book)
+            .build();
 
         // When
         let result = interactor
@@ -274,13 +368,9 @@ mod tests {
                 })
             });
 
-        let interactor = MutationInteractor::new(
-            MockRegisterUserUseCase::new(),
-            MockCreateBookUseCase::new(),
-            MockUpdateBookUseCase::new(),
-            MockDeleteBookUseCase::new(),
-            mock_create_author,
-        );
+        let interactor = InteractorBuilder::new()
+            .with_create_author(mock_create_author)
+            .build();
 
         let author_data = CreateAuthorDto::new("New Author".to_string());
 
@@ -290,5 +380,58 @@ mod tests {
         // Then
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name, "New Author");
+    }
+
+    #[tokio::test]
+    async fn update_author_delegates_to_sub_use_case() {
+        // Given
+        let mut mock_update_author = MockUpdateAuthorUseCase::new();
+        mock_update_author
+            .expect_update()
+            .with(always(), always())
+            .returning(|_, data| {
+                Ok(AuthorDto {
+                    id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                    name: data.name.clone(),
+                })
+            });
+
+        let interactor = InteractorBuilder::new()
+            .with_update_author(mock_update_author)
+            .build();
+
+        let author_data = UpdateAuthorDto::new(
+            "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+            "Updated Author".to_string(),
+        );
+
+        // When
+        let result = interactor.update_author("user1", author_data).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "Updated Author");
+    }
+
+    #[tokio::test]
+    async fn delete_author_delegates_to_sub_use_case() {
+        // Given
+        let mut mock_delete_author = MockDeleteAuthorUseCase::new();
+        mock_delete_author
+            .expect_delete()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = InteractorBuilder::new()
+            .with_delete_author(mock_delete_author)
+            .build();
+
+        // When
+        let result = interactor
+            .delete_author("user1", "006099b4-6c42-4ec4-8645-f6bd5b63eddc")
+            .await;
+
+        // Then
+        assert!(result.is_ok());
     }
 }

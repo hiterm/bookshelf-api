@@ -26,4 +26,6 @@ pub trait AuthorRepository: Send + Sync + 'static {
         user_id: &UserId,
         author_ids: &[AuthorId],
     ) -> Result<HashMap<AuthorId, Author>, DomainError>;
+    async fn update(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError>;
+    async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError>;
 }

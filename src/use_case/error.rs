@@ -12,6 +12,8 @@ pub enum UseCaseError {
         entity_id: String,
         user_id: String,
     },
+    #[error("{0}")]
+    Conflict(String),
     #[error(transparent)]
     Other(anyhow::Error),
     #[error("{0}")]
@@ -31,6 +33,7 @@ impl From<DomainError> for UseCaseError {
                 entity_id,
                 user_id,
             },
+            DomainError::HasAssociatedBooks { .. } => UseCaseError::Conflict(err.to_string()),
             DomainError::InfrastructureError(_) => UseCaseError::Other(anyhow::Error::new(err)),
             DomainError::Unexpected(message) => UseCaseError::Unexpected(message),
         }
@@ -59,6 +62,16 @@ mod tests {
         };
         let use_case_err = UseCaseError::from(domain_err);
         assert!(matches!(use_case_err, UseCaseError::NotFound { .. }));
+    }
+
+    #[test]
+    fn domain_has_associated_books_becomes_use_case_conflict_error() {
+        let domain_err = DomainError::HasAssociatedBooks {
+            author_id: "author1".to_string(),
+            user_id: "user1".to_string(),
+        };
+        let use_case_err = UseCaseError::from(domain_err);
+        assert!(matches!(use_case_err, UseCaseError::Conflict(_)));
     }
 
     #[test]

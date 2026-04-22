@@ -3,7 +3,7 @@ use mockall::automock;
 
 use crate::use_case::{
     dto::{
-        author::{AuthorDto, CreateAuthorDto},
+        author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
         book::{BookDto, CreateBookDto, UpdateBookDto},
         user::UserDto,
     },
@@ -30,4 +30,10 @@ pub trait MutationUseCase: Send + Sync + 'static {
         user_id: &str,
         author_data: CreateAuthorDto,
     ) -> Result<AuthorDto, UseCaseError>;
+    async fn update_author(
+        &self,
+        user_id: &str,
+        author_data: UpdateAuthorDto,
+    ) -> Result<AuthorDto, UseCaseError>;
+    async fn delete_author(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError>;
 }

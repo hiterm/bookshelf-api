@@ -10,6 +10,8 @@ pub enum PresentationalError {
     NotFound(String),
     #[error("{0}")]
     Validation(String),
+    #[error("{0}")]
+    Conflict(String),
     #[error(transparent)]
     OtherError(Arc<anyhow::Error>),
     #[error("{0}")]
@@ -21,6 +23,7 @@ impl From<UseCaseError> for PresentationalError {
         match err {
             UseCaseError::NotFound { .. } => PresentationalError::NotFound(err.to_string()),
             UseCaseError::Validation(_) => PresentationalError::Validation(err.to_string()),
+            UseCaseError::Conflict(_) => PresentationalError::Conflict(err.to_string()),
             UseCaseError::Other(_) => {
                 PresentationalError::OtherError(Arc::new(anyhow::Error::new(err)))
             }
