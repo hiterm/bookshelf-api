@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn validation_success() {
-        assert!(matches!(AuthorName::new(String::from("author1")), Ok(_)));
+        assert!(AuthorName::new(String::from("author1")).is_ok());
     }
 
     #[test]

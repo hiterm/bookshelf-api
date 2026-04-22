@@ -15,7 +15,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-rust-toolchain
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - run: cargo check --locked
+      - run: cargo check --all-targets --locked
+        env:
+          RUSTFLAGS: "-D warnings"
 
   test:
     name: Test Suite
@@ -146,4 +148,4 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - run: cargo clippy --locked -- -D warnings
+      - run: cargo clippy --all-targets --locked -- -D warnings

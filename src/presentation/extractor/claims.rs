@@ -207,6 +207,24 @@ fn validate_jwks_url(url: &str) -> Result<(), ClientError> {
     Ok(())
 }
 
+async fn fetch_jwks(domain: &str) -> Result<Arc<JwkSet>, ClientError> {
+    let url = std::env::var("JWKS_URL")
+        .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
+    validate_jwks_url(&url)?;
+    let client = build_http_client()
+        .map_err(|e| ClientError::JwksFetch(format!("failed to build HTTP client: {e}")))?;
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| ClientError::JwksFetch(format!("request failed: {e}")))?;
+    let jwks = response
+        .json::<JwkSet>()
+        .await
+        .map_err(|e| ClientError::JwksFetch(format!("invalid JWKS response: {e}")))?;
+    Ok(Arc::new(jwks))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,22 +268,4 @@ mod tests {
     fn invalid_url_is_rejected() {
         assert!(validate_jwks_url("not a url").is_err());
     }
-}
-
-async fn fetch_jwks(domain: &str) -> Result<Arc<JwkSet>, ClientError> {
-    let url = std::env::var("JWKS_URL")
-        .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", domain));
-    validate_jwks_url(&url)?;
-    let client = build_http_client()
-        .map_err(|e| ClientError::JwksFetch(format!("failed to build HTTP client: {e}")))?;
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| ClientError::JwksFetch(format!("request failed: {e}")))?;
-    let jwks = response
-        .json::<JwkSet>()
-        .await
-        .map_err(|e| ClientError::JwksFetch(format!("invalid JWKS response: {e}")))?;
-    Ok(Arc::new(jwks))
 }

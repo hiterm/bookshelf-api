@@ -60,7 +60,7 @@ If any command fails, fix the issue before committing. Do not commit with failur
 
 ```bash
 cargo fmt --check
-cargo clippy
+cargo clippy --fix --all-targets -- -D warnings
 cargo test
 ```
 

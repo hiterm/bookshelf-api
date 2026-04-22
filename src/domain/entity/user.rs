@@ -29,7 +29,7 @@ mod tests {
 
     #[test]
     fn validation_success() {
-        assert!(matches!(UserId::new(String::from("user1")), Ok(_)));
+        assert!(UserId::new(String::from("user1")).is_ok());
     }
 
     #[test]
