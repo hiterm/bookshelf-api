@@ -149,3 +149,17 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo clippy --all-targets --locked -- -D warnings
+
+  check-schema:
+    name: Check Schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust-toolchain
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Generate schema
+        run: cargo run --bin gen_schema --locked > /tmp/schema.graphql.generated
+      - name: Check schema is up to date
+        run: diff schema.graphql /tmp/schema.graphql.generated

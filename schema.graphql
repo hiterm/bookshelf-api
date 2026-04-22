@@ -1,0 +1,97 @@
+type Author {
+	id: ID!
+	name: String!
+}
+
+type Book {
+	id: String!
+	title: String!
+	isbn: String!
+	read: Boolean!
+	owned: Boolean!
+	priority: Int!
+	format: BookFormat!
+	store: BookStore!
+	createdAt: Int!
+	updatedAt: Int!
+	authors: [Author!]!
+}
+
+enum BookFormat {
+	E_BOOK
+	PRINTED
+	UNKNOWN
+}
+
+enum BookStore {
+	KINDLE
+	UNKNOWN
+}
+
+input CreateAuthorInput {
+	name: String!
+}
+
+input CreateBookInput {
+	title: String!
+	authorIds: [String!]!
+	isbn: String!
+	read: Boolean!
+	owned: Boolean!
+	priority: Int!
+	format: BookFormat!
+	store: BookStore!
+}
+
+type Mutation {
+	registerUser: User!
+	createBook(bookData: CreateBookInput!): Book!
+	updateBook(bookData: UpdateBookInput!): Book!
+	deleteBook(bookId: ID!): String!
+	createAuthor(authorData: CreateAuthorInput!): Author!
+	updateAuthor(authorData: UpdateAuthorInput!): Author!
+	deleteAuthor(authorId: ID!): String!
+}
+
+type Query {
+	loggedInUser: User
+	book(id: ID!): Book
+	books: [Book!]!
+	author(id: ID!): Author
+	authors: [Author!]!
+}
+
+input UpdateAuthorInput {
+	id: ID!
+	name: String!
+}
+
+input UpdateBookInput {
+	id: String!
+	title: String!
+	authorIds: [String!]!
+	isbn: String!
+	read: Boolean!
+	owned: Boolean!
+	priority: Int!
+	format: BookFormat!
+	store: BookStore!
+}
+
+type User {
+	id: ID!
+}
+
+"""
+Directs the executor to include this field or fragment only when the `if` argument is true.
+"""
+directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Directs the executor to skip this field or fragment when the `if` argument is true.
+"""
+directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+schema {
+	query: Query
+	mutation: Mutation
+}
+
