@@ -24,6 +24,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check out bookshelf frontend
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: hiterm/bookshelf
+          ref: main
+          path: bookshelf-src
+          persist-credentials: false
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
@@ -47,20 +55,31 @@ jobs:
               "app-target": "/app/target"
             }
           skip-extraction: ${{ steps.cache.outputs.cache-hit }}
-      
+        # cache-poisoning: GHA cache is repo-scoped and this workflow only triggers on
+        # release events, so cache poisoning by external actors is not a realistic risk.
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0 # zizmor: ignore[cache-poisoning]
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: bookshelf-src/package-lock.json
+
+      - uses: ./.github/actions/setup-rust-toolchain
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1 # zizmor: ignore[cache-poisoning]
+
       - name: Log in to the Container registry
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-      
+
       - name: Build and test Docker image
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
@@ -71,41 +90,84 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Test container startup
+      - name: Start PostgreSQL
+        run: sudo systemctl start postgresql.service
+
+      - name: Wait for PostgreSQL
         run: |
-          docker network create test-network
+          for _ in {1..30}; do
+            if pg_isready; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::Postgres did not become ready in time" >&2
+          exit 1
 
-          docker run -d --name postgres --network test-network \
-            -e POSTGRES_PASSWORD=password \
-            -e POSTGRES_USER=bookshelf \
-            -e POSTGRES_DB=bookshelf \
-            postgres:15
+      - name: Create DB user
+        run: |
+          sudo -u postgres psql \
+            --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" \
+            --command="\du" \
+            postgres
 
-          docker run -d --name test-container --network test-network -p 8080:8080 \
-            -e PORT=8080 \
-            -e DATABASE_URL=postgres://bookshelf:password@postgres:5432/bookshelf \
-            -e ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080 \
-            -e RUST_LOG=debug \
-            -e JWT_AUDIENCE=dummy \
-            -e JWT_DOMAIN=dummy \
-            bookshelf-api:test
+      - name: Create DB
+        run: sudo -u postgres createdb --owner=bookshelf bookshelf
 
-          for i in {1..20}; do
-            if curl --fail http://localhost:8080/health 2>/dev/null; then
-              echo "Health check passed after ${i} seconds"
-              docker stop test-container postgres
-              docker network remove test-network
-              exit 0
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --locked --no-default-features --features postgres,rustls
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
+        run: |
+          sqlx database create
+          sqlx migrate run
+
+      - name: Start JWKS server
+        run: |
+          node bookshelf-src/e2e-integration/jwks-server.mjs > /tmp/jwks.log 2>&1 &
+          for _ in {1..30}; do
+            if curl -fs http://localhost:9999/.well-known/jwks.json > /dev/null; then
+              echo "JWKS server ready"; exit 0
             fi
             sleep 1
           done
+          cat /tmp/jwks.log; exit 1
 
-          echo "Health check failed after 20 seconds"
-          echo "=== Container Logs ==="
-          docker logs test-container
-          docker stop test-container postgres
-          docker network remove test-network
+      - name: Start bookshelf-api
+        run: |
+          docker run -d --name bookshelf-api --network=host \
+            -e PORT=8080 \
+            -e DATABASE_URL=postgres://bookshelf:password@localhost:5432/bookshelf \
+            -e ALLOWED_ORIGINS=http://localhost:4173 \
+            -e JWT_AUDIENCE=test-audience \
+            -e JWT_DOMAIN=test-issuer.local \
+            -e JWKS_URL=http://localhost:9999/.well-known/jwks.json \
+            bookshelf-api:test
+          for _ in {1..60}; do
+            if curl -fs http://localhost:8080/health > /dev/null; then
+              echo "API ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become ready in time"
+          docker logs bookshelf-api
           exit 1
+
+      - name: Install npm dependencies
+        run: npm ci
+        working-directory: bookshelf-src
+
+      - name: Generate GraphQL types
+        run: npm run generate
+        working-directory: bookshelf-src
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: bookshelf-src
+
+      - name: Run e2e-integration tests
+        run: npm run test:integration
+        working-directory: bookshelf-src
 
       - name: Build and push Docker image
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
