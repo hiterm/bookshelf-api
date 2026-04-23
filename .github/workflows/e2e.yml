@@ -81,3 +81,91 @@ jobs:
           TEST_SERVER_URL: http://localhost:8080
         run: |
           cargo test -p bookshelf-e2e --locked -- --test-threads=1
+
+  test-integration-bookshelf:
+    name: Integration tests (bookshelf frontend)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: hiterm/bookshelf
+          ref: main
+          path: bookshelf-src
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: bookshelf-src/package-lock.json
+      - uses: ./.github/actions/setup-rust-toolchain
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Build bookshelf-api
+        run: cargo build --locked --release
+      - name: Start PostgreSQL
+        run: sudo systemctl start postgresql.service
+      - name: Wait for PostgreSQL
+        run: |
+          for _ in {1..30}; do
+            if pg_isready; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Postgres did not become ready in time" >&2
+          exit 1
+      - name: Create DB user
+        run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
+      - name: Create DB
+        run: sudo -u postgres createdb --owner=bookshelf bookshelf
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --locked --no-default-features --features postgres,rustls
+      - name: Prepare database
+        run: |
+          sqlx database create
+          sqlx migrate run
+      - name: Start JWKS server
+        run: |
+          node bookshelf-src/e2e-integration/jwks-server.mjs > /tmp/jwks.log 2>&1 &
+          for _ in {1..30}; do
+            if curl -fs http://localhost:9999/.well-known/jwks.json > /dev/null; then
+              echo "JWKS server ready"; exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/jwks.log; exit 1
+      - name: Start bookshelf-api
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          PORT: "8080"
+          ALLOWED_ORIGINS: http://localhost:4173
+          JWT_AUDIENCE: test-audience
+          JWT_DOMAIN: test-issuer.local
+          JWKS_URL: http://localhost:9999/.well-known/jwks.json
+        run: |
+          ./target/release/bookshelf-api > /tmp/api.log 2>&1 &
+          for _ in {1..60}; do
+            if curl -fs http://localhost:8080/health > /dev/null; then
+              echo "API ready"; exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/api.log; exit 1
+      - name: Install npm dependencies
+        run: npm ci
+        working-directory: bookshelf-src
+      - name: Generate GraphQL types
+        run: npm run generate
+        working-directory: bookshelf-src
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: bookshelf-src
+      - name: Run e2e-integration tests
+        run: npm run test:integration
+        working-directory: bookshelf-src
