@@ -1074,7 +1074,8 @@ async fn e2e_book_history_records_update_operation() -> Result<()> {
         "should have 2 history entries (create + update)"
     );
 
-    // Entries are ordered by changed_at DESC, so the most recent (update) is first
+    // Entries are ordered by changed_at DESC, so the most recent (update) is first.
+    // Each entry is a snapshot of the state BEFORE the operation was applied.
     assert_eq!(
         entries[0]["operation"].as_str(),
         Some("update"),
@@ -1082,8 +1083,8 @@ async fn e2e_book_history_records_update_operation() -> Result<()> {
     );
     assert_eq!(
         entries[0]["title"].as_str(),
-        Some("Updated Title"),
-        "update entry should have new title"
+        Some("Original Title"),
+        "update entry captures pre-update state"
     );
     assert_eq!(
         entries[1]["operation"].as_str(),
@@ -1093,7 +1094,7 @@ async fn e2e_book_history_records_update_operation() -> Result<()> {
     assert_eq!(
         entries[1]["title"].as_str(),
         Some("Original Title"),
-        "create entry should have original title"
+        "create entry has original title"
     );
 
     // Cleanup
@@ -1317,6 +1318,7 @@ async fn e2e_author_history_records_update_operation() -> Result<()> {
         2,
         "should have 2 history entries (create + update)"
     );
+    // Each entry is a snapshot of the state BEFORE the operation was applied.
     assert_eq!(
         entries[0]["operation"].as_str(),
         Some("update"),
@@ -1324,8 +1326,8 @@ async fn e2e_author_history_records_update_operation() -> Result<()> {
     );
     assert_eq!(
         entries[0]["name"].as_str(),
-        Some(updated_name.as_str()),
-        "update entry should have new name"
+        Some(original_name.as_str()),
+        "update entry captures pre-update name"
     );
     assert_eq!(
         entries[1]["operation"].as_str(),
@@ -1335,7 +1337,7 @@ async fn e2e_author_history_records_update_operation() -> Result<()> {
     assert_eq!(
         entries[1]["name"].as_str(),
         Some(original_name.as_str()),
-        "create entry should have original name"
+        "create entry has original name"
     );
 
     delete_test_author(&author_id, &token).await?;
