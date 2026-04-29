@@ -1374,7 +1374,16 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
         r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ id name }} }}"#,
         author_id, updated_name
     );
-    graphql_request(&update_query, Some(&token)).await?;
+    let (_, update_response) = graphql_request(&update_query, Some(&token)).await?;
+    assert!(
+        update_response.get("errors").is_none(),
+        "updateAuthor should not return errors"
+    );
+    assert_eq!(
+        update_response["data"]["updateAuthor"]["name"].as_str(),
+        Some(updated_name.as_str()),
+        "updateAuthor should return updated name"
+    );
 
     // Restore to the create snapshot
     let restore_query = format!(
@@ -1403,5 +1412,52 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
     );
 
     delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_author_history_records_delete_operation() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let author_name = format!("Author History Delete {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&author_name, &token).await?;
+
+    // Confirm 1 history entry before delete
+    let history_query = format!(
+        r#"{{ authorHistory(authorId: "{}") {{ historyId operation name }} }}"#,
+        author_id
+    );
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let before = response["data"]["authorHistory"]
+        .as_array()
+        .context("authorHistory should be an array")?;
+    assert_eq!(before.len(), 1, "should have 1 history entry before delete");
+
+    // Delete the author
+    delete_test_author(&author_id, &token).await?;
+
+    // History should survive deletion and include the delete entry
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let after = response["data"]["authorHistory"]
+        .as_array()
+        .context("authorHistory should be an array")?;
+    assert_eq!(
+        after.len(),
+        2,
+        "should have 2 history entries after delete (create + delete)"
+    );
+    assert_eq!(
+        after[0]["operation"].as_str(),
+        Some("delete"),
+        "most recent entry should be 'delete'"
+    );
+    assert_eq!(
+        after[0]["name"].as_str(),
+        Some(author_name.as_str()),
+        "delete entry should capture the pre-delete name"
+    );
     Ok(())
 }
