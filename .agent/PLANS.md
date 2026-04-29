@@ -86,9 +86,14 @@ Prefer additive code changes followed by subtractions that keep tests passing. P
 
     Use a list with checkboxes to summarize granular steps. Every stopping point must be documented here, even if it requires splitting a partially completed task into two (“done” vs. “remaining”). This section must always reflect the actual current state of the work.
 
-    - [x] (2025-10-01 13:00Z) Example completed step.
-    - [ ] Example incomplete step.
-    - [ ] Example partially completed step (completed: X; remaining: Y).
+    Each milestone has a mandatory “plan updated” sub-task. Check it off and commit the ExecPlan file together with the milestone's code changes. Never batch plan updates across milestones.
+
+    - [x] Milestone 1: Example completed milestone.
+      - [x] plan updated
+    - [ ] Milestone 2: Example incomplete milestone.
+      - [ ] plan updated
+    - [ ] Milestone 3: Example partially completed milestone (completed: X; remaining: Y).
+      - [ ] plan updated
 
     Use timestamps to measure rates of progress.
 
