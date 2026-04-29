@@ -4,10 +4,8 @@ use sqlx::{Pool, Postgres};
 use crate::{
     infrastructure::{
         author_history_repository::PgAuthorHistoryRepository,
-        author_repository::PgAuthorRepository,
-        book_history_repository::PgBookHistoryRepository,
-        book_repository::PgBookRepository,
-        user_repository::PgUserRepository,
+        author_repository::PgAuthorRepository, book_history_repository::PgBookHistoryRepository,
+        book_repository::PgBookRepository, user_repository::PgUserRepository,
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{

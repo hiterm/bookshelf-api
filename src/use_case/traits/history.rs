@@ -13,11 +13,8 @@ use crate::use_case::{
 #[automock]
 #[async_trait]
 pub trait ListBookHistoryUseCase: Send + Sync + 'static {
-    async fn list(
-        &self,
-        user_id: &str,
-        book_id: &str,
-    ) -> Result<Vec<BookHistoryDto>, UseCaseError>;
+    async fn list(&self, user_id: &str, book_id: &str)
+    -> Result<Vec<BookHistoryDto>, UseCaseError>;
 }
 
 #[automock]
@@ -33,19 +30,11 @@ pub trait ListAuthorHistoryUseCase: Send + Sync + 'static {
 #[automock]
 #[async_trait]
 pub trait RestoreBookUseCase: Send + Sync + 'static {
-    async fn restore(
-        &self,
-        user_id: &str,
-        history_id: i64,
-    ) -> Result<BookDto, UseCaseError>;
+    async fn restore(&self, user_id: &str, history_id: i64) -> Result<BookDto, UseCaseError>;
 }
 
 #[automock]
 #[async_trait]
 pub trait RestoreAuthorUseCase: Send + Sync + 'static {
-    async fn restore(
-        &self,
-        user_id: &str,
-        history_id: i64,
-    ) -> Result<AuthorDto, UseCaseError>;
+    async fn restore(&self, user_id: &str, history_id: i64) -> Result<AuthorDto, UseCaseError>;
 }

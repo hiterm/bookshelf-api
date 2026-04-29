@@ -28,8 +28,8 @@ struct AuthorHistoryRow {
 }
 
 fn row_to_author_history(row: AuthorHistoryRow) -> Result<AuthorHistory, DomainError> {
-    let operation = HistoryOperation::try_from(row.operation.as_str())
-        .map_err(|e| DomainError::Unexpected(e))?;
+    let operation =
+        HistoryOperation::try_from(row.operation.as_str()).map_err(DomainError::Unexpected)?;
 
     Ok(AuthorHistory {
         history_id: row.history_id,

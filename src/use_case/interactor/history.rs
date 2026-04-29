@@ -9,8 +9,7 @@ use crate::{
         },
         repository::{
             author_history_repository::AuthorHistoryRepository,
-            author_repository::AuthorRepository,
-            book_history_repository::BookHistoryRepository,
+            author_repository::AuthorRepository, book_history_repository::BookHistoryRepository,
             book_repository::BookRepository,
         },
     },
@@ -181,5 +180,192 @@ where
         self.author_repository.update(&user_id, &author).await?;
 
         Ok(AuthorDto::from(author))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use mockall::predicate::always;
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    use crate::{
+        common::types::{BookFormat, BookStore},
+        domain::{
+            entity::{
+                author::AuthorId,
+                book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                change_set::ChangeSetId,
+                history::{AuthorHistory, BookHistory, HistoryOperation},
+            },
+            repository::{
+                author_history_repository::MockAuthorHistoryRepository,
+                author_repository::MockAuthorRepository,
+                book_history_repository::MockBookHistoryRepository,
+                book_repository::MockBookRepository,
+            },
+        },
+        use_case::{
+            error::UseCaseError,
+            traits::history::{
+                ListAuthorHistoryUseCase, ListBookHistoryUseCase, RestoreAuthorUseCase,
+                RestoreBookUseCase,
+            },
+        },
+    };
+
+    use super::*;
+
+    fn make_book_history(book_id: Uuid) -> BookHistory {
+        BookHistory {
+            history_id: 1,
+            change_set_id: ChangeSetId::from(Uuid::new_v4()),
+            operation: HistoryOperation::Update,
+            book_id: BookId::new(book_id).unwrap(),
+            title: BookTitle::new("Old Title".to_string()).unwrap(),
+            author_ids: vec![],
+            isbn: Isbn::new("".to_string()).unwrap(),
+            read: ReadFlag::new(false),
+            owned: OwnedFlag::new(false),
+            priority: Priority::new(50).unwrap(),
+            format: BookFormat::Unknown,
+            store: BookStore::Unknown,
+            book_created_at: OffsetDateTime::now_utc(),
+            book_updated_at: OffsetDateTime::now_utc(),
+            changed_at: OffsetDateTime::now_utc(),
+        }
+    }
+
+    fn make_author_history(author_id: Uuid) -> AuthorHistory {
+        AuthorHistory {
+            history_id: 2,
+            change_set_id: ChangeSetId::from(Uuid::new_v4()),
+            operation: HistoryOperation::Update,
+            author_id: AuthorId::new(author_id),
+            name: "Old Name".to_string(),
+            yomi: "".to_string(),
+            author_created_at: OffsetDateTime::now_utc(),
+            author_updated_at: OffsetDateTime::now_utc(),
+            changed_at: OffsetDateTime::now_utc(),
+        }
+    }
+
+    #[tokio::test]
+    async fn list_book_history_returns_dto_list() {
+        let book_uuid = Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+        let history = make_book_history(book_uuid);
+
+        let mut repo = MockBookHistoryRepository::new();
+        repo.expect_find_by_book()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![history.clone()]));
+
+        let interactor = ListBookHistoryInteractor::new(repo);
+        let result = interactor.list("user1", &book_id_str).await;
+
+        assert!(result.is_ok());
+        let list = result.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].title, "Old Title");
+    }
+
+    #[tokio::test]
+    async fn list_book_history_returns_empty_when_none() {
+        let book_uuid = Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+
+        let mut repo = MockBookHistoryRepository::new();
+        repo.expect_find_by_book()
+            .with(always(), always())
+            .returning(|_, _| Ok(vec![]));
+
+        let interactor = ListBookHistoryInteractor::new(repo);
+        let result = interactor.list("user1", &book_id_str).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_author_history_returns_dto_list() {
+        let author_uuid = Uuid::new_v4();
+        let author_id_str = author_uuid.hyphenated().to_string();
+        let history = make_author_history(author_uuid);
+
+        let mut repo = MockAuthorHistoryRepository::new();
+        repo.expect_find_by_author()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![history.clone()]));
+
+        let interactor = ListAuthorHistoryInteractor::new(repo);
+        let result = interactor.list("user1", &author_id_str).await;
+
+        assert!(result.is_ok());
+        let list = result.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "Old Name");
+    }
+
+    #[tokio::test]
+    async fn restore_book_not_found_returns_error() {
+        let mut repo = MockBookHistoryRepository::new();
+        repo.expect_find_by_history_id()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let book_repo = MockBookRepository::new();
+        let interactor = RestoreBookInteractor::new(book_repo, repo);
+        let result = interactor.restore("user1", 999).await;
+
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn restore_book_success() {
+        let book_uuid = Uuid::new_v4();
+        let history = make_book_history(book_uuid);
+
+        let mut history_repo = MockBookHistoryRepository::new();
+        history_repo
+            .expect_find_by_history_id()
+            .with(always(), always())
+            .returning(move |_, _| Ok(Some(history.clone())));
+
+        let mut book_repo = MockBookRepository::new();
+        book_repo
+            .expect_update()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = RestoreBookInteractor::new(book_repo, history_repo);
+        let result = interactor.restore("user1", 1).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().title, "Old Title");
+    }
+
+    #[tokio::test]
+    async fn restore_author_success() {
+        let author_uuid = Uuid::new_v4();
+        let history = make_author_history(author_uuid);
+
+        let mut history_repo = MockAuthorHistoryRepository::new();
+        history_repo
+            .expect_find_by_history_id()
+            .with(always(), always())
+            .returning(move |_, _| Ok(Some(history.clone())));
+
+        let mut author_repo = MockAuthorRepository::new();
+        author_repo
+            .expect_update()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let result = interactor.restore("user1", 2).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "Old Name");
     }
 }

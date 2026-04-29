@@ -8,10 +8,8 @@ use crate::{
         error::DomainError,
         repository::{
             author_history_repository::AuthorHistoryRepository,
-            author_repository::AuthorRepository,
-            book_history_repository::BookHistoryRepository,
-            book_repository::BookRepository,
-            user_repository::UserRepository,
+            author_repository::AuthorRepository, book_history_repository::BookHistoryRepository,
+            book_repository::BookRepository, user_repository::UserRepository,
         },
     },
     use_case::{
@@ -166,8 +164,7 @@ mod tests {
                 author_history_repository::MockAuthorHistoryRepository,
                 author_repository::MockAuthorRepository,
                 book_history_repository::MockBookHistoryRepository,
-                book_repository::MockBookRepository,
-                user_repository::MockUserRepository,
+                book_repository::MockBookRepository, user_repository::MockUserRepository,
             },
         },
         use_case::{

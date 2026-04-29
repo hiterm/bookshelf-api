@@ -130,12 +130,10 @@ where
         Ok(())
     }
 
-    async fn restore_book(
-        &self,
-        user_id: &str,
-        history_id: i64,
-    ) -> Result<BookDto, UseCaseError> {
-        self.restore_book_use_case.restore(user_id, history_id).await
+    async fn restore_book(&self, user_id: &str, history_id: i64) -> Result<BookDto, UseCaseError> {
+        self.restore_book_use_case
+            .restore(user_id, history_id)
+            .await
     }
 
     async fn restore_author(

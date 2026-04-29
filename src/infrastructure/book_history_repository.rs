@@ -38,8 +38,8 @@ struct BookHistoryRow {
 }
 
 fn row_to_book_history(row: BookHistoryRow) -> Result<BookHistory, DomainError> {
-    let operation = HistoryOperation::try_from(row.operation.as_str())
-        .map_err(|e| DomainError::Unexpected(e))?;
+    let operation =
+        HistoryOperation::try_from(row.operation.as_str()).map_err(DomainError::Unexpected)?;
     let book_id = BookId::new(row.book_id)?;
     let title = BookTitle::new(row.title)?;
     let isbn = Isbn::new(row.isbn)?;
