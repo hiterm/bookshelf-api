@@ -32,6 +32,20 @@ struct BookRow {
     updated_at: OffsetDateTime,
 }
 
+#[derive(sqlx::FromRow)]
+struct BookSnapshotRow {
+    title: String,
+    isbn: String,
+    read: bool,
+    owned: bool,
+    priority: i32,
+    format: String,
+    store: String,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+    author_ids: Option<Vec<Uuid>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct PgBookRepository {
     pool: PgPool,
@@ -46,6 +60,8 @@ impl PgBookRepository {
 #[async_trait]
 impl BookRepository for PgBookRepository {
     async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -73,7 +89,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         let author_ids: Vec<Uuid> = book
@@ -82,7 +98,6 @@ impl BookRepository for PgBookRepository {
             .map(|author_id| author_id.to_uuid())
             .collect();
 
-        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
             "INSERT INTO book_author (user_id, book_id, author_id)
                     SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])",
@@ -90,8 +105,52 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+
+        let cs_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'create_book')",
+        )
+        .bind(cs_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        let (history_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO book_history
+               (change_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                priority, format, store, book_created_at, book_updated_at)
+             VALUES ($1, 'create', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             RETURNING history_id",
+        )
+        .bind(cs_id)
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if !author_ids.is_empty() {
+            sqlx::query(
+                "INSERT INTO book_history_author (history_id, author_id)
+                        SELECT $1, * FROM UNNEST($2::uuid[])",
+            )
+            .bind(history_id)
+            .bind(&author_ids)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
 
         Ok(())
     }
@@ -239,6 +298,24 @@ impl BookRepository for PgBookRepository {
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
 
+        // Snapshot current state before overwriting
+        let snapshot: Option<BookSnapshotRow> = sqlx::query_as(
+            "WITH snap AS (
+                SELECT b.title, b.isbn, b.read, b.owned, b.priority, b.format, b.store,
+                       b.created_at, b.updated_at
+                FROM book b WHERE b.id = $1 AND b.user_id = $2
+            )
+            SELECT snap.*, array_agg(ba.author_id) FILTER (WHERE ba.author_id IS NOT NULL) AS author_ids
+            FROM snap
+            LEFT JOIN book_author ba ON ba.book_id = $1 AND ba.user_id = $2
+            GROUP BY snap.title, snap.isbn, snap.read, snap.owned, snap.priority,
+                     snap.format, snap.store, snap.created_at, snap.updated_at",
+        )
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
         let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
@@ -290,7 +367,6 @@ impl BookRepository for PgBookRepository {
             .map(|author_id| author_id.to_uuid())
             .collect();
 
-        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
         sqlx::query(
             "DELETE FROM book_author WHERE user_id = $1 AND book_id = $2 AND author_id != ALL($3)",
         )
@@ -300,7 +376,6 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
-        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
             "INSERT INTO book_author (user_id, book_id, author_id)
                     SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
@@ -312,22 +387,87 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
+        if let Some(snap) = snapshot {
+            let cs_id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'update_book')",
+            )
+            .bind(cs_id)
+            .bind(user_id.as_str())
+            .execute(&mut *tx)
+            .await?;
+
+            let (history_id,): (i64,) = sqlx::query_as(
+                "INSERT INTO book_history
+                   (change_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                    priority, format, store, book_created_at, book_updated_at)
+                 VALUES ($1, 'update', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                 RETURNING history_id",
+            )
+            .bind(cs_id)
+            .bind(book.id().to_uuid())
+            .bind(user_id.as_str())
+            .bind(&snap.title)
+            .bind(&snap.isbn)
+            .bind(snap.read)
+            .bind(snap.owned)
+            .bind(snap.priority)
+            .bind(&snap.format)
+            .bind(&snap.store)
+            .bind(snap.created_at)
+            .bind(snap.updated_at)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let snap_author_ids: Vec<Uuid> = snap.author_ids.unwrap_or_default();
+            if !snap_author_ids.is_empty() {
+                sqlx::query(
+                    "INSERT INTO book_history_author (history_id, author_id)
+                            SELECT $1, * FROM UNNEST($2::uuid[])",
+                )
+                .bind(history_id)
+                .bind(&snap_author_ids)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
         tx.commit().await?;
 
         Ok(())
     }
 
     async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
+        // Snapshot current state before deletion
+        let snapshot: Option<BookSnapshotRow> = sqlx::query_as(
+            "WITH snap AS (
+                SELECT b.title, b.isbn, b.read, b.owned, b.priority, b.format, b.store,
+                       b.created_at, b.updated_at
+                FROM book b WHERE b.id = $1 AND b.user_id = $2
+            )
+            SELECT snap.*, array_agg(ba.author_id) FILTER (WHERE ba.author_id IS NOT NULL) AS author_ids
+            FROM snap
+            LEFT JOIN book_author ba ON ba.book_id = $1 AND ba.user_id = $2
+            GROUP BY snap.title, snap.isbn, snap.read, snap.owned, snap.priority,
+                     snap.format, snap.store, snap.created_at, snap.updated_at",
+        )
+        .bind(book_id.to_uuid())
+        .bind(user_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         let result = sqlx::query("DELETE FROM book WHERE user_id = $1 AND id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         let rows_affected = result.rows_affected();
@@ -346,6 +486,53 @@ impl BookRepository for PgBookRepository {
                 )));
             }
         }
+
+        if let Some(snap) = snapshot {
+            let cs_id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'delete_book')",
+            )
+            .bind(cs_id)
+            .bind(user_id.as_str())
+            .execute(&mut *tx)
+            .await?;
+
+            let (history_id,): (i64,) = sqlx::query_as(
+                "INSERT INTO book_history
+                   (change_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                    priority, format, store, book_created_at, book_updated_at)
+                 VALUES ($1, 'delete', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                 RETURNING history_id",
+            )
+            .bind(cs_id)
+            .bind(book_id.to_uuid())
+            .bind(user_id.as_str())
+            .bind(&snap.title)
+            .bind(&snap.isbn)
+            .bind(snap.read)
+            .bind(snap.owned)
+            .bind(snap.priority)
+            .bind(&snap.format)
+            .bind(&snap.store)
+            .bind(snap.created_at)
+            .bind(snap.updated_at)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let snap_author_ids: Vec<Uuid> = snap.author_ids.unwrap_or_default();
+            if !snap_author_ids.is_empty() {
+                sqlx::query(
+                    "INSERT INTO book_history_author (history_id, author_id)
+                            SELECT $1, * FROM UNNEST($2::uuid[])",
+                )
+                .bind(history_id)
+                .bind(&snap_author_ids)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
 
         Ok(())
     }
@@ -490,10 +677,6 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        // Both users own the same book UUID but with distinct author associations.
-        // This exercises the book_author.user_id filter inside the
-        // authors_of_book_and_user CTE in find_by_id: if that CTE ignored user_id,
-        // one user's find_by_id would return the other user's author_ids.
         let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
         let book1 = book_entity1(&user1_author_ids)?;
         book_repository.create(&user1_id, &book1).await?;
@@ -502,7 +685,6 @@ mod tests {
         let book2 = book_entity1(&user2_author_ids)?;
         book_repository.create(&user2_id, &book2).await?;
 
-        // user1's find_by_id must return only user1's authors
         let user1_result = book_repository.find_by_id(&user1_id, book1.id()).await?;
         let user1_book = user1_result.unwrap();
         assert!(
@@ -517,7 +699,6 @@ mod tests {
                 .any(|id| user2_author_ids.contains(id))
         );
 
-        // user2's find_by_id must return only user2's authors
         let user2_result = book_repository.find_by_id(&user2_id, book2.id()).await?;
         let user2_book = user2_result.unwrap();
         assert!(
@@ -544,10 +725,6 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        // Both users own the same book UUID but with distinct author associations.
-        // This exercises the book_author.user_id filter inside the
-        // authors_of_book_and_user CTE: if that CTE ignored user_id, one user's
-        // find_all would return the other user's author_ids.
         let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
         let book1 = book_entity1(&user1_author_ids)?;
         book_repository.create(&user1_id, &book1).await?;
@@ -556,7 +733,6 @@ mod tests {
         let book2 = book_entity1(&user2_author_ids)?;
         book_repository.create(&user2_id, &book2).await?;
 
-        // user1's find_all must contain only user1's authors
         let user1_books = book_repository.find_all(&user1_id).await?;
         assert_eq!(user1_books.len(), 1);
         assert!(
@@ -571,7 +747,6 @@ mod tests {
                 .any(|id| user2_author_ids.contains(id))
         );
 
-        // user2's find_all must contain only user2's authors
         let user2_books = book_repository.find_all(&user2_id).await?;
         assert_eq!(user2_books.len(), 1);
         assert!(
@@ -598,25 +773,18 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        // user1 owns book X with authors [A, B]
         let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
         let book = book_entity1(&user1_author_ids)?;
         book_repository.create(&user1_id, &book).await?;
 
-        // user2 also owns book X (same UUID; composite PK (id, user_id) allows this)
-        // with their own author rows [A, B]
         let user2_author_ids = prepare_authors1(&user2_id, &author_repository).await?;
         let book_copy = book_entity1(&user2_author_ids)?;
         book_repository.create(&user2_id, &book_copy).await?;
 
-        // user2 updates their book keeping only author A (drops B).
-        // The resulting DELETE FROM book_author must not touch user1's rows.
-        // With the old buggy guard (no user_id check) this would delete user1's B row.
         let book_for_update = book_entity1(&user2_author_ids[..1])?;
         let result = book_repository.update(&user2_id, &book_for_update).await;
-        assert!(result.is_ok()); // user2 owns this book, so update succeeds
+        assert!(result.is_ok());
 
-        // user1's book must remain fully intact: title and both authors [A, B]
         let user1_book = book_repository
             .find_by_id(&user1_id, book.id())
             .await?
@@ -643,19 +811,13 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        // Only user1 owns book X; user2 does not.
         let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         book_repository.create(&user1_id, &book).await?;
 
-        // user2 attempts to update user1's book.
-        // The WHERE id = $11 AND user_id = $1 guard must return NotFound.
-        // Without the AND user_id = $1 clause the UPDATE would silently mutate
-        // user1's row and return Ok(()).
         let result = book_repository.update(&user2_id, &book).await;
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
-        // user1's book must be untouched
         let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
         assert!(still_exists.is_some());
 
@@ -679,12 +841,9 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
-        // user1's book row must still exist
         let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
         let existing_book = still_exists.unwrap();
 
-        // user1's book_author rows must also be intact: a buggy delete that
-        // omits the user_id guard would have wiped them for all users.
         assert!(
             author_ids
                 .iter()

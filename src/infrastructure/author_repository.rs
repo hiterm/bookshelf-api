@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use sqlx::PgPool;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::domain::{
@@ -20,6 +21,14 @@ struct AuthorRow {
     name: String,
 }
 
+#[derive(sqlx::FromRow)]
+struct AuthorSnapshotRow {
+    name: String,
+    yomi: String,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone)]
 pub struct PgAuthorRepository {
     pool: PgPool,
@@ -34,15 +43,54 @@ impl PgAuthorRepository {
 #[async_trait]
 impl AuthorRepository for PgAuthorRepository {
     async fn create(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
             .bind(author.id().to_uuid())
             .bind(user_id.as_str())
             .bind(author.name().as_str())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+
+        let cs_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'create_author')",
+        )
+        .bind(cs_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        // Fetch the just-inserted row to get the DB-generated timestamps
+        let snap: AuthorSnapshotRow = sqlx::query_as(
+            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
+        )
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO author_history
+               (change_set_id, operation, author_id, user_id, name, yomi,
+                author_created_at, author_updated_at)
+             VALUES ($1, 'create', $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(cs_id)
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(&snap.name)
+        .bind(&snap.yomi)
+        .bind(snap.created_at)
+        .bind(snap.updated_at)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
 
         Ok(())
     }
+
     async fn find_by_id(
         &self,
         user_id: &UserId,
@@ -84,40 +132,88 @@ impl AuthorRepository for PgAuthorRepository {
     }
 
     async fn update(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
+        // Snapshot before update
+        let snap: Option<AuthorSnapshotRow> = sqlx::query_as(
+            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
+        )
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
         let result = sqlx::query(
             "UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
         )
         .bind(author.name().as_str())
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         match result.rows_affected() {
-            0 => Err(DomainError::NotFound {
-                entity_type: "author",
-                entity_id: author.id().to_string(),
-                user_id: user_id.to_owned().into_string(),
-            }),
-            1 => Ok(()),
-            _ => Err(DomainError::Unexpected(String::from(
-                "rows_affected is greater than 1.",
-            ))),
+            0 => {
+                return Err(DomainError::NotFound {
+                    entity_type: "author",
+                    entity_id: author.id().to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
+            }
+            1 => {}
+            _ => {
+                return Err(DomainError::Unexpected(String::from(
+                    "rows_affected is greater than 1.",
+                )));
+            }
         }
+
+        if let Some(snap) = snap {
+            let cs_id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'update_author')",
+            )
+            .bind(cs_id)
+            .bind(user_id.as_str())
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                "INSERT INTO author_history
+                   (change_set_id, operation, author_id, user_id, name, yomi,
+                    author_created_at, author_updated_at)
+                 VALUES ($1, 'update', $2, $3, $4, $5, $6, $7)",
+            )
+            .bind(cs_id)
+            .bind(author.id().to_uuid())
+            .bind(user_id.as_str())
+            .bind(&snap.name)
+            .bind(&snap.yomi)
+            .bind(snap.created_at)
+            .bind(snap.updated_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(())
     }
 
     async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
 
         // Lock the author row to prevent concurrent inserts into book_author after the count check.
-        let locked: Option<(Uuid,)> =
-            sqlx::query_as("SELECT id FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
-                .bind(author_id.to_uuid())
-                .bind(user_id.as_str())
-                .fetch_optional(&mut *tx)
-                .await?;
+        let snap: Option<AuthorSnapshotRow> = sqlx::query_as(
+            "SELECT name, yomi, created_at, updated_at FROM author
+             WHERE id = $1 AND user_id = $2 FOR UPDATE",
+        )
+        .bind(author_id.to_uuid())
+        .bind(user_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
 
-        if locked.is_none() {
+        if snap.is_none() {
             return Err(DomainError::NotFound {
                 entity_type: "author",
                 entity_id: author_id.to_string(),
@@ -160,6 +256,33 @@ impl AuthorRepository for PgAuthorRepository {
                     "rows_affected is greater than 1.",
                 )));
             }
+        }
+
+        if let Some(snap) = snap {
+            let cs_id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'delete_author')",
+            )
+            .bind(cs_id)
+            .bind(user_id.as_str())
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                "INSERT INTO author_history
+                   (change_set_id, operation, author_id, user_id, name, yomi,
+                    author_created_at, author_updated_at)
+                 VALUES ($1, 'delete', $2, $3, $4, $5, $6, $7)",
+            )
+            .bind(cs_id)
+            .bind(author_id.to_uuid())
+            .bind(user_id.as_str())
+            .bind(&snap.name)
+            .bind(&snap.yomi)
+            .bind(snap.created_at)
+            .bind(snap.updated_at)
+            .execute(&mut *tx)
+            .await?;
         }
 
         tx.commit().await?;
@@ -434,7 +557,6 @@ mod tests {
             Err(DomainError::HasAssociatedBooks { .. })
         ));
 
-        // author and book_author must still exist
         let found = author_repository.find_by_id(&user_id, &author_id).await?;
         assert!(found.is_some());
 
@@ -487,7 +609,6 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        // Both users have the same author UUID — allowed by composite PK (id, user_id)
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author1 = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
         let author2 = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
@@ -499,14 +620,12 @@ mod tests {
         let book2 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
         book_repository.create(&user2_id, &book2).await?;
 
-        // user2 has an associated book, so delete must fail
         let result = author_repository.delete(&user2_id, &author_id).await;
         assert!(matches!(
             result,
             Err(DomainError::HasAssociatedBooks { .. })
         ));
 
-        // user1's book_author row must be intact
         let user1_book = book_repository
             .find_by_id(&user1_id, book1.id())
             .await?
