@@ -31,6 +31,9 @@ pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RA
 impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
     MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
 {
+    // This constructor takes many arguments because MutationInteractor composes all
+    // mutation use cases via dependency injection. Splitting it would reduce clarity
+    // without reducing actual coupling.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         register_user_use_case: RUUC,
@@ -241,6 +244,16 @@ mod tests {
 
         fn with_delete_author(mut self, mock: MockDeleteAuthorUseCase) -> Self {
             self.delete_author = mock;
+            self
+        }
+
+        fn with_restore_book(mut self, mock: MockRestoreBookUseCase) -> Self {
+            self.restore_book = mock;
+            self
+        }
+
+        fn with_restore_author(mut self, mock: MockRestoreAuthorUseCase) -> Self {
+            self.restore_author = mock;
             self
         }
 
@@ -468,5 +481,56 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn restore_book_delegates_to_sub_use_case() {
+        // Given
+        let book_id = Uuid::new_v4().hyphenated().to_string();
+        let expected_dto = make_book_dto(&book_id);
+        let expected_id = expected_dto.id.clone();
+
+        let mut mock_restore_book = MockRestoreBookUseCase::new();
+        mock_restore_book
+            .expect_restore()
+            .with(always(), always())
+            .returning(move |_, _| Ok(make_book_dto(&book_id)));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_book(mock_restore_book)
+            .build();
+
+        // When
+        let result = interactor.restore_book("user1", 42).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().id, expected_id);
+    }
+
+    #[tokio::test]
+    async fn restore_author_delegates_to_sub_use_case() {
+        // Given
+        let mut mock_restore_author = MockRestoreAuthorUseCase::new();
+        mock_restore_author
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| {
+                Ok(AuthorDto {
+                    id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                    name: "Test Author".to_string(),
+                })
+            });
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_author(mock_restore_author)
+            .build();
+
+        // When
+        let result = interactor.restore_author("user1", 99).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "Test Author");
     }
 }
