@@ -51,22 +51,27 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
   tables alone cannot express this grouping.
   Date/Author: 2026-04-29 / hiterm
 
-- Decision: Write changeset row first; write history and apply the data change
-  in a single PostgreSQL transaction inside the infrastructure repository.
-  Rationale: The interactor creates the changeset (via `ChangeSetRepository`),
-  then passes the `ChangeSetId` to `book_repository.update` /
-  `book_repository.delete`. The Pg implementation wraps the history INSERT and
-  the data UPDATE/DELETE in one `BEGIN … COMMIT`. This gives atomicity without
-  leaking transaction handles through the domain trait boundary.
+- Decision: The changeset UUID is generated inside the infrastructure repository
+  (`PgBookRepository`, `PgAuthorRepository`), not by the interactor. The
+  entire sequence — generate changeset UUID, INSERT into `change_set`, INSERT
+  into `*_history`, apply the data change — is wrapped in a single PostgreSQL
+  transaction (`BEGIN … COMMIT`).
+  Rationale: Keeps `BookRepository` and `AuthorRepository` trait signatures
+  unchanged. Interactors stay simple; they call `update`/`delete` exactly as
+  before. When a future bulk-update API is added to bookshelf-api, a new
+  repository method (e.g. `bulk_update`) will generate one shared changeset
+  for all items in that call.
   Date/Author: 2026-04-29 / hiterm
 
-- Decision: Modify the existing `BookRepository::update`, `BookRepository::delete`,
-  `AuthorRepository::update`, and `AuthorRepository::delete` trait methods to
-  accept an additional `change_set_id: &ChangeSetId` parameter.
-  Rationale: Makes history recording mandatory on every mutation. Any
-  infrastructure that implements the trait is forced to handle it. The
-  alternative of separate `update_with_history` methods would allow callers to
-  silently bypass history.
+- Decision: Do NOT add `change_set_id` to `BookRepository::update/delete` or
+  `AuthorRepository::update/delete`. Do NOT introduce a `ChangeSetRepository`
+  domain trait. Changeset creation is an infrastructure-only concern for
+  single-item operations.
+  Rationale: The user confirmed that bulk updates will be implemented as a
+  dedicated API in bookshelf-api. A future `bulk_update` repository method can
+  encapsulate one changeset for all items without changing existing signatures.
+  Avoiding signature changes means zero churn in interactors and their unit
+  tests.
   Date/Author: 2026-04-29 / hiterm
 
 - Decision: Restore is itself audited. Before overwriting live data, the restore
@@ -270,40 +275,10 @@ Update `src/domain/entity.rs` to declare the two new modules:
     pub mod change_set;
     pub mod history;
 
-**Modify `src/domain/repository/book_repository.rs`**
-
-Add `change_set_id: &ChangeSetId` as the third argument to `update` and
-`delete`. The updated trait signatures are:
-
-    async fn update(
-        &self,
-        user_id: &UserId,
-        book: &Book,
-        change_set_id: &ChangeSetId,
-    ) -> Result<(), DomainError>;
-
-    async fn delete(
-        &self,
-        user_id: &UserId,
-        book_id: &BookId,
-        change_set_id: &ChangeSetId,
-    ) -> Result<(), DomainError>;
-
-**Modify `src/domain/repository/author_repository.rs`** — same pattern for
-`update` and `delete`.
-
-**New repository trait file
-`src/domain/repository/change_set_repository.rs`**
-
-    #[automock]
-    #[async_trait]
-    pub trait ChangeSetRepository: Send + Sync + 'static {
-        async fn create(
-            &self,
-            user_id: &UserId,
-            operation: &str,
-        ) -> Result<ChangeSet, DomainError>;
-    }
+The existing `BookRepository` and `AuthorRepository` trait signatures are
+**not changed**. `update` and `delete` keep their current parameter lists.
+No `ChangeSetRepository` domain trait is introduced; changeset creation is
+handled entirely inside the infrastructure layer.
 
 **New repository trait file
 `src/domain/repository/book_history_repository.rs`**
@@ -331,70 +306,54 @@ Add `change_set_id: &ChangeSetId` as the third argument to `update` and
         ) -> Result<Vec<AuthorHistory>, DomainError>;
     }
 
-Update `src/domain/repository.rs` to declare all three new modules:
+Update `src/domain/repository.rs` to declare the two new modules:
 
-    pub mod change_set_repository;
     pub mod book_history_repository;
     pub mod author_history_repository;
 
-At the end of this milestone, `cargo build` must succeed (fix all compilation
-errors from changed trait signatures).
+At the end of this milestone, `cargo build` must succeed.
 
 ### Milestone 3 — Infrastructure Layer
 
 **Modify `src/infrastructure/book_repository.rs` (`PgBookRepository`)**
 
-The `update` method now receives `change_set_id`. Implement it as a single
-PostgreSQL transaction:
+The `update` and `delete` method signatures stay the same. Inside each method,
+generate a changeset UUID and wrap everything in a single transaction using
+`pool.begin().await?`. Call `.commit().await?` at the end; any error causes an
+automatic rollback on drop.
+
+`update` transaction steps:
 
     BEGIN;
-      -- 1. Fetch current book (with author IDs via book_author)
-      -- 2. INSERT INTO book_history (...) VALUES (...) RETURNING history_id
-      -- 3. INSERT INTO book_history_author (history_id, author_id) for each author
-      -- 4. UPDATE book SET ... WHERE id = $1 AND user_id = $2
+      -- 1. SELECT book + author IDs (current state snapshot)
+      -- 2. let cs_id = Uuid::new_v4();
+      -- 3. INSERT INTO change_set (id, user_id, operation='update_book', ...)
+      -- 4. INSERT INTO book_history (change_set_id=cs_id, operation='update', ...)
+             RETURNING history_id
+      -- 5. INSERT INTO book_history_author (history_id, author_id) for each author
+      -- 6. UPDATE book SET ... WHERE id = $1 AND user_id = $2
     COMMIT;
 
-Use `pool.begin().await?` to obtain a `sqlx::Transaction<Postgres>`, and
-`.commit().await?` at the end. If any step errors, the transaction rolls back
-automatically on drop.
-
-The `delete` method follows the same pattern:
+`delete` transaction steps:
 
     BEGIN;
-      -- 1. INSERT INTO book_history (operation='delete', ...)
-      -- 2. INSERT INTO book_history_author ...
-      -- 3. DELETE FROM book_author WHERE ...
-      -- 4. DELETE FROM book WHERE ...
+      -- 1. SELECT book + author IDs (current state snapshot)
+      -- 2. let cs_id = Uuid::new_v4();
+      -- 3. INSERT INTO change_set (id, user_id, operation='delete_book', ...)
+      -- 4. INSERT INTO book_history (change_set_id=cs_id, operation='delete', ...)
+             RETURNING history_id
+      -- 5. INSERT INTO book_history_author ...
+      -- 6. DELETE FROM book_author WHERE ...
+      -- 7. DELETE FROM book WHERE ...
     COMMIT;
 
 **Modify `src/infrastructure/author_repository.rs` (`PgAuthorRepository`)**
 
-Same transaction pattern for `update` and `delete`. The `author_history`
-INSERT must read `yomi` and timestamps from the DB row before changing it (one
-SELECT before UPDATE/DELETE within the transaction).
+Same transaction pattern. The `author_history` INSERT reads `yomi` and
+timestamps from the DB row in the same SELECT before UPDATE/DELETE.
 
-**New file `src/infrastructure/change_set_repository.rs`
-(`PgChangeSetRepository`)**
-
-    pub struct PgChangeSetRepository { pool: Pool<Postgres> }
-
-    impl PgChangeSetRepository {
-        pub fn new(pool: Pool<Postgres>) -> Self { Self { pool } }
-    }
-
-Implement `ChangeSetRepository`:
-
-    async fn create(&self, user_id: &UserId, operation: &str) -> Result<ChangeSet, DomainError> {
-        let id = Uuid::new_v4();
-        sqlx::query!(
-            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, $3)",
-            id, user_id.as_str(), operation
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| DomainError::Infrastructure(e.to_string()))?;
-        // construct and return ChangeSet
-    }
+`update` uses `operation='update_author'`, `delete` uses `operation='delete_author'`
+in the `change_set` row.
 
 **New file `src/infrastructure/book_history_repository.rs`
 (`PgBookHistoryRepository`)**
@@ -412,10 +371,9 @@ DESC`.
 
 Update `src/infrastructure.rs` to declare all new modules.
 
-After this milestone, `cargo build` must succeed and `cargo test` must pass
-(existing unit tests use mocks so changing trait signatures requires updating
-the mock expectations — `#[automock]` regenerates them automatically from the
-new trait definition).
+After this milestone, `cargo build` must succeed and `cargo test` must pass.
+Existing unit tests for `UpdateBookInteractor` and `DeleteBookInteractor` need
+no changes because the repository trait signatures are unchanged.
 
 ### Milestone 4 — Use Case Layer
 
@@ -500,28 +458,10 @@ Update `src/use_case/dto.rs` to declare the `history` module.
 
 Update `src/use_case/traits.rs` to declare the `history` module.
 
-**Modify `src/use_case/interactor/book.rs`**
-
-`UpdateBookInteractor` and `DeleteBookInteractor` gain a `change_set_repository`
-field:
-
-    pub struct UpdateBookInteractor<BR, CSR> {
-        book_repository: BR,
-        change_set_repository: CSR,
-    }
-
-In `UpdateBookInteractor::update`:
-
-    1. let change_set = self.change_set_repository.create(&user_id, "update_book").await?;
-    2. (existing logic to build updated Book)
-    3. self.book_repository.update(&user_id, &book, change_set.id()).await?;
-
-In `DeleteBookInteractor::delete`:
-
-    1. let change_set = self.change_set_repository.create(&user_id, "delete_book").await?;
-    2. self.book_repository.delete(&user_id, &book_id, change_set.id()).await?;
-
-**Modify `src/use_case/interactor/author.rs`** — same pattern.
+**`src/use_case/interactor/book.rs` and `src/use_case/interactor/author.rs`**
+are **not changed**. `UpdateBookInteractor`, `DeleteBookInteractor`,
+`UpdateAuthorInteractor`, and `DeleteAuthorInteractor` call `update`/`delete`
+exactly as before. Changeset creation is invisible to them.
 
 **New file `src/use_case/interactor/history.rs`**
 
@@ -536,7 +476,7 @@ In `DeleteBookInteractor::delete`:
 
 `ListAuthorHistoryInteractor<AHR>` — same pattern.
 
-`RestoreBookInteractor<BR, BHR, CSR>`:
+`RestoreBookInteractor<BR, BHR>`:
 
     async fn restore(&self, user_id: &str, history_id: i64) -> Result<BookDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
@@ -544,12 +484,12 @@ In `DeleteBookInteractor::delete`:
         let snapshot = self.book_history_repository
             .find_by_history_id(&user_id, history_id).await?
             .ok_or_else(|| UseCaseError::NotFound { ... })?;
-        // 2. Create "restore" changeset
-        let change_set = self.change_set_repository.create(&user_id, "restore_book").await?;
-        // 3. Build Book from snapshot fields
+        // 2. Build Book from snapshot fields
         let book = Book::new(snapshot.book_id, snapshot.title, ...)?;
-        // 4. Update (records current state to history first, then overwrites)
-        self.book_repository.update(&user_id, &book, change_set.id()).await?;
+        // 3. Call update — PgBookRepository generates a new changeset internally
+        //    (operation='update_book') and records the current live state to history
+        //    before overwriting it.
+        self.book_repository.update(&user_id, &book).await?;
         Ok(book.into())
     }
 
@@ -674,12 +614,11 @@ the added generic parameters.
 
 New Pg repositories to instantiate:
 
-    let change_set_repository = PgChangeSetRepository::new(pool.clone());
     let book_history_repository = PgBookHistoryRepository::new(pool.clone());
     let author_history_repository = PgAuthorHistoryRepository::new(pool.clone());
 
-Pass `change_set_repository` into `UpdateBookInteractor`, `DeleteBookInteractor`,
-`UpdateAuthorInteractor`, `DeleteAuthorInteractor`.
+No changes needed to the existing `UpdateBookInteractor`, `DeleteBookInteractor`,
+`UpdateAuthorInteractor`, or `DeleteAuthorInteractor` constructors.
 
 Add `RestoreBookInteractor` and `RestoreAuthorInteractor` to `MutationInteractor`.
 
@@ -692,23 +631,17 @@ mocks, following the pattern in `src/use_case/interactor/author.rs`.
 
 Required new tests:
 
-- `update_book_creates_changeset_and_calls_update_with_change_set_id` —
-  verifies that `ChangeSetRepository::create` is called exactly once and the
-  returned `ChangeSetId` is forwarded to `BookRepository::update`.
-- `delete_book_creates_changeset` — same for delete.
-- `update_author_creates_changeset` — same for author.
-- `delete_author_creates_changeset` — same for author.
 - `list_book_history_returns_dto_list` — happy path.
 - `list_book_history_returns_empty_when_none` — empty list.
 - `list_author_history_returns_dto_list` — happy path.
 - `restore_book_not_found_returns_error` — `find_by_history_id` returns None.
-- `restore_book_success` — snapshot loaded, changeset created, update called.
+- `restore_book_success` — snapshot found, `BookRepository::update` called
+  with the reconstructed book.
 - `restore_author_success` — same for author.
 
-Existing tests for `UpdateBookInteractor` and `DeleteBookInteractor` must be
-updated to also set expectations on `ChangeSetRepository`. Because the trait
-now uses `#[automock]`, the generated `MockChangeSetRepository` is available
-automatically.
+Existing tests for `UpdateBookInteractor`, `DeleteBookInteractor`,
+`UpdateAuthorInteractor`, and `DeleteAuthorInteractor` require **no changes**
+because the repository trait signatures are unchanged.
 
 Run `cargo test` and confirm all tests pass.
 
@@ -819,12 +752,6 @@ Do not commit broken code.
 
 ## Interfaces and Dependencies
 
-In `src/domain/repository/change_set_repository.rs`:
-
-    pub trait ChangeSetRepository: Send + Sync + 'static {
-        async fn create(&self, user_id: &UserId, operation: &str) -> Result<ChangeSet, DomainError>;
-    }
-
 In `src/domain/repository/book_history_repository.rs`:
 
     pub trait BookHistoryRepository: Send + Sync + 'static {
@@ -843,16 +770,5 @@ In `src/domain/repository/author_history_repository.rs`:
             -> Result<Option<AuthorHistory>, DomainError>;
     }
 
-In `src/domain/repository/book_repository.rs` (modified signatures):
-
-    async fn update(&self, user_id: &UserId, book: &Book, change_set_id: &ChangeSetId)
-        -> Result<(), DomainError>;
-    async fn delete(&self, user_id: &UserId, book_id: &BookId, change_set_id: &ChangeSetId)
-        -> Result<(), DomainError>;
-
-In `src/domain/repository/author_repository.rs` (modified signatures):
-
-    async fn update(&self, user_id: &UserId, author: &Author, change_set_id: &ChangeSetId)
-        -> Result<(), DomainError>;
-    async fn delete(&self, user_id: &UserId, author_id: &AuthorId, change_set_id: &ChangeSetId)
-        -> Result<(), DomainError>;
+`BookRepository` and `AuthorRepository` trait signatures are **unchanged** from
+the current codebase. No new parameters are added to `update` or `delete`.
