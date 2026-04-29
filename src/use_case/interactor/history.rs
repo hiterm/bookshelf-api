@@ -7,6 +7,7 @@ use crate::{
             book::{Book, BookId},
             user::UserId,
         },
+        error::DomainError,
         repository::{
             author_history_repository::AuthorHistoryRepository,
             author_repository::AuthorRepository, book_history_repository::BookHistoryRepository,
@@ -137,7 +138,13 @@ where
             snapshot.book_updated_at,
         )?;
 
-        self.book_repository.update(&user_id, &book).await?;
+        match self.book_repository.update(&user_id, &book).await {
+            Ok(()) => {}
+            Err(DomainError::NotFound { .. }) => {
+                self.book_repository.create(&user_id, &book).await?;
+            }
+            Err(e) => return Err(UseCaseError::from(e)),
+        }
 
         Ok(BookDto::from(book))
     }
@@ -343,6 +350,54 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().title, "Old Title");
+    }
+
+    #[tokio::test]
+    async fn restore_book_falls_back_to_create_when_deleted() {
+        let book_uuid = Uuid::new_v4();
+        let history = make_book_history(book_uuid);
+
+        let mut history_repo = MockBookHistoryRepository::new();
+        history_repo
+            .expect_find_by_history_id()
+            .with(always(), always())
+            .returning(move |_, _| Ok(Some(history.clone())));
+
+        let mut book_repo = MockBookRepository::new();
+        book_repo
+            .expect_update()
+            .with(always(), always())
+            .returning(|_, _| {
+                Err(crate::domain::error::DomainError::NotFound {
+                    entity_type: "book",
+                    entity_id: "some-id".to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
+        book_repo
+            .expect_create()
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
+
+        let interactor = RestoreBookInteractor::new(book_repo, history_repo);
+        let result = interactor.restore("user1", 1).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn restore_author_not_found_returns_error() {
+        let mut history_repo = MockAuthorHistoryRepository::new();
+        history_repo
+            .expect_find_by_history_id()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let author_repo = MockAuthorRepository::new();
+        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let result = interactor.restore("user1", 999).await;
+
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
     }
 
     #[tokio::test]
