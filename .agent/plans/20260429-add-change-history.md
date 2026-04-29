@@ -6,6 +6,16 @@ to date as work proceeds.
 
 This document must be maintained in accordance with `.agent/PLANS.md`.
 
+**Plan update rule**: Update this document continuously as work proceeds —
+mark each task done the moment it is completed, record discoveries immediately
+when found, and log decisions as soon as they are made. Do NOT batch updates
+and apply them all at the end.
+
+**Commit granularity rule**: Commit at each logical breakpoint — completing a
+migration file, adding a new entity, implementing a repository method, adding
+a test suite, and so on. Do not batch unrelated changes into one commit. Each
+commit message must describe what specifically changed and why.
+
 ## Purpose / Big Picture
 
 Currently, updating or deleting a book or author permanently destroys the
@@ -715,7 +725,9 @@ Run all commands from the repository root
 
    Fix any failures before committing.
 
-9. Commit with a descriptive message per CLAUDE.md conventions.
+9. Commit at each logical breakpoint (migration file, new entity, repository
+   method, test suite, etc.) with a descriptive message per CLAUDE.md
+   conventions. Do not batch unrelated changes into one commit.
 
 10. Run E2E suite (Milestone 8).
 
