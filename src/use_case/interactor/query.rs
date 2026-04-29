@@ -7,30 +7,42 @@ use crate::{
         entity::{author::AuthorId, book::BookId, user::UserId},
         error::DomainError,
         repository::{
-            author_repository::AuthorRepository, book_repository::BookRepository,
+            author_history_repository::AuthorHistoryRepository,
+            author_repository::AuthorRepository,
+            book_history_repository::BookHistoryRepository,
+            book_repository::BookRepository,
             user_repository::UserRepository,
         },
     },
     use_case::{
-        dto::{author::AuthorDto, book::BookDto, user::UserDto},
+        dto::{
+            author::AuthorDto,
+            book::BookDto,
+            history::{AuthorHistoryDto, BookHistoryDto},
+            user::UserDto,
+        },
         error::UseCaseError,
         traits::query::QueryUseCase,
     },
 };
 
 #[derive(Debug, Clone)]
-pub struct QueryInteractor<UR, BR, AR> {
+pub struct QueryInteractor<UR, BR, AR, BHR, AHR> {
     pub user_repository: UR,
     pub book_repository: BR,
     pub author_repository: AR,
+    pub book_history_repository: BHR,
+    pub author_history_repository: AHR,
 }
 
 #[async_trait]
-impl<UR, BR, AR> QueryUseCase for QueryInteractor<UR, BR, AR>
+impl<UR, BR, AR, BHR, AHR> QueryUseCase for QueryInteractor<UR, BR, AR, BHR, AHR>
 where
     UR: UserRepository,
     BR: BookRepository,
     AR: AuthorRepository,
+    BHR: BookHistoryRepository,
+    AHR: AuthorHistoryRepository,
 {
     async fn find_user_by_id(&self, raw_user_id: &str) -> Result<Option<UserDto>, UseCaseError> {
         let user_id = UserId::new(raw_user_id.to_string())?;
@@ -103,6 +115,34 @@ where
 
         Ok(authors_map)
     }
+
+    async fn list_book_history(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<Vec<BookHistoryDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let book_id = BookId::try_from(book_id)?;
+        let entries = self
+            .book_history_repository
+            .find_by_book(&user_id, &book_id)
+            .await?;
+        Ok(entries.into_iter().map(BookHistoryDto::from).collect())
+    }
+
+    async fn list_author_history(
+        &self,
+        user_id: &str,
+        author_id: &str,
+    ) -> Result<Vec<AuthorHistoryDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let author_id = AuthorId::try_from(author_id)?;
+        let entries = self
+            .author_history_repository
+            .find_by_author(&user_id, &author_id)
+            .await?;
+        Ok(entries.into_iter().map(AuthorHistoryDto::from).collect())
+    }
 }
 
 #[cfg(test)]
@@ -123,7 +163,10 @@ mod tests {
                 user::{User, UserId},
             },
             repository::{
-                author_repository::MockAuthorRepository, book_repository::MockBookRepository,
+                author_history_repository::MockAuthorHistoryRepository,
+                author_repository::MockAuthorRepository,
+                book_history_repository::MockBookHistoryRepository,
+                book_repository::MockBookRepository,
                 user_repository::MockUserRepository,
             },
         },
@@ -178,6 +221,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -205,6 +250,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -233,6 +280,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -263,6 +312,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -290,6 +341,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -328,6 +381,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         let actual = query_interactor
@@ -363,6 +418,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -389,6 +446,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -417,6 +476,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -446,6 +507,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -476,6 +539,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -504,6 +569,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When
@@ -544,6 +611,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
         };
 
         // When

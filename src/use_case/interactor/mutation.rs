@@ -10,12 +10,13 @@ use crate::use_case::{
     traits::{
         author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
         book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
+        history::{RestoreAuthorUseCase, RestoreBookUseCase},
         mutation::MutationUseCase,
         user::RegisterUserUseCase,
     },
 };
 
-pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> {
+pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC> {
     register_user_use_case: RUUC,
     create_book_use_case: CBUC,
     update_book_use_case: UBUC,
@@ -23,11 +24,14 @@ pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> {
     create_author_use_case: CAUC,
     update_author_use_case: UAUC,
     delete_author_use_case: DAUC,
+    restore_book_use_case: RBUC,
+    restore_author_use_case: RAUC,
 }
 
-impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
-    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
+    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         register_user_use_case: RUUC,
         create_book_use_case: CBUC,
@@ -36,6 +40,8 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
         create_author_use_case: CAUC,
         update_author_use_case: UAUC,
         delete_author_use_case: DAUC,
+        restore_book_use_case: RBUC,
+        restore_author_use_case: RAUC,
     ) -> Self {
         Self {
             register_user_use_case,
@@ -45,13 +51,15 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
             create_author_use_case,
             update_author_use_case,
             delete_author_use_case,
+            restore_book_use_case,
+            restore_author_use_case,
         }
     }
 }
 
 #[async_trait]
-impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> MutationUseCase
-    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC> MutationUseCase
+    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
 where
     RUUC: RegisterUserUseCase,
     CBUC: CreateBookUseCase,
@@ -60,6 +68,8 @@ where
     CAUC: CreateAuthorUseCase,
     UAUC: UpdateAuthorUseCase,
     DAUC: DeleteAuthorUseCase,
+    RBUC: RestoreBookUseCase,
+    RAUC: RestoreAuthorUseCase,
 {
     async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError> {
         let user = self.register_user_use_case.register_user(user_id).await?;
@@ -119,6 +129,24 @@ where
             .await?;
         Ok(())
     }
+
+    async fn restore_book(
+        &self,
+        user_id: &str,
+        history_id: i64,
+    ) -> Result<BookDto, UseCaseError> {
+        self.restore_book_use_case.restore(user_id, history_id).await
+    }
+
+    async fn restore_author(
+        &self,
+        user_id: &str,
+        history_id: i64,
+    ) -> Result<AuthorDto, UseCaseError> {
+        self.restore_author_use_case
+            .restore(user_id, history_id)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -136,6 +164,7 @@ mod tests {
         traits::{
             author::{MockCreateAuthorUseCase, MockDeleteAuthorUseCase, MockUpdateAuthorUseCase},
             book::{MockCreateBookUseCase, MockDeleteBookUseCase, MockUpdateBookUseCase},
+            history::{MockRestoreAuthorUseCase, MockRestoreBookUseCase},
             mutation::MutationUseCase,
             user::MockRegisterUserUseCase,
         },
@@ -151,6 +180,8 @@ mod tests {
         MockCreateAuthorUseCase,
         MockUpdateAuthorUseCase,
         MockDeleteAuthorUseCase,
+        MockRestoreBookUseCase,
+        MockRestoreAuthorUseCase,
     >;
 
     struct InteractorBuilder {
@@ -161,6 +192,8 @@ mod tests {
         create_author: MockCreateAuthorUseCase,
         update_author: MockUpdateAuthorUseCase,
         delete_author: MockDeleteAuthorUseCase,
+        restore_book: MockRestoreBookUseCase,
+        restore_author: MockRestoreAuthorUseCase,
     }
 
     impl InteractorBuilder {
@@ -173,6 +206,8 @@ mod tests {
                 create_author: MockCreateAuthorUseCase::new(),
                 update_author: MockUpdateAuthorUseCase::new(),
                 delete_author: MockDeleteAuthorUseCase::new(),
+                restore_book: MockRestoreBookUseCase::new(),
+                restore_author: MockRestoreAuthorUseCase::new(),
             }
         }
 
@@ -220,6 +255,8 @@ mod tests {
                 self.create_author,
                 self.update_author,
                 self.delete_author,
+                self.restore_book,
+                self.restore_author,
             )
         }
     }
