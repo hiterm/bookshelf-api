@@ -98,6 +98,7 @@ impl BookRepository for PgBookRepository {
             .map(|author_id| author_id.to_uuid())
             .collect();
 
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
             "INSERT INTO book_author (user_id, book_id, author_id)
                     SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])",
@@ -367,6 +368,7 @@ impl BookRepository for PgBookRepository {
             .map(|author_id| author_id.to_uuid())
             .collect();
 
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
         sqlx::query(
             "DELETE FROM book_author WHERE user_id = $1 AND book_id = $2 AND author_id != ALL($3)",
         )
@@ -376,6 +378,7 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
         sqlx::query(
             "INSERT INTO book_author (user_id, book_id, author_id)
                     SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
@@ -677,6 +680,10 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
+        // Both users own the same book UUID but with distinct author associations.
+        // This exercises the book_author.user_id filter inside the
+        // authors_of_book_and_user CTE in find_by_id: if that CTE ignored user_id,
+        // one user's find_by_id would return the other user's author_ids.
         let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
         let book1 = book_entity1(&user1_author_ids)?;
         book_repository.create(&user1_id, &book1).await?;
@@ -685,6 +692,7 @@ mod tests {
         let book2 = book_entity1(&user2_author_ids)?;
         book_repository.create(&user2_id, &book2).await?;
 
+        // user1's find_by_id must return only user1's authors
         let user1_result = book_repository.find_by_id(&user1_id, book1.id()).await?;
         let user1_book = user1_result.unwrap();
         assert!(
@@ -699,6 +707,7 @@ mod tests {
                 .any(|id| user2_author_ids.contains(id))
         );
 
+        // user2's find_by_id must return only user2's authors
         let user2_result = book_repository.find_by_id(&user2_id, book2.id()).await?;
         let user2_book = user2_result.unwrap();
         assert!(
@@ -725,6 +734,10 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
+        // Both users own the same book UUID but with distinct author associations.
+        // This exercises the book_author.user_id filter inside the
+        // authors_of_book_and_user CTE: if that CTE ignored user_id, one user's
+        // find_all would return the other user's author_ids.
         let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
         let book1 = book_entity1(&user1_author_ids)?;
         book_repository.create(&user1_id, &book1).await?;
@@ -733,6 +746,7 @@ mod tests {
         let book2 = book_entity1(&user2_author_ids)?;
         book_repository.create(&user2_id, &book2).await?;
 
+        // user1's find_all must contain only user1's authors
         let user1_books = book_repository.find_all(&user1_id).await?;
         assert_eq!(user1_books.len(), 1);
         assert!(
@@ -747,6 +761,7 @@ mod tests {
                 .any(|id| user2_author_ids.contains(id))
         );
 
+        // user2's find_all must contain only user2's authors
         let user2_books = book_repository.find_all(&user2_id).await?;
         assert_eq!(user2_books.len(), 1);
         assert!(
@@ -773,18 +788,25 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
+        // user1 owns book X with authors [A, B]
         let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
         let book = book_entity1(&user1_author_ids)?;
         book_repository.create(&user1_id, &book).await?;
 
+        // user2 also owns book X (same UUID; composite PK (id, user_id) allows this)
+        // with their own author rows [A, B]
         let user2_author_ids = prepare_authors1(&user2_id, &author_repository).await?;
         let book_copy = book_entity1(&user2_author_ids)?;
         book_repository.create(&user2_id, &book_copy).await?;
 
+        // user2 updates their book keeping only author A (drops B).
+        // The resulting DELETE FROM book_author must not touch user1's rows.
+        // With the old buggy guard (no user_id check) this would delete user1's B row.
         let book_for_update = book_entity1(&user2_author_ids[..1])?;
         let result = book_repository.update(&user2_id, &book_for_update).await;
-        assert!(result.is_ok());
+        assert!(result.is_ok()); // user2 owns this book, so update succeeds
 
+        // user1's book must remain fully intact: title and both authors [A, B]
         let user1_book = book_repository
             .find_by_id(&user1_id, book.id())
             .await?
@@ -811,13 +833,19 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
+        // Only user1 owns book X; user2 does not.
         let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         book_repository.create(&user1_id, &book).await?;
 
+        // user2 attempts to update user1's book.
+        // The WHERE id = $11 AND user_id = $1 guard must return NotFound.
+        // Without the AND user_id = $1 clause the UPDATE would silently mutate
+        // user1's row and return Ok(()).
         let result = book_repository.update(&user2_id, &book).await;
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
+        // user1's book must be untouched
         let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
         assert!(still_exists.is_some());
 
@@ -841,9 +869,12 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
+        // user1's book row must still exist
         let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
         let existing_book = still_exists.unwrap();
 
+        // user1's book_author rows must also be intact: a buggy delete that
+        // omits the user_id guard would have wiped them for all users.
         assert!(
             author_ids
                 .iter()

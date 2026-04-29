@@ -620,12 +620,14 @@ mod tests {
         let book2 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
         book_repository.create(&user2_id, &book2).await?;
 
+        // user2 has an associated book, so delete must fail
         let result = author_repository.delete(&user2_id, &author_id).await;
         assert!(matches!(
             result,
             Err(DomainError::HasAssociatedBooks { .. })
         ));
 
+        // user1's book_author row must be intact
         let user1_book = book_repository
             .find_by_id(&user1_id, book1.id())
             .await?
