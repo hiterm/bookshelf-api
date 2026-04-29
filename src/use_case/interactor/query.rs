@@ -158,6 +158,8 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                change_set::ChangeSetId,
+                history::{AuthorHistory, BookHistory, HistoryOperation},
                 user::{User, UserId},
             },
             repository::{
@@ -627,5 +629,187 @@ mod tests {
                 name: "author1".to_string(),
             }
         );
+    }
+
+    fn make_book_history(book_id: uuid::Uuid) -> BookHistory {
+        BookHistory {
+            history_id: 1,
+            change_set_id: ChangeSetId::from(uuid::Uuid::new_v4()),
+            operation: HistoryOperation::Update,
+            book_id: BookId::new(book_id).unwrap(),
+            title: BookTitle::new("Old Title".to_string()).unwrap(),
+            author_ids: vec![],
+            isbn: Isbn::new("".to_string()).unwrap(),
+            read: ReadFlag::new(false),
+            owned: OwnedFlag::new(false),
+            priority: Priority::new(50).unwrap(),
+            format: BookFormat::Unknown,
+            store: BookStore::Unknown,
+            book_created_at: OffsetDateTime::now_utc(),
+            book_updated_at: OffsetDateTime::now_utc(),
+            changed_at: OffsetDateTime::now_utc(),
+        }
+    }
+
+    fn make_author_history(author_id: uuid::Uuid) -> AuthorHistory {
+        AuthorHistory {
+            history_id: 2,
+            change_set_id: ChangeSetId::from(uuid::Uuid::new_v4()),
+            operation: HistoryOperation::Update,
+            author_id: AuthorId::new(author_id),
+            name: "Old Name".to_string(),
+            yomi: "".to_string(),
+            author_created_at: OffsetDateTime::now_utc(),
+            author_updated_at: OffsetDateTime::now_utc(),
+            changed_at: OffsetDateTime::now_utc(),
+        }
+    }
+
+    #[tokio::test]
+    async fn list_book_history_returns_dto_list() {
+        let book_uuid = uuid::Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+        let history = make_book_history(book_uuid);
+
+        let mut book_history_repository = MockBookHistoryRepository::new();
+        book_history_repository
+            .expect_find_by_book()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![history.clone()]));
+
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_history_repository,
+            author_history_repository: MockAuthorHistoryRepository::new(),
+        };
+
+        let result = query_interactor
+            .list_book_history("user1", &book_id_str)
+            .await;
+
+        assert!(result.is_ok());
+        let list = result.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].title, "Old Title");
+    }
+
+    #[tokio::test]
+    async fn list_book_history_returns_empty() {
+        let book_uuid = uuid::Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+
+        let mut book_history_repository = MockBookHistoryRepository::new();
+        book_history_repository
+            .expect_find_by_book()
+            .with(always(), always())
+            .returning(|_, _| Ok(vec![]));
+
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_history_repository,
+            author_history_repository: MockAuthorHistoryRepository::new(),
+        };
+
+        let result = query_interactor
+            .list_book_history("user1", &book_id_str)
+            .await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_book_history_invalid_book_id_returns_error() {
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
+        };
+
+        let result = query_interactor
+            .list_book_history("user1", "not-a-uuid")
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn list_author_history_returns_dto_list() {
+        let author_uuid = uuid::Uuid::new_v4();
+        let author_id_str = author_uuid.hyphenated().to_string();
+        let history = make_author_history(author_uuid);
+
+        let mut author_history_repository = MockAuthorHistoryRepository::new();
+        author_history_repository
+            .expect_find_by_author()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![history.clone()]));
+
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository,
+        };
+
+        let result = query_interactor
+            .list_author_history("user1", &author_id_str)
+            .await;
+
+        assert!(result.is_ok());
+        let list = result.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "Old Name");
+    }
+
+    #[tokio::test]
+    async fn list_author_history_returns_empty() {
+        let author_uuid = uuid::Uuid::new_v4();
+        let author_id_str = author_uuid.hyphenated().to_string();
+
+        let mut author_history_repository = MockAuthorHistoryRepository::new();
+        author_history_repository
+            .expect_find_by_author()
+            .with(always(), always())
+            .returning(|_, _| Ok(vec![]));
+
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository,
+        };
+
+        let result = query_interactor
+            .list_author_history("user1", &author_id_str)
+            .await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_author_history_invalid_author_id_returns_error() {
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_history_repository: MockBookHistoryRepository::new(),
+            author_history_repository: MockAuthorHistoryRepository::new(),
+        };
+
+        let result = query_interactor
+            .list_author_history("user1", "not-a-uuid")
+            .await;
+
+        assert!(result.is_err());
     }
 }
