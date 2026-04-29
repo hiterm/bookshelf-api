@@ -1,6 +1,3 @@
-   Compiling bookshelf-api v2.4.1 (/home/user/bookshelf-api)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.71s
-     Running `target/debug/gen_schema`
 type Author {
 	id: ID!
 	name: String!
