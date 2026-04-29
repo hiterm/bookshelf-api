@@ -7,7 +7,7 @@ use crate::{
     use_case::traits::query::QueryUseCase,
 };
 
-use super::object::{Author, Book, User};
+use super::object::{Author, AuthorHistoryEntry, Book, BookHistoryEntry, User};
 
 pub struct Query<QUC> {
     query_use_case: QUC,
@@ -66,6 +66,32 @@ where
         let authors = self.query_use_case.find_all_authors(&claims.sub).await?;
         let authors: Vec<Author> = authors.into_iter().map(Author::from).collect();
         Ok(authors)
+    }
+
+    async fn book_history(
+        &self,
+        ctx: &Context<'_>,
+        book_id: ID,
+    ) -> Result<Vec<BookHistoryEntry>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let entries = self
+            .query_use_case
+            .list_book_history(&claims.sub, book_id.as_str())
+            .await?;
+        Ok(entries.into_iter().map(BookHistoryEntry::from).collect())
+    }
+
+    async fn author_history(
+        &self,
+        ctx: &Context<'_>,
+        author_id: ID,
+    ) -> Result<Vec<AuthorHistoryEntry>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let entries = self
+            .query_use_case
+            .list_author_history(&claims.sub, author_id.as_str())
+            .await?;
+        Ok(entries.into_iter().map(AuthorHistoryEntry::from).collect())
     }
 }
 

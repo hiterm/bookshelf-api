@@ -6,6 +6,7 @@ use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBo
 use crate::dependency_injection::QI;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{BookDto, CreateBookDto, UpdateBookDto};
+use crate::use_case::dto::history::{AuthorHistoryDto, BookHistoryDto};
 
 use super::loader::AuthorLoader;
 
@@ -276,5 +277,75 @@ pub struct UpdateAuthorInput {
 impl From<UpdateAuthorInput> for UpdateAuthorDto {
     fn from(val: UpdateAuthorInput) -> Self {
         UpdateAuthorDto::new(val.id.to_string(), val.name)
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct BookHistoryEntry {
+    pub history_id: ID,
+    pub change_set_id: ID,
+    pub operation: String,
+    pub book_id: ID,
+    pub title: String,
+    pub author_ids: Vec<ID>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: String,
+    pub store: String,
+    pub book_created_at: String,
+    pub book_updated_at: String,
+    pub changed_at: String,
+}
+
+impl From<BookHistoryDto> for BookHistoryEntry {
+    fn from(dto: BookHistoryDto) -> Self {
+        Self {
+            history_id: ID(dto.history_id.to_string()),
+            change_set_id: ID(dto.change_set_id),
+            operation: dto.operation,
+            book_id: ID(dto.book_id),
+            title: dto.title,
+            author_ids: dto.author_ids.into_iter().map(ID).collect(),
+            isbn: dto.isbn,
+            read: dto.read,
+            owned: dto.owned,
+            priority: dto.priority,
+            format: dto.format.to_string(),
+            store: dto.store.to_string(),
+            book_created_at: dto.book_created_at.to_string(),
+            book_updated_at: dto.book_updated_at.to_string(),
+            changed_at: dto.changed_at.to_string(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct AuthorHistoryEntry {
+    pub history_id: ID,
+    pub change_set_id: ID,
+    pub operation: String,
+    pub author_id: ID,
+    pub name: String,
+    pub yomi: String,
+    pub author_created_at: String,
+    pub author_updated_at: String,
+    pub changed_at: String,
+}
+
+impl From<AuthorHistoryDto> for AuthorHistoryEntry {
+    fn from(dto: AuthorHistoryDto) -> Self {
+        Self {
+            history_id: ID(dto.history_id.to_string()),
+            change_set_id: ID(dto.change_set_id),
+            operation: dto.operation,
+            author_id: ID(dto.author_id),
+            name: dto.name,
+            yomi: dto.yomi,
+            author_created_at: dto.author_created_at.to_string(),
+            author_updated_at: dto.author_updated_at.to_string(),
+            changed_at: dto.changed_at.to_string(),
+        }
     }
 }

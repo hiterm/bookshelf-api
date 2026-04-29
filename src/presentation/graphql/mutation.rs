@@ -110,6 +110,42 @@ where
             .await?;
         Ok(author_id.to_string())
     }
+
+    async fn restore_book(
+        &self,
+        ctx: &Context<'_>,
+        history_id: ID,
+    ) -> Result<Book, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let hid: i64 = history_id.parse().map_err(|_| {
+            PresentationalError::OtherError(std::sync::Arc::new(anyhow::anyhow!(
+                "history_id must be an integer"
+            )))
+        })?;
+        let book = self
+            .mutation_use_case
+            .restore_book(&claims.sub, hid)
+            .await?;
+        Ok(book.into())
+    }
+
+    async fn restore_author(
+        &self,
+        ctx: &Context<'_>,
+        history_id: ID,
+    ) -> Result<Author, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let hid: i64 = history_id.parse().map_err(|_| {
+            PresentationalError::OtherError(std::sync::Arc::new(anyhow::anyhow!(
+                "history_id must be an integer"
+            )))
+        })?;
+        let author = self
+            .mutation_use_case
+            .restore_author(&claims.sub, hid)
+            .await?;
+        Ok(author.into())
+    }
 }
 
 fn get_claims<'a>(ctx: &Context<'a>) -> Result<&'a Claims, PresentationalError> {

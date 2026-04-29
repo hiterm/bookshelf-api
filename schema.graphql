@@ -3,6 +3,18 @@ type Author {
 	name: String!
 }
 
+type AuthorHistoryEntry {
+	historyId: ID!
+	changeSetId: ID!
+	operation: String!
+	authorId: ID!
+	name: String!
+	yomi: String!
+	authorCreatedAt: String!
+	authorUpdatedAt: String!
+	changedAt: String!
+}
+
 type Book {
 	id: String!
 	title: String!
@@ -21,6 +33,24 @@ enum BookFormat {
 	E_BOOK
 	PRINTED
 	UNKNOWN
+}
+
+type BookHistoryEntry {
+	historyId: ID!
+	changeSetId: ID!
+	operation: String!
+	bookId: ID!
+	title: String!
+	authorIds: [ID!]!
+	isbn: String!
+	read: Boolean!
+	owned: Boolean!
+	priority: Int!
+	format: String!
+	store: String!
+	bookCreatedAt: String!
+	bookUpdatedAt: String!
+	changedAt: String!
 }
 
 enum BookStore {
@@ -51,6 +81,8 @@ type Mutation {
 	createAuthor(authorData: CreateAuthorInput!): Author!
 	updateAuthor(authorData: UpdateAuthorInput!): Author!
 	deleteAuthor(authorId: ID!): String!
+	restoreBook(historyId: ID!): Book!
+	restoreAuthor(historyId: ID!): Author!
 }
 
 type Query {
@@ -59,6 +91,8 @@ type Query {
 	books: [Book!]!
 	author(id: ID!): Author
 	authors: [Author!]!
+	bookHistory(bookId: ID!): [BookHistoryEntry!]!
+	authorHistory(authorId: ID!): [AuthorHistoryEntry!]!
 }
 
 input UpdateAuthorInput {
