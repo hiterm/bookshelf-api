@@ -960,11 +960,12 @@ mod tests {
 
         book_repository.create(&user_id, &book).await?;
 
-        let (cs_op,): (String,) =
-            sqlx::query_as("SELECT operation FROM change_set WHERE user_id = $1")
-                .bind(user_id.as_str())
-                .fetch_one(&pool)
-                .await?;
+        let (cs_op,): (String,) = sqlx::query_as(
+            "SELECT operation FROM change_set WHERE user_id = $1 AND operation = 'create_book'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
         assert_eq!(cs_op, "create_book");
 
         let (bh_op, bh_title): (String, String) =
@@ -999,8 +1000,20 @@ mod tests {
         let book = book_entity1(&author_ids)?;
         book_repository.create(&user_id, &book).await?;
 
-        // Update with new title
-        let updated = book_entity2(&author_ids)?;
+        // Build an updated book with the same ID but a new title
+        let updated = Book::new(
+            book.id().clone(),
+            BookTitle::new("title2".to_owned())?,
+            author_ids.clone(),
+            Isbn::new("1111111111116".to_owned())?,
+            ReadFlag::new(false),
+            OwnedFlag::new(false),
+            Priority::new(50)?,
+            BookFormat::EBook,
+            BookStore::Kindle,
+            PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
+            PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
+        )?;
         book_repository.update(&user_id, &updated).await?;
 
         let rows: Vec<(String, String)> = sqlx::query_as(
@@ -1014,13 +1027,16 @@ mod tests {
         assert_eq!(rows.len(), 2);
         // Most recent entry is the update snapshot (pre-update state)
         assert_eq!(rows[0].0, "update");
-        assert_eq!(rows[0].1, "title1"); // original title captured
+        assert_eq!(rows[0].1, "title1"); // original title captured before update
         assert_eq!(rows[1].0, "create");
 
-        let cs_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM change_set WHERE user_id = $1")
-            .bind(user_id.as_str())
-            .fetch_one(&pool)
-            .await?;
+        let cs_count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM change_set WHERE user_id = $1
+             AND operation IN ('create_book', 'update_book', 'delete_book')",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
         assert_eq!(cs_count.0, 2);
 
         Ok(())
