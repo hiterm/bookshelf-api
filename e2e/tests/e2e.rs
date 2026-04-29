@@ -937,3 +937,469 @@ async fn e2e_graphql_create_book_without_auth() -> Result<()> {
     assert_eq!(status, 401, "createBook without auth should return 401");
     Ok(())
 }
+
+// ============================================
+// Change History E2E Tests
+// ============================================
+
+async fn create_test_author(name: &str, token: &str) -> Result<String> {
+    let query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        name
+    );
+    let (_, response) = graphql_request(&query, Some(token)).await?;
+    let id = response["data"]["createAuthor"]["id"]
+        .as_str()
+        .context("createAuthor id should be a string")?
+        .to_owned();
+    Ok(id)
+}
+
+async fn create_test_book(title: &str, author_id: &str, token: &str) -> Result<String> {
+    let query = format!(
+        r#"
+        mutation {{
+            createBook(bookData: {{
+                title: "{}"
+                authorIds: ["{}"]
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ id }}
+        }}
+        "#,
+        title, author_id
+    );
+    let (_, response) = graphql_request(&query, Some(token)).await?;
+    let id = response["data"]["createBook"]["id"]
+        .as_str()
+        .context("createBook id should be a string")?
+        .to_owned();
+    Ok(id)
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_book_history_records_create_operation() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let author_id =
+        create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
+    let book_id = create_test_book("History Book Create", &author_id, &token).await?;
+
+    let query = format!(
+        r#"{{ bookHistory(bookId: "{}") {{ historyId operation title }} }}"#,
+        book_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "bookHistory should not return errors: {:?}",
+        response.get("errors")
+    );
+
+    let entries = response["data"]["bookHistory"]
+        .as_array()
+        .context("bookHistory should be an array")?;
+    assert_eq!(entries.len(), 1, "should have exactly 1 history entry");
+    assert_eq!(
+        entries[0]["operation"].as_str(),
+        Some("create"),
+        "operation should be 'create'"
+    );
+    assert_eq!(
+        entries[0]["title"].as_str(),
+        Some("History Book Create"),
+        "title should match"
+    );
+
+    // Cleanup
+    delete_test_book(&book_id, &token).await?;
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_book_history_records_update_operation() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let author_id =
+        create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
+    let book_id = create_test_book("Original Title", &author_id, &token).await?;
+
+    // Update the book
+    let update_query = format!(
+        r#"
+        mutation {{
+            updateBook(bookData: {{
+                id: "{}"
+                title: "Updated Title"
+                authorIds: ["{}"]
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ id title }}
+        }}
+        "#,
+        book_id, author_id
+    );
+    let (_, response) = graphql_request(&update_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "updateBook should not return errors"
+    );
+
+    let query = format!(
+        r#"{{ bookHistory(bookId: "{}") {{ historyId operation title }} }}"#,
+        book_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    let entries = response["data"]["bookHistory"]
+        .as_array()
+        .context("bookHistory should be an array")?;
+    assert_eq!(
+        entries.len(),
+        2,
+        "should have 2 history entries (create + update)"
+    );
+
+    // Entries are ordered by changed_at DESC, so the most recent (update) is first
+    assert_eq!(
+        entries[0]["operation"].as_str(),
+        Some("update"),
+        "first entry should be 'update'"
+    );
+    assert_eq!(
+        entries[0]["title"].as_str(),
+        Some("Updated Title"),
+        "update entry should have new title"
+    );
+    assert_eq!(
+        entries[1]["operation"].as_str(),
+        Some("create"),
+        "second entry should be 'create'"
+    );
+    assert_eq!(
+        entries[1]["title"].as_str(),
+        Some("Original Title"),
+        "create entry should have original title"
+    );
+
+    // Cleanup
+    delete_test_book(&book_id, &token).await?;
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_restore_book_reverts_to_snapshot() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let author_id =
+        create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
+    let book_id = create_test_book("Before Restore", &author_id, &token).await?;
+
+    // Update so history has 2 entries; record create snapshot's history_id
+    let history_query = format!(
+        r#"{{ bookHistory(bookId: "{}") {{ historyId operation title }} }}"#,
+        book_id
+    );
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let entries = response["data"]["bookHistory"]
+        .as_array()
+        .context("bookHistory should be an array")?;
+    let create_history_id = entries[0]["historyId"]
+        .as_str()
+        .context("historyId should be a string")?
+        .to_owned();
+
+    // Update the book
+    let update_query = format!(
+        r#"
+        mutation {{
+            updateBook(bookData: {{
+                id: "{}"
+                title: "After Update"
+                authorIds: ["{}"]
+                isbn: ""
+                read: true
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ id title }}
+        }}
+        "#,
+        book_id, author_id
+    );
+    graphql_request(&update_query, Some(&token)).await?;
+
+    // Verify current title is "After Update"
+    let book_query = format!(r#"{{ book(id: "{}") {{ title read }} }}"#, book_id);
+    let (_, response) = graphql_request(&book_query, Some(&token)).await?;
+    assert_eq!(
+        response["data"]["book"]["title"].as_str(),
+        Some("After Update"),
+        "title should be 'After Update' before restore"
+    );
+
+    // Restore to the create snapshot
+    let restore_query = format!(
+        r#"mutation {{ restoreBook(historyId: "{}") {{ id title read }} }}"#,
+        create_history_id
+    );
+    let (_, response) = graphql_request(&restore_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "restoreBook should not return errors: {:?}",
+        response.get("errors")
+    );
+    assert_eq!(
+        response["data"]["restoreBook"]["title"].as_str(),
+        Some("Before Restore"),
+        "restored book should have original title"
+    );
+    assert_eq!(
+        response["data"]["restoreBook"]["read"].as_bool(),
+        Some(false),
+        "restored book should have original read flag"
+    );
+
+    // Verify that the book in the DB reflects the restored state
+    let (_, response) = graphql_request(&book_query, Some(&token)).await?;
+    assert_eq!(
+        response["data"]["book"]["title"].as_str(),
+        Some("Before Restore"),
+        "book should reflect restored title"
+    );
+
+    // Cleanup
+    delete_test_book(&book_id, &token).await?;
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_book_history_records_delete_operation() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let author_id =
+        create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
+    let book_id = create_test_book("Book To Delete", &author_id, &token).await?;
+
+    // Grab history before delete so we know the book_id for later query
+    let history_query = format!(
+        r#"{{ bookHistory(bookId: "{}") {{ historyId operation title }} }}"#,
+        book_id
+    );
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let entries_before = response["data"]["bookHistory"]
+        .as_array()
+        .context("bookHistory should be an array")?;
+    assert_eq!(
+        entries_before.len(),
+        1,
+        "should have 1 history entry before delete"
+    );
+
+    // Delete the book
+    delete_test_book(&book_id, &token).await?;
+
+    // Even after deletion, history should be queryable and include the delete entry
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let entries_after = response["data"]["bookHistory"]
+        .as_array()
+        .context("bookHistory should be an array")?;
+    assert_eq!(
+        entries_after.len(),
+        2,
+        "should have 2 history entries after delete (create + delete)"
+    );
+    assert_eq!(
+        entries_after[0]["operation"].as_str(),
+        Some("delete"),
+        "most recent entry should be 'delete'"
+    );
+
+    // Cleanup author
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_author_history_records_create_operation() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let author_name = format!("Author History Create {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&author_name, &token).await?;
+
+    let query = format!(
+        r#"{{ authorHistory(authorId: "{}") {{ historyId operation name }} }}"#,
+        author_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "authorHistory should not return errors: {:?}",
+        response.get("errors")
+    );
+
+    let entries = response["data"]["authorHistory"]
+        .as_array()
+        .context("authorHistory should be an array")?;
+    assert_eq!(entries.len(), 1, "should have exactly 1 history entry");
+    assert_eq!(
+        entries[0]["operation"].as_str(),
+        Some("create"),
+        "operation should be 'create'"
+    );
+    assert_eq!(
+        entries[0]["name"].as_str(),
+        Some(author_name.as_str()),
+        "name should match"
+    );
+
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_author_history_records_update_operation() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let original_name = format!("Author Before Update History {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&original_name, &token).await?;
+
+    let updated_name = format!("Author After Update History {}", uuid::Uuid::new_v4());
+    let update_query = format!(
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ id name }} }}"#,
+        author_id, updated_name
+    );
+    let (_, response) = graphql_request(&update_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "updateAuthor should not return errors"
+    );
+
+    let query = format!(
+        r#"{{ authorHistory(authorId: "{}") {{ historyId operation name }} }}"#,
+        author_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    let entries = response["data"]["authorHistory"]
+        .as_array()
+        .context("authorHistory should be an array")?;
+    assert_eq!(
+        entries.len(),
+        2,
+        "should have 2 history entries (create + update)"
+    );
+    assert_eq!(
+        entries[0]["operation"].as_str(),
+        Some("update"),
+        "first entry should be 'update'"
+    );
+    assert_eq!(
+        entries[0]["name"].as_str(),
+        Some(updated_name.as_str()),
+        "update entry should have new name"
+    );
+    assert_eq!(
+        entries[1]["operation"].as_str(),
+        Some("create"),
+        "second entry should be 'create'"
+    );
+    assert_eq!(
+        entries[1]["name"].as_str(),
+        Some(original_name.as_str()),
+        "create entry should have original name"
+    );
+
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let original_name = format!("Restore Author Original {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&original_name, &token).await?;
+
+    // Capture the create snapshot's history_id
+    let history_query = format!(
+        r#"{{ authorHistory(authorId: "{}") {{ historyId operation name }} }}"#,
+        author_id
+    );
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let entries = response["data"]["authorHistory"]
+        .as_array()
+        .context("authorHistory should be an array")?;
+    let create_history_id = entries[0]["historyId"]
+        .as_str()
+        .context("historyId should be a string")?
+        .to_owned();
+
+    // Update the author
+    let updated_name = format!("Restore Author Updated {}", uuid::Uuid::new_v4());
+    let update_query = format!(
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ id name }} }}"#,
+        author_id, updated_name
+    );
+    graphql_request(&update_query, Some(&token)).await?;
+
+    // Restore to the create snapshot
+    let restore_query = format!(
+        r#"mutation {{ restoreAuthor(historyId: "{}") {{ id name }} }}"#,
+        create_history_id
+    );
+    let (_, response) = graphql_request(&restore_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "restoreAuthor should not return errors: {:?}",
+        response.get("errors")
+    );
+    assert_eq!(
+        response["data"]["restoreAuthor"]["name"].as_str(),
+        Some(original_name.as_str()),
+        "restored author should have original name"
+    );
+
+    // Verify DB reflects the restored state
+    let author_query = format!(r#"{{ author(id: "{}") {{ name }} }}"#, author_id);
+    let (_, response) = graphql_request(&author_query, Some(&token)).await?;
+    assert_eq!(
+        response["data"]["author"]["name"].as_str(),
+        Some(original_name.as_str()),
+        "author in DB should reflect restored name"
+    );
+
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
