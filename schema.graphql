@@ -1,3 +1,6 @@
+   Compiling bookshelf-api v2.4.1 (/home/user/bookshelf-api)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.71s
+     Running `target/debug/gen_schema`
 type Author {
 	id: ID!
 	name: String!
@@ -10,9 +13,9 @@ type AuthorHistoryEntry {
 	authorId: ID!
 	name: String!
 	yomi: String!
-	authorCreatedAt: String!
-	authorUpdatedAt: String!
-	changedAt: String!
+	authorCreatedAt: Int!
+	authorUpdatedAt: Int!
+	changedAt: Int!
 }
 
 type Book {
@@ -46,11 +49,11 @@ type BookHistoryEntry {
 	read: Boolean!
 	owned: Boolean!
 	priority: Int!
-	format: String!
-	store: String!
-	bookCreatedAt: String!
-	bookUpdatedAt: String!
-	changedAt: String!
+	format: BookFormat!
+	store: BookStore!
+	bookCreatedAt: Int!
+	bookUpdatedAt: Int!
+	changedAt: Int!
 }
 
 enum BookStore {

@@ -292,11 +292,11 @@ pub struct BookHistoryEntry {
     pub read: bool,
     pub owned: bool,
     pub priority: i32,
-    pub format: String,
-    pub store: String,
-    pub book_created_at: String,
-    pub book_updated_at: String,
-    pub changed_at: String,
+    pub format: BookFormat,
+    pub store: BookStore,
+    pub book_created_at: i64,
+    pub book_updated_at: i64,
+    pub changed_at: i64,
 }
 
 impl From<BookHistoryDto> for BookHistoryEntry {
@@ -312,11 +312,11 @@ impl From<BookHistoryDto> for BookHistoryEntry {
             read: dto.read,
             owned: dto.owned,
             priority: dto.priority,
-            format: dto.format.to_string(),
-            store: dto.store.to_string(),
-            book_created_at: dto.book_created_at.to_string(),
-            book_updated_at: dto.book_updated_at.to_string(),
-            changed_at: dto.changed_at.to_string(),
+            format: dto.format.into(),
+            store: dto.store.into(),
+            book_created_at: dto.book_created_at.unix_timestamp(),
+            book_updated_at: dto.book_updated_at.unix_timestamp(),
+            changed_at: dto.changed_at.unix_timestamp(),
         }
     }
 }
@@ -329,9 +329,9 @@ pub struct AuthorHistoryEntry {
     pub author_id: ID,
     pub name: String,
     pub yomi: String,
-    pub author_created_at: String,
-    pub author_updated_at: String,
-    pub changed_at: String,
+    pub author_created_at: i64,
+    pub author_updated_at: i64,
+    pub changed_at: i64,
 }
 
 impl From<AuthorHistoryDto> for AuthorHistoryEntry {
@@ -343,9 +343,9 @@ impl From<AuthorHistoryDto> for AuthorHistoryEntry {
             author_id: ID(dto.author_id),
             name: dto.name,
             yomi: dto.yomi,
-            author_created_at: dto.author_created_at.to_string(),
-            author_updated_at: dto.author_updated_at.to_string(),
-            changed_at: dto.changed_at.to_string(),
+            author_created_at: dto.author_created_at.unix_timestamp(),
+            author_updated_at: dto.author_updated_at.unix_timestamp(),
+            changed_at: dto.changed_at.unix_timestamp(),
         }
     }
 }
