@@ -136,7 +136,7 @@ impl AuthorRepository for PgAuthorRepository {
 
         // Snapshot before update
         let snap: Option<AuthorSnapshotRow> = sqlx::query_as(
-            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
+            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE",
         )
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
@@ -168,32 +168,31 @@ impl AuthorRepository for PgAuthorRepository {
             }
         }
 
-        if let Some(snap) = snap {
-            let cs_id = Uuid::new_v4();
-            sqlx::query(
-                "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'update_author')",
-            )
-            .bind(cs_id)
-            .bind(user_id.as_str())
-            .execute(&mut *tx)
-            .await?;
+        let snap = snap.expect("snap must be Some after successful UPDATE");
+        let cs_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'update_author')",
+        )
+        .bind(cs_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
 
-            sqlx::query(
-                "INSERT INTO author_history
-                   (change_set_id, operation, author_id, user_id, name, yomi,
-                    author_created_at, author_updated_at)
-                 VALUES ($1, 'update', $2, $3, $4, $5, $6, $7)",
-            )
-            .bind(cs_id)
-            .bind(author.id().to_uuid())
-            .bind(user_id.as_str())
-            .bind(&snap.name)
-            .bind(&snap.yomi)
-            .bind(snap.created_at)
-            .bind(snap.updated_at)
-            .execute(&mut *tx)
-            .await?;
-        }
+        sqlx::query(
+            "INSERT INTO author_history
+               (change_set_id, operation, author_id, user_id, name, yomi,
+                author_created_at, author_updated_at)
+             VALUES ($1, 'update', $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(cs_id)
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(&snap.name)
+        .bind(&snap.yomi)
+        .bind(snap.created_at)
+        .bind(snap.updated_at)
+        .execute(&mut *tx)
+        .await?;
 
         tx.commit().await?;
 
@@ -258,32 +257,31 @@ impl AuthorRepository for PgAuthorRepository {
             }
         }
 
-        if let Some(snap) = snap {
-            let cs_id = Uuid::new_v4();
-            sqlx::query(
-                "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'delete_author')",
-            )
-            .bind(cs_id)
-            .bind(user_id.as_str())
-            .execute(&mut *tx)
-            .await?;
+        let snap = snap.expect("snap must be Some after guard");
+        let cs_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'delete_author')",
+        )
+        .bind(cs_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
 
-            sqlx::query(
-                "INSERT INTO author_history
-                   (change_set_id, operation, author_id, user_id, name, yomi,
-                    author_created_at, author_updated_at)
-                 VALUES ($1, 'delete', $2, $3, $4, $5, $6, $7)",
-            )
-            .bind(cs_id)
-            .bind(author_id.to_uuid())
-            .bind(user_id.as_str())
-            .bind(&snap.name)
-            .bind(&snap.yomi)
-            .bind(snap.created_at)
-            .bind(snap.updated_at)
-            .execute(&mut *tx)
-            .await?;
-        }
+        sqlx::query(
+            "INSERT INTO author_history
+               (change_set_id, operation, author_id, user_id, name, yomi,
+                author_created_at, author_updated_at)
+             VALUES ($1, 'delete', $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(cs_id)
+        .bind(author_id.to_uuid())
+        .bind(user_id.as_str())
+        .bind(&snap.name)
+        .bind(&snap.yomi)
+        .bind(snap.created_at)
+        .bind(snap.updated_at)
+        .execute(&mut *tx)
+        .await?;
 
         tx.commit().await?;
 
