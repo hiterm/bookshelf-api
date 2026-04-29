@@ -90,6 +90,14 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
   Rationale: This makes every state transition reversible, including restores.
   Date/Author: 2026-04-29 / hiterm
 
+- Decision: Record history on create as well as update and delete, using
+  operation='create' in both `change_set` and `book_history`/`author_history`.
+  Rationale: The user wants to preserve the fact that an item was created (who
+  added it and when). Unlike update/delete, there is no previous state to
+  snapshot — the history row IS the initial state. This means `bookHistory`
+  will always show at least one entry for every book.
+  Date/Author: 2026-04-29 / hiterm
+
 - Decision: `Author` entity currently lacks `yomi`, `created_at`, and
   `updated_at`. The `author_history` table stores `yomi` and timestamps fetched
   directly from the DB row. The domain `Author` entity is NOT extended as part
@@ -332,6 +340,18 @@ generate a changeset UUID and wrap everything in a single transaction using
 `pool.begin().await?`. Call `.commit().await?` at the end; any error causes an
 automatic rollback on drop.
 
+`create` transaction steps (new — `BookRepository::create` is also wrapped):
+
+    BEGIN;
+      -- 1. INSERT INTO book ...
+      -- 2. INSERT INTO book_author ... (for each author)
+      -- 3. let cs_id = Uuid::new_v4();
+      -- 4. INSERT INTO change_set (id, user_id, operation='create_book', ...)
+      -- 5. INSERT INTO book_history (change_set_id=cs_id, operation='create', ...)
+             RETURNING history_id
+      -- 6. INSERT INTO book_history_author (history_id, author_id) for each author
+    COMMIT;
+
 `update` transaction steps:
 
     BEGIN;
@@ -362,8 +382,10 @@ automatic rollback on drop.
 Same transaction pattern. The `author_history` INSERT reads `yomi` and
 timestamps from the DB row in the same SELECT before UPDATE/DELETE.
 
-`update` uses `operation='update_author'`, `delete` uses `operation='delete_author'`
-in the `change_set` row.
+`create` uses `operation='create_author'`, `update` uses `operation='update_author'`,
+`delete` uses `operation='delete_author'` in the `change_set` row. The create
+transaction inserts the author first, then records it to `author_history`
+(operation='create') in the same transaction.
 
 **New file `src/infrastructure/book_history_repository.rs`
 (`PgBookHistoryRepository`)**
@@ -662,15 +684,18 @@ understand the pattern (likely TypeScript/JavaScript using a GraphQL client).
 
 Add a new test file (or extend an existing book test file) covering:
 
-1. Create a book → update its title → call `bookHistory` → expect one entry
-   with `operation = "update"` and the old title.
-2. Restore using `restoreBook(historyId)` → fetch the book → expect the old
+1. Create a book → call `bookHistory` → expect one entry with
+   `operation = "create"`.
+2. Update the book's title → call `bookHistory` → expect two entries; the
+   second has `operation = "update"` and the pre-update title.
+3. Restore using `restoreBook(historyId)` → fetch the book → expect the old
    title is back.
-3. Delete a book → call `bookHistory` → expect one entry with
+4. Delete a book → call `bookHistory` → expect one entry with
    `operation = "delete"`.
-4. Create an author → update its name → call `authorHistory` → expect one
-   entry.
-5. Restore using `restoreAuthor(historyId)` → fetch the author → expect old
+5. Create an author → call `authorHistory` → expect one entry with
+   `operation = "create"`.
+6. Update the author's name → call `authorHistory` → expect two entries.
+7. Restore using `restoreAuthor(historyId)` → fetch the author → expect old
    name.
 
 Run the E2E suite against a local Docker Compose stack:
