@@ -945,4 +945,138 @@ mod tests {
 
         Ok(book)
     }
+
+    // ---- history recording tests ----
+
+    #[sqlx::test]
+    async fn test_create_records_history(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+
+        book_repository.create(&user_id, &book).await?;
+
+        let (cs_op,): (String,) =
+            sqlx::query_as("SELECT operation FROM change_set WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(cs_op, "create_book");
+
+        let (bh_op, bh_title): (String, String) =
+            sqlx::query_as("SELECT operation, title FROM book_history WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(bh_op, "create");
+        assert_eq!(bh_title, "title1");
+
+        let (author_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_history_author bha
+             JOIN book_history bh ON bha.history_id = bh.history_id
+             WHERE bh.user_id = $1",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(author_count, 2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_records_pre_update_snapshot(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user_id, &book).await?;
+
+        // Update with new title
+        let updated = book_entity2(&author_ids)?;
+        book_repository.update(&user_id, &updated).await?;
+
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT operation, title FROM book_history WHERE user_id = $1
+             ORDER BY changed_at DESC",
+        )
+        .bind(user_id.as_str())
+        .fetch_all(&pool)
+        .await?;
+
+        assert_eq!(rows.len(), 2);
+        // Most recent entry is the update snapshot (pre-update state)
+        assert_eq!(rows[0].0, "update");
+        assert_eq!(rows[0].1, "title1"); // original title captured
+        assert_eq!(rows[1].0, "create");
+
+        let cs_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM change_set WHERE user_id = $1")
+            .bind(user_id.as_str())
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(cs_count.0, 2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_delete_records_pre_delete_snapshot(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user_id, &book).await?;
+
+        book_repository.delete(&user_id, book.id()).await?;
+
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT operation, title FROM book_history WHERE user_id = $1
+             ORDER BY changed_at DESC",
+        )
+        .bind(user_id.as_str())
+        .fetch_all(&pool)
+        .await?;
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "delete");
+        assert_eq!(rows[0].1, "title1");
+        assert_eq!(rows[1].0, "create");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_failed_update_does_not_record_history(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user1_id, &book).await?;
+
+        // Attempt update as wrong user — must fail
+        let result = book_repository.update(&user2_id, &book).await;
+        assert!(matches!(result, Err(DomainError::NotFound { .. })));
+
+        // Only user1's create entry should exist
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book_history")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(count, 1);
+
+        Ok(())
+    }
 }
