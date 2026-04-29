@@ -555,6 +555,7 @@ mod tests {
             Err(DomainError::HasAssociatedBooks { .. })
         ));
 
+        // author and book_author must still exist
         let found = author_repository.find_by_id(&user_id, &author_id).await?;
         assert!(found.is_some());
 
@@ -607,6 +608,7 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
+        // Both users have the same author UUID — allowed by composite PK (id, user_id)
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author1 = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
         let author2 = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
