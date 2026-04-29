@@ -40,13 +40,36 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
 ## Progress
 
 - [x] Milestone 1: Database migration — new tables
+  - [x] plan updated
 - [x] Milestone 2: Domain layer — new entities and repository traits
+  - [x] plan updated
 - [x] Milestone 3: Infrastructure layer — Pg implementations
+  - [x] plan updated
 - [x] Milestone 4: Use case layer — interactors, DTOs, traits
+  - [x] plan updated
 - [x] Milestone 5: Presentation layer — GraphQL queries and mutations
+  - [x] plan updated
 - [x] Milestone 6: Dependency injection wiring
+  - [x] plan updated
 - [x] Milestone 7: Unit tests
+  - [x] plan updated
 - [x] Milestone 8: E2E tests
+  - [x] plan updated
+
+**Phase 2 — Refactor to post-state event log** (started 2026-04-29)
+
+- [ ] Milestone 9: Merge migrations and refactor schema
+  - [ ] plan updated
+- [ ] Milestone 10: Rename domain entities and repository traits
+  - [ ] plan updated
+- [ ] Milestone 11: Refactor infrastructure — post-state recording and renamed tables
+  - [ ] plan updated
+- [ ] Milestone 12: Refactor use case — restore semantics and return types
+  - [ ] plan updated
+- [ ] Milestone 13: Refactor presentation — nullable GraphQL fields and return types
+  - [ ] plan updated
+- [ ] Milestone 14: Update all tests
+  - [ ] plan updated
 
 ## Surprises & Discoveries
 
@@ -79,7 +102,7 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
   be used to undo accidental creates. The decision was recorded in the Decision
   Log during implementation.
 
-## Decision Log
+## Decision Log (Phase 2)
 
 - Decision: Use a `change_set` table to group related changes, with FK
   references from `book_history` and `author_history`.
@@ -131,6 +154,69 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
   of this plan — that is a separate concern.
   Rationale: Scope containment. Fetching raw DB fields for the history snapshot
   is acceptable at the infrastructure layer.
+  Date/Author: 2026-04-29 / hiterm
+
+## Decision Log (Phase 2)
+
+- Decision: Rename tables from history-based to event-based naming:
+  `change_set` → `event_set`, `book_history` → `book_event`,
+  `book_history_author` → `book_event_author`, `author_history` → `author_event`.
+  Also rename `change_set_operation` → `event_set_operation`. Keep
+  `history_operation` unchanged.
+  Rationale: The tables record facts (events that occurred), not snapshots.
+  "History" implies retrospective snapshots; "event" accurately describes a
+  record of what happened. `book_event_author` is a subordinate detail table
+  of `book_event`, so the `book_event_` prefix is correct. `history_operation`
+  enumerates values for the per-event operation column (create/update/delete),
+  which still fits the name.
+  Date/Author: 2026-04-29 / hiterm
+
+- Decision: Switch from pre-state recording to post-state recording for
+  `update` events. `delete` events record only the entity id (data fields
+  nullable). `create` events are unchanged (already record post-create state).
+  Rationale: Pre-state recording is semantically inconsistent — the `operation`
+  column says what happened, but the data is the state *before* it happened. A
+  post-state event log records the fact truthfully: "this operation happened,
+  this is the resulting state." For `delete`, there is no resulting state;
+  only the id is stored as the event fact. The id is sufficient to identify
+  what was deleted.
+  Date/Author: 2026-04-29 / hiterm
+
+- Decision: `restore` semantics change from "apply this snapshot" to "restore
+  to the state captured in this event": `create`/`update` events → apply the
+  stored data (update if the entity exists, create if it was deleted);
+  `delete` events → delete the entity (treat a NotFound as a no-op success).
+  The restore return type changes from `BookDto`/`AuthorDto` to
+  `Option<BookDto>`/`Option<AuthorDto>` (None when restoring a delete event).
+  Rationale: Consistent with the event log model. Each event represents a
+  specific state; restoring to it means making the world match that state.
+  A delete event's state is "entity does not exist", so restore = delete.
+  Date/Author: 2026-04-29 / hiterm
+
+- Decision: `author restore` adds a create fallback identical to the existing
+  book restore fallback: if `update` returns `NotFound`, call `create` instead.
+  Rationale: An author may have been deleted after the `create`/`update` event
+  was recorded. Without the fallback, restoring such an event would silently
+  fail with NotFound.
+  Date/Author: 2026-04-29 / hiterm
+
+- Decision: The two existing migration files from Phase 1
+  (`20260429040611_add_change_history.sql` and
+  `20260429050000_add_operation_constraints.sql`) are merged into a single
+  migration file, and the Phase 2 schema changes (table renames, nullable
+  columns) are included in that same file. The two old files are deleted.
+  Rationale: Both files were added in this PR and have never been applied to
+  a production database, so consolidation carries no migration risk. One file
+  is simpler to reason about.
+  Date/Author: 2026-04-29 / hiterm
+
+- Decision: The `event_set` table is kept (not removed), with a 1:N
+  relationship to event entries. Currently it is 1:1, but it is the intended
+  grouping mechanism for future bulk-update and author-merge operations.
+  Rationale: Bulk registration and author merging (merging two author records
+  into one) require grouping many book and author events under a single logical
+  user action. Without `event_set`, those events would be unrelated rows with
+  no shared identity.
   Date/Author: 2026-04-29 / hiterm
 
 ## Outcomes & Retrospective
@@ -759,6 +845,512 @@ Run the E2E suite against a local Docker Compose stack:
     docker compose -f docker-compose-test.yml down
 
 All scenarios must pass.
+
+---
+
+## Phase 2 — Refactor to Post-State Event Log
+
+### Overview
+
+Phase 1 built a history system that records the *pre-operation* state of every
+create, update, and delete. After design review, this was found to be
+semantically inconsistent: the `operation` column says what happened, but the
+stored data is the state *before* it happened, not after. Phase 2 corrects this
+by switching to a post-state event log, renaming all tables to event-based
+names, and updating restore semantics accordingly.
+
+The user-visible change is that `bookHistory`/`authorHistory` now show the
+state *after* each operation. The `restoreBook`/`restoreAuthor` mutations now
+return `null` when restoring a `delete` event (because the entity no longer
+exists after restoration), and restore a deleted entity's last known state when
+restoring a `create` or `update` event.
+
+### Milestone 9 — Merge Migrations and Refactor Schema
+
+Delete the two existing Phase 1 migration files:
+
+    migrations/20260429040611_add_change_history.sql
+    migrations/20260429050000_add_operation_constraints.sql
+
+Create one replacement file at the same path
+`migrations/20260429040611_add_change_history.sql` (reusing the first
+timestamp) with the following consolidated, refactored content:
+
+    CREATE TABLE event_set (
+      id          uuid        NOT NULL PRIMARY KEY,
+      user_id     text        NOT NULL REFERENCES bookshelf_user(id),
+      operation   text        NOT NULL,
+      created_at  timestamptz NOT NULL DEFAULT current_timestamp
+    );
+
+    CREATE TABLE history_operation (
+      operation text NOT NULL PRIMARY KEY
+    );
+    INSERT INTO history_operation VALUES ('create'), ('update'), ('delete');
+
+    CREATE TABLE event_set_operation (
+      operation text NOT NULL PRIMARY KEY
+    );
+    INSERT INTO event_set_operation VALUES
+      ('create_book'), ('update_book'), ('delete_book'),
+      ('create_author'), ('update_author'), ('delete_author');
+
+    ALTER TABLE event_set
+      ADD CONSTRAINT event_set_operation_fk
+      FOREIGN KEY (operation) REFERENCES event_set_operation(operation);
+
+    -- book_event: data fields are nullable because delete events store only id.
+    CREATE TABLE book_event (
+      event_id        bigserial   NOT NULL PRIMARY KEY,
+      event_set_id    uuid        NOT NULL REFERENCES event_set(id),
+      operation       text        NOT NULL REFERENCES history_operation(operation),
+      book_id         uuid        NOT NULL,
+      user_id         text        NOT NULL,
+      title           text,
+      isbn            text,
+      read            boolean,
+      owned           boolean,
+      priority        integer,
+      format          text,
+      store           text,
+      book_created_at timestamptz,
+      book_updated_at timestamptz,
+      changed_at      timestamptz NOT NULL DEFAULT current_timestamp
+    );
+
+    CREATE TABLE book_event_author (
+      event_id  bigint NOT NULL REFERENCES book_event(event_id) ON DELETE CASCADE,
+      author_id uuid   NOT NULL,
+      PRIMARY KEY (event_id, author_id)
+    );
+
+    -- author_event: data fields nullable for same reason.
+    CREATE TABLE author_event (
+      event_id          bigserial   NOT NULL PRIMARY KEY,
+      event_set_id      uuid        NOT NULL REFERENCES event_set(id),
+      operation         text        NOT NULL REFERENCES history_operation(operation),
+      author_id         uuid        NOT NULL,
+      user_id           text        NOT NULL,
+      name              text,
+      yomi              text,
+      author_created_at timestamptz,
+      author_updated_at timestamptz,
+      changed_at        timestamptz NOT NULL DEFAULT current_timestamp
+    );
+
+    CREATE INDEX ON book_event (user_id, book_id, changed_at DESC);
+    CREATE INDEX ON author_event (user_id, author_id, changed_at DESC);
+    CREATE INDEX ON book_event (event_set_id);
+    CREATE INDEX ON author_event (event_set_id);
+
+Verify by running `cargo test` (sqlx::test creates a fresh DB from migrations
+each run) — the build must succeed and no test should fail due to the schema.
+
+### Milestone 10 — Rename Domain Entities and Repository Traits
+
+This milestone renames Rust types and files throughout the domain layer. No
+logic changes yet — only names.
+
+**`src/domain/entity/change_set.rs` → `src/domain/entity/event_set.rs`**
+
+Rename:
+- `ChangeSetId` → `EventSetId` (keep all impls: `new`, `to_uuid`, `Display`,
+  `TryFrom<&str>`, `From<Uuid>`, `Default`)
+- `ChangeSet` → `EventSet`
+
+**`src/domain/entity.rs`**: change `pub mod change_set` to `pub mod event_set`.
+
+**`src/domain/entity/history.rs`**
+
+Rename:
+- `BookHistory` → `BookEvent`
+- `AuthorHistory` → `AuthorEvent`
+
+Change `BookEvent` fields that are null for delete events from owned types
+to `Option<T>`:
+
+    pub struct BookEvent {
+        pub event_id: i64,
+        pub event_set_id: EventSetId,
+        pub operation: HistoryOperation,
+        pub book_id: BookId,
+        // Some for create/update; None for delete:
+        pub title: Option<BookTitle>,
+        pub author_ids: Vec<AuthorId>,     // empty for delete (no book_event_author rows)
+        pub isbn: Option<Isbn>,
+        pub read: Option<ReadFlag>,
+        pub owned: Option<OwnedFlag>,
+        pub priority: Option<Priority>,
+        pub format: Option<BookFormat>,
+        pub store: Option<BookStore>,
+        pub book_created_at: Option<OffsetDateTime>,
+        pub book_updated_at: Option<OffsetDateTime>,
+        pub changed_at: OffsetDateTime,
+    }
+
+    pub struct AuthorEvent {
+        pub event_id: i64,
+        pub event_set_id: EventSetId,
+        pub operation: HistoryOperation,
+        pub author_id: AuthorId,
+        // Some for create/update; None for delete:
+        pub name: Option<String>,
+        pub yomi: Option<String>,
+        pub author_created_at: Option<OffsetDateTime>,
+        pub author_updated_at: Option<OffsetDateTime>,
+        pub changed_at: OffsetDateTime,
+    }
+
+`HistoryOperation` gains a `Create` variant if not already present (it was
+added in Phase 1 — verify and keep).
+
+**`src/domain/repository/book_history_repository.rs` →
+`src/domain/repository/book_event_repository.rs`**
+
+Rename:
+- Trait `BookHistoryRepository` → `BookEventRepository`
+- Method parameter and return types updated: `BookHistory` → `BookEvent`,
+  field `history_id` → `event_id` in the `find_by_history_id` signature.
+
+    #[automock]
+    #[async_trait]
+    pub trait BookEventRepository: Send + Sync + 'static {
+        async fn find_by_book(
+            &self,
+            user_id: &UserId,
+            book_id: &BookId,
+        ) -> Result<Vec<BookEvent>, DomainError>;
+
+        async fn find_by_event_id(
+            &self,
+            user_id: &UserId,
+            event_id: i64,
+        ) -> Result<Option<BookEvent>, DomainError>;
+    }
+
+**`src/domain/repository/author_history_repository.rs` →
+`src/domain/repository/author_event_repository.rs`**
+
+Same pattern: `AuthorHistoryRepository` → `AuthorEventRepository`,
+`AuthorHistory` → `AuthorEvent`, `find_by_history_id` → `find_by_event_id`.
+
+**`src/domain/repository.rs`**: update module declarations to
+`book_event_repository` and `author_event_repository`.
+
+Verify: `cargo build` must succeed with no warnings.
+
+### Milestone 11 — Refactor Infrastructure — Post-State Recording
+
+This milestone changes *what data* is written to the event tables and updates
+all SQL to use the new table and column names.
+
+**`src/infrastructure/book_repository.rs`**
+
+`create` — record the newly created book (post-create state). This is already
+the correct behavior from Phase 1; only the SQL table names change:
+`change_set` → `event_set`, `change_set_id` → `event_set_id`,
+`history_id` → `event_id`, `book_history` → `book_event`,
+`book_history_author` → `book_event_author`.
+
+`update` — Phase 1 recorded the pre-update snapshot. Replace this with
+post-update recording:
+
+    BEGIN;
+      -- 1. UPDATE book SET ... WHERE id = $N AND user_id = $1
+      --    (proceed only if rows_affected == 1; return NotFound otherwise)
+      -- 2. let es_id = Uuid::new_v4();
+      -- 3. INSERT INTO event_set (id, user_id, operation='update_book')
+      -- 4. INSERT INTO book_event
+      --      (event_set_id=es_id, operation='update', book_id, user_id,
+      --       title, isbn, read, owned, priority, format, store,
+      --       book_created_at, book_updated_at)   ← values from `book` argument
+      --    RETURNING event_id
+      -- 5. INSERT INTO book_event_author (event_id, author_id) for each
+      --    author_id in `book.author_ids()`
+    COMMIT;
+
+The `book` argument to `update` already contains the post-update state; use
+its fields directly. Remove the pre-update SELECT snapshot query entirely.
+
+`delete` — record only the book id (data fields null):
+
+    BEGIN;
+      -- 1. DELETE FROM book_author WHERE user_id = $1 AND book_id = $2
+      -- 2. DELETE FROM book WHERE user_id = $1 AND id = $2
+      --    (return NotFound if rows_affected == 0)
+      -- 3. let es_id = Uuid::new_v4();
+      -- 4. INSERT INTO event_set (id, user_id, operation='delete_book')
+      -- 5. INSERT INTO book_event
+      --      (event_set_id=es_id, operation='delete', book_id, user_id)
+      --    All data fields (title, isbn, …) omitted — they default to NULL.
+    COMMIT;
+
+No `INSERT INTO book_event_author` for delete events.
+
+**`src/infrastructure/author_repository.rs`**
+
+Same pattern as `book_repository`. For `update`, use the `author` argument
+fields directly (post-update state). For `delete`, insert only `author_id` and
+`user_id`; all other columns are NULL.
+
+**`src/infrastructure/book_history_repository.rs` →
+`src/infrastructure/book_event_repository.rs`**
+
+Rename struct `PgBookHistoryRepository` → `PgBookEventRepository`. Rename
+inner `BookHistoryRow` → `BookEventRow` and update column names
+(`history_id` → `event_id`, `change_set_id` → `event_set_id`). All fields
+that are now nullable (`title`, `isbn`, `read`, `owned`, `priority`, `format`,
+`store`, `book_created_at`, `book_updated_at`) must be `Option<T>` in the row
+struct. Update all SQL to use `book_event` and `book_event_author`.
+
+Update `find_by_book` to keep `GROUP BY event_id ORDER BY changed_at DESC`.
+Rename `find_by_history_id` → `find_by_event_id`.
+
+**`src/infrastructure/author_history_repository.rs` →
+`src/infrastructure/author_event_repository.rs`**
+
+Same renaming pattern. Nullable fields: `name`, `yomi`,
+`author_created_at`, `author_updated_at`.
+
+**`src/infrastructure.rs`**: update module declarations.
+
+**`src/dependency_injection.rs`**: update imports and struct field names.
+
+Verify: `cargo build && cargo test` must pass.
+
+### Milestone 12 — Refactor Use Case — Restore Semantics and Return Types
+
+**`src/use_case/dto/history.rs`**
+
+Rename `BookHistoryDto` → `BookEventDto`, `AuthorHistoryDto` → `AuthorEventDto`.
+
+Data fields that are null for delete events become `Option<T>`:
+
+    pub struct BookEventDto {
+        pub event_id: i64,
+        pub event_set_id: String,
+        pub operation: String,       // "create" | "update" | "delete"
+        pub book_id: String,
+        pub title: Option<String>,
+        pub author_ids: Vec<String>, // empty for delete
+        pub isbn: Option<String>,
+        pub read: Option<bool>,
+        pub owned: Option<bool>,
+        pub priority: Option<i32>,
+        pub format: Option<BookFormat>,
+        pub store: Option<BookStore>,
+        pub book_created_at: Option<OffsetDateTime>,
+        pub book_updated_at: Option<OffsetDateTime>,
+        pub changed_at: OffsetDateTime,
+    }
+
+    pub struct AuthorEventDto {
+        pub event_id: i64,
+        pub event_set_id: String,
+        pub operation: String,
+        pub author_id: String,
+        pub name: Option<String>,
+        pub yomi: Option<String>,
+        pub author_created_at: Option<OffsetDateTime>,
+        pub author_updated_at: Option<OffsetDateTime>,
+        pub changed_at: OffsetDateTime,
+    }
+
+Update `From<BookEvent>` and `From<AuthorEvent>` impls accordingly.
+
+**`src/use_case/traits/history.rs`**
+
+Rename trait names and method parameters; update return types:
+
+- `ListBookHistoryUseCase` → `ListBookEventUseCase` (returns `Vec<BookEventDto>`)
+- `ListAuthorHistoryUseCase` → `ListAuthorEventUseCase`
+- `RestoreBookUseCase::restore` returns `Result<Option<BookDto>, UseCaseError>`
+- `RestoreAuthorUseCase::restore` returns `Result<Option<AuthorDto>, UseCaseError>`
+
+**`src/use_case/interactor/history.rs`**
+
+Rename interactors: `ListBookHistoryInteractor` → `ListBookEventInteractor`,
+`ListAuthorHistoryInteractor` → `ListAuthorEventInteractor`. These are
+mechanical renames — no logic change.
+
+`RestoreBookInteractor::restore` — new logic:
+
+    let user_id = UserId::new(user_id.to_string())?;
+    let event = self.book_event_repository
+        .find_by_event_id(&user_id, event_id).await?
+        .ok_or(UseCaseError::NotFound { ... })?;
+
+    match event.operation {
+        HistoryOperation::Create | HistoryOperation::Update => {
+            let book = Book::new(
+                event.book_id,
+                event.title.ok_or_else(|| /* internal error */)?,
+                event.author_ids,
+                event.isbn.ok_or_else(|| /* internal error */)?,
+                event.read.ok_or_else(...)?,
+                event.owned.ok_or_else(...)?,
+                event.priority.ok_or_else(...)?,
+                event.format.ok_or_else(...)?,
+                event.store.ok_or_else(...)?,
+                event.book_created_at.ok_or_else(...)?,
+                event.book_updated_at.ok_or_else(...)?,
+            )?;
+            match self.book_repository.update(&user_id, &book).await {
+                Ok(()) => {}
+                Err(DomainError::NotFound { .. }) => {
+                    self.book_repository.create(&user_id, &book).await?;
+                }
+                Err(e) => return Err(e.into()),
+            }
+            Ok(Some(BookDto::from(book)))
+        }
+        HistoryOperation::Delete => {
+            match self.book_repository.delete(&user_id, &event.book_id).await {
+                Ok(()) | Err(DomainError::NotFound { .. }) => {}
+                Err(e) => return Err(e.into()),
+            }
+            Ok(None)
+        }
+    }
+
+`RestoreAuthorInteractor::restore` — same structure. For `Create`/`Update`,
+call `author_repository.update`; if `NotFound`, call `author_repository.create`
+(this is the fallback that was missing in Phase 1). For `Delete`, call
+`author_repository.delete`, treating `NotFound` as success.
+
+The missing create fallback for author restore was identified in a code review
+(CodeRabbit comment). Previously `RestoreAuthorInteractor` would fail with
+`NotFound` when attempting to restore an author that had since been deleted.
+
+**`src/use_case/traits/mutation.rs`**
+
+Update `MutationUseCase`:
+- `restore_book` returns `Result<Option<BookDto>, UseCaseError>`
+- `restore_author` returns `Result<Option<AuthorDto>, UseCaseError>`
+
+**`src/use_case/interactor/mutation.rs`**
+
+Update `MutationInteractor::restore_book` and `restore_author` delegation
+to propagate the `Option` return.
+
+Verify: `cargo build && cargo test` must pass.
+
+### Milestone 13 — Refactor Presentation — Nullable GraphQL Fields
+
+**`src/presentation/graphql/object.rs`**
+
+Rename `BookHistoryEntry` → `BookEventEntry`, `AuthorHistoryEntry` →
+`AuthorEventEntry`.
+
+Data fields that are nullable for delete events must be `Option<T>`:
+
+    #[derive(SimpleObject)]
+    pub struct BookEventEntry {
+        pub event_id: ID,
+        pub event_set_id: ID,
+        pub operation: String,
+        pub book_id: ID,
+        pub title: Option<String>,
+        pub author_ids: Vec<ID>,          // empty for delete
+        pub isbn: Option<String>,
+        pub read: Option<bool>,
+        pub owned: Option<bool>,
+        pub priority: Option<i32>,
+        pub format: Option<BookFormat>,
+        pub store: Option<BookStore>,
+        pub book_created_at: Option<i64>, // unix timestamp; None for delete
+        pub book_updated_at: Option<i64>,
+        pub changed_at: i64,
+    }
+
+    #[derive(SimpleObject)]
+    pub struct AuthorEventEntry {
+        pub event_id: ID,
+        pub event_set_id: ID,
+        pub operation: String,
+        pub author_id: ID,
+        pub name: Option<String>,
+        pub yomi: Option<String>,
+        pub author_created_at: Option<i64>,
+        pub author_updated_at: Option<i64>,
+        pub changed_at: i64,
+    }
+
+Update `From<BookEventDto>` and `From<AuthorEventDto>` impls.
+
+**`src/presentation/graphql/query.rs`**
+
+Update the `bookHistory` / `authorHistory` query resolvers to use the renamed
+interactors and return `Vec<BookEventEntry>` / `Vec<AuthorEventEntry>`.
+
+**`src/presentation/graphql/mutation.rs`**
+
+Update `restore_book` to return `Result<Option<Book>, PresentationalError>` and
+`restore_author` to return `Result<Option<Author>, PresentationalError>`. Map
+`None` from the use case to `Ok(None)`.
+
+Regenerate `schema.graphql`:
+
+    cargo run --bin gen_schema 2>/dev/null > schema.graphql
+
+Verify: `cargo build && cargo test` must pass.
+
+### Milestone 14 — Update All Tests
+
+This milestone updates every test that references Phase 1 names or asserts
+pre-state semantics, and adds new tests for the changed restore behavior.
+
+**`src/infrastructure/book_history_repository.rs` (now `book_event_repository.rs`)**
+
+Update the `find_by_book_returns_history_ordered_desc` test: after create then
+update, the most recent entry should have `operation = Update` and
+`title = "updated"` (post-update state), not `"original"`. Update the comment
+from "pre-update snapshot" to "post-update state".
+
+**`src/infrastructure/book_repository.rs` tests**
+
+Update `test_update_records_history`: the history row for the update should
+contain the *new* title, not the old one. Update assertions and comments
+accordingly.
+
+Update `test_delete_records_history`: the delete event row should have
+`operation = "delete"` and all data fields `None` / absent. No
+`book_event_author` rows should exist for delete events.
+
+**`src/use_case/interactor/history.rs` unit tests**
+
+Add `restore_book_delete_event_deletes_book` — mock `find_by_event_id` to
+return an event with `operation = Delete`; assert `book_repository.delete`
+is called and `restore` returns `Ok(None)`.
+
+Add `restore_author_falls_back_to_create_when_deleted` — mock
+`find_by_event_id` to return a `Create`/`Update` event; mock
+`author_repository.update` to return `NotFound`; assert
+`author_repository.create` is called and result is `Ok(Some(...))`.
+
+Add `restore_author_delete_event_deletes_author` — analogous to the book
+version.
+
+**`src/use_case/interactor/mutation.rs` delegation tests**
+
+Improve `restore_book_delegates_to_sub_use_case` and
+`restore_author_delegates_to_sub_use_case` to assert the exact arguments
+passed to the sub-use-case (using `eq("user1")` and `eq(42)` predicates) and
+add a separate case that stubs the sub-use-case to return `Err` and verifies
+the error propagates unchanged.
+
+**E2E tests**
+
+Add an E2E test case: create a book, delete it, call `restoreBook` with the
+delete event's ID, verify the GraphQL response is `null` and the book is
+absent from `books`.
+
+Add an E2E test case: create a book, delete it, call `restoreBook` with the
+create event's ID (restoring to the post-create state), verify the book is
+recreated.
+
+Run `cargo fmt --check && cargo clippy --fix --all-targets -- -D warnings &&
+cargo test` and ensure all pass before committing.
 
 ## Concrete Steps
 
