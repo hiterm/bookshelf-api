@@ -66,7 +66,7 @@ Each milestone must be independently verifiable and incrementally implement the 
 
 # Prototyping milestones and parallel implementations
 
-It is acceptable—-and often encouraged—-to include explicit prototyping milestones when they de-risk a larger change. Examples: adding a low-level operator to a dependency to validate feasibility, or exploring two composition orders while measuring optimizer effects. Keep prototypes additive and testable. Clearly label the scope as “prototyping”; describe how to run and observe results; and state the criteria for promoting or discarding the prototype.
+It is acceptable—and often encouraged—to include explicit prototyping milestones when they de-risk a larger change. Examples: adding a low-level operator to a dependency to validate feasibility, or exploring two composition orders while measuring optimizer effects. Keep prototypes additive and testable. Clearly label the scope as “prototyping”; describe how to run and observe results; and state the criteria for promoting or discarding the prototype.
 
 Prefer additive code changes followed by subtractions that keep tests passing. Parallel implementations (e.g., keeping an adapter alongside an older path during migration) are fine when they reduce risk or enable tests to continue passing during a large migration. Describe how to validate both paths and how to retire one safely with tests. When working with multiple new libraries or feature areas, consider creating spikes that evaluate the feasibility of these features _independently_ of one another, proving that the external library performs as expected and implements the features we need in isolation.
 
@@ -86,7 +86,7 @@ Prefer additive code changes followed by subtractions that keep tests passing. P
 
     Use a list with checkboxes to summarize granular steps. Every stopping point must be documented here, even if it requires splitting a partially completed task into two (“done” vs. “remaining”). This section must always reflect the actual current state of the work.
 
-    Each milestone has a mandatory “plan updated” sub-task. Check it off and commit the ExecPlan file together with the milestone's code changes. Never batch plan updates across milestones.
+    Each milestone has a mandatory “plan updated” sub-task. Check it off and commit the ExecPlan file together with the milestone's code changes. Never batch plan updates across milestones. When a milestone is marked completed ([x]), its “plan updated” checkbox must also be checked ([x]) in the same progress update. For incomplete or partially complete milestones, the “plan updated” box must remain unchecked ([]).
 
     - [x] Milestone 1: Example completed milestone.
       - [x] plan updated
