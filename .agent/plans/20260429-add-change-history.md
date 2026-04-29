@@ -39,18 +39,45 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
 
 ## Progress
 
-- [ ] Milestone 1: Database migration — new tables
-- [ ] Milestone 2: Domain layer — new entities and repository traits
-- [ ] Milestone 3: Infrastructure layer — Pg implementations
-- [ ] Milestone 4: Use case layer — interactors, DTOs, traits
-- [ ] Milestone 5: Presentation layer — GraphQL queries and mutations
-- [ ] Milestone 6: Dependency injection wiring
-- [ ] Milestone 7: Unit tests
-- [ ] Milestone 8: E2E tests
+- [x] Milestone 1: Database migration — new tables
+- [x] Milestone 2: Domain layer — new entities and repository traits
+- [x] Milestone 3: Infrastructure layer — Pg implementations
+- [x] Milestone 4: Use case layer — interactors, DTOs, traits
+- [x] Milestone 5: Presentation layer — GraphQL queries and mutations
+- [x] Milestone 6: Dependency injection wiring
+- [x] Milestone 7: Unit tests
+- [x] Milestone 8: E2E tests
 
 ## Surprises & Discoveries
 
-*(Fill in as work proceeds.)*
+- **Duplicate `ChangeSetId` definition**: Initially defined `ChangeSetId` inside
+  `history.rs` as well as in `change_set.rs`. The compiler caught the conflict
+  when both were imported in the same file. Fixed by removing the duplicate from
+  `history.rs` and importing from `change_set.rs`.
+
+- **`QueryInteractor` arity mismatch**: After adding `BHR` and `AHR` type params
+  to `QueryInteractor`, `dependency_injection.rs` still had the 3-param form and
+  the struct literal was missing the two new fields. All 13 test struct
+  constructions also had to be updated (`replace_all=true`).
+
+- **`cargo clippy --fix` requires `--allow-dirty`**: The tool refuses to apply
+  fixes when the working tree has uncommitted changes. Must pass `--allow-dirty`
+  when running as part of the pre-commit flow before staging.
+
+- **`OffsetDateTime` import missing in test module**: The `use time::OffsetDateTime`
+  import existed at the top-level module but was not in scope inside the nested
+  `#[cfg(test)]` mod. Had to add a separate `use time::OffsetDateTime` inside
+  the test module.
+
+- **`cargo fmt` reformats `clippy --fix` output**: After `clippy --fix` auto-fixed
+  files, `cargo fmt --check` still reported diffs. Running `cargo fmt` a second
+  time after clippy was required to produce a clean check.
+
+- **`create` operations are also snapshotted**: The plan recorded history only
+  for update/delete, but snapshotting create makes `bookHistory`/`authorHistory`
+  always return at least one entry and allows `restoreBook`/`restoreAuthor` to
+  be used to undo accidental creates. The decision was recorded in the Decision
+  Log during implementation.
 
 ## Decision Log
 
@@ -108,7 +135,34 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
 
 ## Outcomes & Retrospective
 
-*(Fill in at completion.)*
+All 8 milestones completed on 2026-04-29.
+
+**What was built:**
+- Migration: `change_set`, `book_history`, `book_history_author`, `author_history`
+  tables with 4 indexes.
+- Domain: `ChangeSetId`, `ChangeSet`, `HistoryOperation`, `BookHistory`,
+  `AuthorHistory` entities; `BookHistoryRepository` and `AuthorHistoryRepository`
+  traits with `#[automock]`.
+- Infrastructure: `PgBookHistoryRepository` and `PgAuthorHistoryRepository`;
+  `PgBookRepository` and `PgAuthorRepository` fully wrapped in transactions that
+  snapshot state on every create/update/delete.
+- Use case: `BookHistoryDto`, `AuthorHistoryDto`; `ListBookHistoryInteractor`,
+  `ListAuthorHistoryInteractor`, `RestoreBookInteractor`, `RestoreAuthorInteractor`;
+  four new use case traits all with `#[automock]`.
+- Presentation: `BookHistoryEntry`, `AuthorHistoryEntry` GraphQL types;
+  `bookHistory`/`authorHistory` queries; `restoreBook`/`restoreAuthor` mutations.
+- DI: updated type aliases `QI` and `MI` with 5 and 9 type params respectively.
+- Unit tests: 96 passing (6 new tests for history interactors).
+- E2E tests: 7 new serial E2E tests covering create/update/delete history recording
+  and restore for both books and authors.
+
+**What worked well:** The strict layered architecture meant infrastructure
+changes (wrapping every repo method in a transaction) were completely invisible
+to interactors and their unit tests — zero churn to the 90 pre-existing tests.
+
+**What to watch:** E2E tests for delete history rely on querying `bookHistory`
+after the book is deleted. This works because `book_history` has no FK to `book`
+(intentional), so history survives the delete.
 
 ## Context and Orientation
 
