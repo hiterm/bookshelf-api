@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 
 use crate::{
     common::types::{BookFormat, BookStore},
-    domain::entity::history::{AuthorEvent, BookEvent},
+    domain::entity::event::{AuthorEvent, BookEvent},
 };
 
 #[derive(Debug, Clone)]

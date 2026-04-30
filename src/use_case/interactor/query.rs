@@ -16,7 +16,7 @@ use crate::{
         dto::{
             author::AuthorDto,
             book::BookDto,
-            history::{AuthorEventDto, BookEventDto},
+            event::{AuthorEventDto, BookEventDto},
             user::UserDto,
         },
         error::UseCaseError,
@@ -159,7 +159,7 @@ mod tests {
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
                 event_set::EventSetId,
-                history::{AuthorEvent, BookEvent, EventOperation},
+                event::{AuthorEvent, BookEvent, EventOperation},
                 user::{User, UserId},
             },
             repository::{

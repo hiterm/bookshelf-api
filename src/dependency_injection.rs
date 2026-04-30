@@ -11,7 +11,7 @@ use crate::{
     use_case::interactor::{
         author::{CreateAuthorInteractor, DeleteAuthorInteractor, UpdateAuthorInteractor},
         book::{CreateBookInteractor, DeleteBookInteractor, UpdateBookInteractor},
-        history::{RestoreAuthorInteractor, RestoreBookInteractor},
+        event::{RestoreAuthorInteractor, RestoreBookInteractor},
         mutation::MutationInteractor,
         query::QueryInteractor,
         user::RegisterUserInteractor,

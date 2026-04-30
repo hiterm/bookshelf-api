@@ -5,7 +5,7 @@ use crate::use_case::{
     dto::{
         author::AuthorDto,
         book::BookDto,
-        history::{AuthorEventDto, BookEventDto},
+        event::{AuthorEventDto, BookEventDto},
     },
     error::UseCaseError,
 };

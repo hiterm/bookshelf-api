@@ -5,7 +5,7 @@ use crate::{
         entity::{
             author::{Author, AuthorId, AuthorName},
             book::{Book, BookId},
-            history::EventOperation,
+            event::EventOperation,
             user::UserId,
         },
         repository::{
@@ -17,10 +17,10 @@ use crate::{
         dto::{
             author::AuthorDto,
             book::BookDto,
-            history::{AuthorEventDto, BookEventDto},
+            event::{AuthorEventDto, BookEventDto},
         },
         error::UseCaseError,
-        traits::history::{
+        traits::event::{
             ListAuthorHistoryUseCase, ListBookHistoryUseCase, RestoreAuthorUseCase,
             RestoreBookUseCase,
         },
@@ -248,7 +248,7 @@ mod tests {
                 author::AuthorId,
                 book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
                 event_set::EventSetId,
-                history::{AuthorEvent, BookEvent, EventOperation},
+                event::{AuthorEvent, BookEvent, EventOperation},
             },
             repository::{
                 author_event_repository::MockAuthorEventRepository,
@@ -259,7 +259,7 @@ mod tests {
         },
         use_case::{
             error::UseCaseError,
-            traits::history::{
+            traits::event::{
                 ListAuthorHistoryUseCase, ListBookHistoryUseCase, RestoreAuthorUseCase,
                 RestoreBookUseCase,
             },

@@ -8,7 +8,7 @@ use crate::domain::{
     entity::{
         author::AuthorId,
         event_set::EventSetId,
-        history::{AuthorEvent, EventOperation},
+        event::{AuthorEvent, EventOperation},
         user::UserId,
     },
     error::DomainError,

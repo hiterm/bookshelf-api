@@ -7,7 +7,7 @@ use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBo
 use crate::dependency_injection::QI;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{BookDto, CreateBookDto, UpdateBookDto};
-use crate::use_case::dto::history::{AuthorEventDto, BookEventDto};
+use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
 
 use super::loader::AuthorLoader;
 

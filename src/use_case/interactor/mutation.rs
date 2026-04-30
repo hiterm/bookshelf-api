@@ -10,7 +10,7 @@ use crate::use_case::{
     traits::{
         author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
         book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
-        history::{RestoreAuthorUseCase, RestoreBookUseCase},
+        event::{RestoreAuthorUseCase, RestoreBookUseCase},
         mutation::MutationUseCase,
         user::RegisterUserUseCase,
     },
@@ -167,7 +167,7 @@ mod tests {
         traits::{
             author::{MockCreateAuthorUseCase, MockDeleteAuthorUseCase, MockUpdateAuthorUseCase},
             book::{MockCreateBookUseCase, MockDeleteBookUseCase, MockUpdateBookUseCase},
-            history::{MockRestoreAuthorUseCase, MockRestoreBookUseCase},
+            event::{MockRestoreAuthorUseCase, MockRestoreBookUseCase},
             mutation::MutationUseCase,
             user::MockRegisterUserUseCase,
         },

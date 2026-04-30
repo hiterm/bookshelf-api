@@ -11,7 +11,7 @@ use crate::{
             author::AuthorId,
             book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
             event_set::EventSetId,
-            history::{BookEvent, EventOperation},
+            event::{BookEvent, EventOperation},
             user::UserId,
         },
         error::DomainError,
@@ -178,7 +178,7 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                history::EventOperation,
+                event::EventOperation,
                 user::User,
             },
             error::DomainError,
