@@ -37,6 +37,7 @@ sqlx = { version = "0.8", features = [
   "postgres",
   "time",
   "uuid",
+  "json",
 ] }
 thiserror = "2.0.0"
 time = "0.3.47"

@@ -28,4 +28,12 @@ pub trait AuthorRepository: Send + Sync + 'static {
     ) -> Result<HashMap<AuthorId, Author>, DomainError>;
     async fn update(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError>;
     async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError>;
+    // Upserts or deletes the entity and records a restore event in one transaction.
+    // author=Some means upsert; author=None means delete (only author_id is used).
+    async fn restore(
+        &self,
+        user_id: &UserId,
+        source_event_id: i64,
+        author: Option<Author>,
+    ) -> Result<(), DomainError>;
 }

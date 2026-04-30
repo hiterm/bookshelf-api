@@ -648,6 +648,7 @@ mod tests {
             book_created_at: Some(OffsetDateTime::now_utc()),
             book_updated_at: Some(OffsetDateTime::now_utc()),
             changed_at: OffsetDateTime::now_utc(),
+            extra: None,
         }
     }
 
@@ -662,6 +663,7 @@ mod tests {
             author_created_at: Some(OffsetDateTime::now_utc()),
             author_updated_at: Some(OffsetDateTime::now_utc()),
             changed_at: OffsetDateTime::now_utc(),
+            extra: None,
         }
     }
 

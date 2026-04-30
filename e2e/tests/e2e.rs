@@ -1460,3 +1460,137 @@ async fn e2e_author_history_records_delete_operation() -> Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn e2e_restore_book_records_restore_event() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let author_id = create_test_author(
+        &format!("Restore Event Author {}", uuid::Uuid::new_v4()),
+        &token,
+    )
+    .await?;
+    let book_id = create_test_book("Original Title", &author_id, &token).await?;
+
+    // Get the create event_id
+    let history_query = format!(
+        r#"{{ bookHistory(bookId: "{}") {{ eventId operation extra }} }}"#,
+        book_id
+    );
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let entries = response["data"]["bookHistory"]
+        .as_array()
+        .context("bookHistory should be an array")?;
+    let create_event_id = entries[0]["eventId"]
+        .as_str()
+        .context("eventId should be a string")?
+        .to_owned();
+
+    // Restore to the create event
+    let restore_query = format!(
+        r#"mutation {{ restoreBook(eventId: "{}") {{ id title }} }}"#,
+        create_event_id
+    );
+    graphql_request(&restore_query, Some(&token)).await?;
+
+    // History should now include a restore event as the most recent entry
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let entries = response["data"]["bookHistory"]
+        .as_array()
+        .context("bookHistory should be an array after restore")?;
+
+    assert!(
+        entries.len() >= 2,
+        "should have at least 2 entries after restore"
+    );
+    assert_eq!(
+        entries[0]["operation"].as_str(),
+        Some("restore"),
+        "most recent entry should be 'restore'"
+    );
+    // extra should contain source_event_id
+    let extra = &entries[0]["extra"];
+    assert!(!extra.is_null(), "restore event extra should not be null");
+    let create_event_id_i64: i64 = create_event_id.parse().context("event_id should be i64")?;
+    assert_eq!(
+        extra["source_event_id"].as_i64(),
+        Some(create_event_id_i64),
+        "restore event extra should contain the source event id"
+    );
+    assert_eq!(
+        extra["version"].as_i64(),
+        Some(1),
+        "restore event extra should contain version 1"
+    );
+
+    delete_test_book(&book_id, &token).await?;
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_restore_author_records_restore_event() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let author_name = format!("Restore Event Author {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&author_name, &token).await?;
+
+    // Get the create event_id
+    let history_query = format!(
+        r#"{{ authorHistory(authorId: "{}") {{ eventId operation extra }} }}"#,
+        author_id
+    );
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let entries = response["data"]["authorHistory"]
+        .as_array()
+        .context("authorHistory should be an array")?;
+    let create_event_id = entries[0]["eventId"]
+        .as_str()
+        .context("eventId should be a string")?
+        .to_owned();
+
+    // Restore to the create event
+    let restore_query = format!(
+        r#"mutation {{ restoreAuthor(eventId: "{}") {{ id name }} }}"#,
+        create_event_id
+    );
+    graphql_request(&restore_query, Some(&token)).await?;
+
+    // History should now include a restore event as the most recent entry
+    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
+    let entries = response["data"]["authorHistory"]
+        .as_array()
+        .context("authorHistory should be an array after restore")?;
+
+    assert!(
+        entries.len() >= 2,
+        "should have at least 2 entries after restore"
+    );
+    assert_eq!(
+        entries[0]["operation"].as_str(),
+        Some("restore"),
+        "most recent entry should be 'restore'"
+    );
+    let extra = &entries[0]["extra"];
+    assert!(!extra.is_null(), "restore event extra should not be null");
+    let create_event_id_i64: i64 = create_event_id.parse().context("event_id should be i64")?;
+    assert_eq!(
+        extra["source_event_id"].as_i64(),
+        Some(create_event_id_i64),
+        "restore event extra should contain the source event id"
+    );
+    assert_eq!(
+        extra["version"].as_i64(),
+        Some(1),
+        "restore event extra should contain version 1"
+    );
+
+    delete_test_author(&author_id, &token).await?;
+    Ok(())
+}

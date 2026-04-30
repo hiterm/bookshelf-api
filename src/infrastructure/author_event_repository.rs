@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde_json::Value;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -25,6 +26,7 @@ struct AuthorEventRow {
     author_created_at: Option<OffsetDateTime>,
     author_updated_at: Option<OffsetDateTime>,
     changed_at: OffsetDateTime,
+    extra: Option<Value>,
 }
 
 fn row_to_author_event(row: AuthorEventRow) -> Result<AuthorEvent, DomainError> {
@@ -41,6 +43,7 @@ fn row_to_author_event(row: AuthorEventRow) -> Result<AuthorEvent, DomainError> 
         author_created_at: row.author_created_at,
         author_updated_at: row.author_updated_at,
         changed_at: row.changed_at,
+        extra: row.extra,
     })
 }
 
@@ -64,7 +67,7 @@ impl AuthorEventRepository for PgAuthorEventRepository {
     ) -> Result<Vec<AuthorEvent>, DomainError> {
         let rows: Vec<AuthorEventRow> = sqlx::query_as(
             "SELECT event_id, event_set_id, operation, author_id, name, yomi,
-                    author_created_at, author_updated_at, changed_at
+                    author_created_at, author_updated_at, changed_at, extra
              FROM author_event
              WHERE user_id = $1 AND author_id = $2
              ORDER BY changed_at DESC",
@@ -84,7 +87,7 @@ impl AuthorEventRepository for PgAuthorEventRepository {
     ) -> Result<Option<AuthorEvent>, DomainError> {
         let row: Option<AuthorEventRow> = sqlx::query_as(
             "SELECT event_id, event_set_id, operation, author_id, name, yomi,
-                    author_created_at, author_updated_at, changed_at
+                    author_created_at, author_updated_at, changed_at, extra
              FROM author_event
              WHERE user_id = $1 AND event_id = $2",
         )

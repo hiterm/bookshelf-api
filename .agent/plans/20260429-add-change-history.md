@@ -1352,6 +1352,294 @@ recreated.
 Run `cargo fmt --check && cargo clippy --fix --all-targets -- -D warnings &&
 cargo test` and ensure all pass before committing.
 
+---
+
+## Phase 3 — Restore/Snapshot Operations and Extra Metadata
+
+### Overview
+
+Phase 2 built a post-state event log with three operation types: `create`,
+`update`, `delete`. Phase 3 extends this with:
+
+1. **`restore` operation** — records the fact that a restore was performed,
+   what state it produced, and which event it was restored from.
+2. **`snapshot` operation** — a migration-time checkpoint of every existing
+   entity's current state, giving the event log a baseline for entities that
+   predate Phase 1.
+3. **`extra jsonb` column** — a flexible field on `book_event` and
+   `author_event` for operation-specific data that does not warrant a dedicated
+   column. Populated only for operations that need it (currently only
+   `restore`). Includes a `version` key to enable future schema evolution.
+
+For `restore` events, `extra` contains:
+```json
+{"version": 1, "source_event_id": <i64>}
+```
+
+For all other operations `extra` is `NULL`.
+
+The `restore` operation is recorded *inside the repository*, in the same
+transaction as the underlying upsert/delete, keeping the same pattern used for
+`create`, `update`, and `delete`. A new `restore` method is added to
+`BookRepository` and `AuthorRepository`; the interactors call `restore`
+instead of `update`/`create`/`delete` directly.
+
+The snapshot migration creates one `event_set` per user (operation =
+`snapshot`), with all of that user's books and authors inserted as individual
+event rows referencing that `event_set`. This preserves the invariant that a
+single `event_set` groups a cohesive set of events.
+
+### Progress
+
+**Phase 3 — Restore/Snapshot + extra** (started 2026-04-30)
+
+- [x] Milestone 15: Migration — rename history_operation, add ops, extra column, insert snapshots
+  - [x] plan updated
+- [x] Milestone 16: Domain — new HistoryOperation variants, extra field, restore method on repository traits
+  - [x] plan updated
+- [x] Milestone 17: Infrastructure — implement restore in Pg repositories, update event row structs
+  - [x] plan updated
+- [x] Milestone 18: Use case — update DTOs, update restore interactors
+  - [x] plan updated
+- [x] Milestone 19: Presentation — extra field in GraphQL types, regenerate schema
+  - [x] plan updated
+- [x] Milestone 20: Tests — unit and E2E
+  - [x] plan updated
+- [x] Milestone 21: Documentation — docs/database.md
+  - [x] plan updated
+
+### Decision Log (Phase 3)
+
+- Decision: Column name for operation-specific JSONB is `extra`, not
+  `metadata`. `metadata` implies "data about data" (too broad); `extra`
+  honestly conveys "additional fields that don't warrant a dedicated column".
+  Date/Author: 2026-04-30 / hiterm
+
+- Decision: `restore` is recorded as a new event inside `BookRepository::restore`
+  / `AuthorRepository::restore` (same transaction pattern as create/update/delete).
+  The interactors call `repository.restore(source_event_id, Option<&Entity>)`
+  instead of `update/create/delete` directly. This keeps event recording in the
+  infrastructure layer and gives `restore` its own operation type.
+  Date/Author: 2026-04-30 / hiterm
+
+- Decision: Snapshot migration creates one `event_set` per user, grouping all of
+  that user's books and authors in a single logical "snapshot" operation. This
+  matches the intended semantics of `event_set` as a grouping of events belonging
+  to one user action.
+  Date/Author: 2026-04-30 / hiterm
+
+- Decision: When restoring a `restore` or `snapshot` event, treat it the same
+  as `create`/`update` — apply the stored state. Both `restore` and `snapshot`
+  record a non-null post-state, so the same upsert path applies.
+  Date/Author: 2026-04-30 / hiterm
+
+### Milestone 15 — Migration
+
+Create a new migration file. Use `date +%Y%m%d%H%M%S` to generate the prefix.
+
+```sql
+-- Rename history_operation → event_operation
+ALTER TABLE history_operation RENAME TO event_operation;
+
+-- Add restore and snapshot operation types
+INSERT INTO event_operation VALUES ('restore'), ('snapshot');
+
+-- Add restore_book, restore_author, snapshot to event_set_operation
+INSERT INTO event_set_operation VALUES
+  ('restore_book'), ('restore_author'), ('snapshot');
+
+-- Add extra column to event tables
+ALTER TABLE book_event ADD COLUMN extra jsonb;
+ALTER TABLE author_event ADD COLUMN extra jsonb;
+
+-- Insert snapshot events for all existing entities (one event_set per user)
+WITH user_ids AS (
+  SELECT DISTINCT user_id FROM book
+  UNION
+  SELECT DISTINCT user_id FROM author
+),
+new_sets AS (
+  INSERT INTO event_set (id, user_id, operation)
+  SELECT gen_random_uuid(), user_id, 'snapshot'
+  FROM user_ids
+  RETURNING id, user_id
+),
+new_book_events AS (
+  INSERT INTO book_event
+    (event_set_id, operation, book_id, user_id,
+     title, isbn, read, owned, priority, format, store,
+     book_created_at, book_updated_at)
+  SELECT
+    ns.id, 'snapshot', b.id, b.user_id,
+    b.title, b.isbn, b.read, b.owned, b.priority, b.format, b.store,
+    b.created_at, b.updated_at
+  FROM book b
+  JOIN new_sets ns ON b.user_id = ns.user_id
+  RETURNING event_id, book_id
+),
+_book_event_authors AS (
+  INSERT INTO book_event_author (event_id, author_id)
+  SELECT nbe.event_id, ba.author_id
+  FROM new_book_events nbe
+  JOIN book_author ba ON ba.book_id = nbe.book_id
+)
+INSERT INTO author_event
+  (event_set_id, operation, author_id, user_id,
+   name, yomi, author_created_at, author_updated_at)
+SELECT
+  ns.id, 'snapshot', a.id, a.user_id,
+  a.name, a.yomi, a.created_at, a.updated_at
+FROM author a
+JOIN new_sets ns ON a.user_id = ns.user_id;
+```
+
+Verify: `cargo test` must pass (sqlx::test creates fresh DB from migrations).
+
+### Milestone 16 — Domain Layer
+
+**`src/domain/entity/history.rs`**
+
+Add `Restore` and `Snapshot` variants to `HistoryOperation`. Update
+`as_str` and `TryFrom<&str>`.
+
+Add `extra: Option<serde_json::Value>` to `BookEvent` and `AuthorEvent`.
+
+**`src/domain/repository/book_repository.rs`**
+
+Add `restore` to `BookRepository`:
+
+```rust
+async fn restore(
+    &self,
+    user_id: &UserId,
+    source_event_id: i64,
+    book: Option<&Book>,   // None = entity should be deleted
+) -> Result<(), DomainError>;
+```
+
+**`src/domain/repository/author_repository.rs`**
+
+Add `restore` to `AuthorRepository`:
+
+```rust
+async fn restore(
+    &self,
+    user_id: &UserId,
+    source_event_id: i64,
+    author: Option<&Author>,
+) -> Result<(), DomainError>;
+```
+
+Verify: `cargo build` must succeed.
+
+### Milestone 17 — Infrastructure Layer
+
+**`Cargo.toml`**: add `"json"` to sqlx features.
+
+**`src/infrastructure/book_event_repository.rs`**
+
+Add `extra: Option<serde_json::Value>` to `BookEventRow`. Update
+`row_to_book_event` to pass it through. Update both SELECT queries to
+include `be.extra`.
+
+**`src/infrastructure/author_event_repository.rs`**
+
+Same pattern for `AuthorEventRow`.
+
+**`src/infrastructure/book_repository.rs`**
+
+Implement `BookRepository::restore`:
+
+```
+BEGIN;
+  if book is Some(b):
+    -- Try UPDATE; if 0 rows affected, INSERT instead
+    -- INSERT INTO event_set (operation='restore_book')
+    -- INSERT INTO book_event (operation='restore', extra='{"version":1,"source_event_id":<id>}', all data fields)
+    -- INSERT INTO book_event_author for each author_id
+  else (book is None):
+    -- DELETE FROM book_author WHERE user_id=$1 AND book_id=$2 (ignore NotFound)
+    -- DELETE FROM book WHERE user_id=$1 AND id=$2 (ignore NotFound)
+    -- INSERT INTO event_set (operation='restore_book')
+    -- INSERT INTO book_event (operation='restore', extra='{"version":1,"source_event_id":<id>}', data fields NULL)
+COMMIT;
+```
+
+**`src/infrastructure/author_repository.rs`**
+
+Implement `AuthorRepository::restore` using the same pattern.
+
+Verify: `cargo build && cargo test` must pass.
+
+### Milestone 18 — Use Case Layer
+
+**`src/use_case/dto/history.rs`**
+
+Add `extra: Option<serde_json::Value>` to `BookEventDto` and `AuthorEventDto`.
+Update `From<BookEvent>` and `From<AuthorEvent>`.
+
+**`src/use_case/interactor/history.rs`**
+
+Update `RestoreBookInteractor::restore`: call
+`book_repository.restore(&user_id, event_id, Option<&Book>)` instead of
+`update`/`create`/`delete`. Match on `Restore` and `Snapshot` like `Create`
+and `Update`.
+
+Update `RestoreAuthorInteractor::restore` the same way.
+
+Verify: `cargo test` must pass.
+
+### Milestone 19 — Presentation Layer
+
+**`src/presentation/graphql/object.rs`**
+
+Add `extra: Option<Json<serde_json::Value>>` to `BookEventEntry` and
+`AuthorEventEntry`. Update `From` impls.
+
+Regenerate `schema.graphql`:
+
+```
+cargo run --bin gen_schema 2>/dev/null > schema.graphql
+```
+
+### Milestone 20 — Tests
+
+Unit tests to add/update in `src/use_case/interactor/history.rs`:
+
+- Update `restore_book_success`: expect `book_repo.restore()` instead of
+  `book_repo.update()`.
+- Update `restore_book_falls_back_to_create_when_deleted`: no longer needed
+  since `repository.restore` handles the upsert internally. Remove or replace
+  with `restore_book_success_calls_restore_with_source_event_id`.
+- Update `restore_book_delete_event_deletes_book`: expect `book_repo.restore()`
+  with `None` argument.
+- Same updates for author variants.
+- Add `restore_book_snapshot_event_applies_state` and
+  `restore_author_snapshot_event_applies_state`.
+
+E2E tests to add in `e2e/tests/e2e.rs`:
+
+- `e2e_restore_book_records_restore_event`: restore a book, then call
+  `bookHistory`; verify the most recent entry has `operation = "restore"` and
+  `extra` contains `source_event_id`.
+- `e2e_restore_author_records_restore_event`: same for author.
+- `e2e_snapshot_events_exist_for_all_entities`: not applicable for a fresh test
+  DB (snapshot migration runs on existing data only). Skip or note in comment.
+
+### Milestone 21 — Documentation
+
+Create `docs/database.md` documenting:
+
+- Overview of the event log design
+- Table descriptions: `event_set`, `event_set_operation`, `event_operation`,
+  `book_event`, `book_event_author`, `author_event`
+- `extra` field schema by operation type:
+  - `restore`: `{"version": 1, "source_event_id": <i64>}`
+  - all other operations: `null`
+- Version history for the `extra` schema
+
+---
+
 ## Concrete Steps
 
 Run all commands from the repository root

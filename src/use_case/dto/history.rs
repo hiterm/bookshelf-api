@@ -1,3 +1,4 @@
+use serde_json::Value;
 use time::OffsetDateTime;
 
 use crate::{
@@ -22,6 +23,7 @@ pub struct BookEventDto {
     pub book_created_at: Option<OffsetDateTime>,
     pub book_updated_at: Option<OffsetDateTime>,
     pub changed_at: OffsetDateTime,
+    pub extra: Option<Value>,
 }
 
 impl From<BookEvent> for BookEventDto {
@@ -42,6 +44,7 @@ impl From<BookEvent> for BookEventDto {
             book_created_at: e.book_created_at,
             book_updated_at: e.book_updated_at,
             changed_at: e.changed_at,
+            extra: e.extra,
         }
     }
 }
@@ -57,6 +60,7 @@ pub struct AuthorEventDto {
     pub author_created_at: Option<OffsetDateTime>,
     pub author_updated_at: Option<OffsetDateTime>,
     pub changed_at: OffsetDateTime,
+    pub extra: Option<Value>,
 }
 
 impl From<AuthorEvent> for AuthorEventDto {
@@ -71,6 +75,7 @@ impl From<AuthorEvent> for AuthorEventDto {
             author_created_at: e.author_created_at,
             author_updated_at: e.author_updated_at,
             changed_at: e.changed_at,
+            extra: e.extra,
         }
     }
 }

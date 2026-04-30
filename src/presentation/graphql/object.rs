@@ -1,6 +1,7 @@
 use async_graphql::dataloader::DataLoader;
-use async_graphql::{ComplexObject, Context, Enum, Result};
+use async_graphql::{ComplexObject, Context, Enum, Json, Result};
 use async_graphql::{ID, InputObject, SimpleObject};
+use serde_json::Value;
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::QI;
@@ -297,6 +298,7 @@ pub struct BookEventEntry {
     pub book_created_at: Option<i64>,
     pub book_updated_at: Option<i64>,
     pub changed_at: i64,
+    pub extra: Option<Json<Value>>,
 }
 
 impl From<BookEventDto> for BookEventEntry {
@@ -317,6 +319,7 @@ impl From<BookEventDto> for BookEventEntry {
             book_created_at: dto.book_created_at.map(|t| t.unix_timestamp()),
             book_updated_at: dto.book_updated_at.map(|t| t.unix_timestamp()),
             changed_at: dto.changed_at.unix_timestamp(),
+            extra: dto.extra.map(Json),
         }
     }
 }
@@ -332,6 +335,7 @@ pub struct AuthorEventEntry {
     pub author_created_at: Option<i64>,
     pub author_updated_at: Option<i64>,
     pub changed_at: i64,
+    pub extra: Option<Json<Value>>,
 }
 
 impl From<AuthorEventDto> for AuthorEventEntry {
@@ -346,6 +350,7 @@ impl From<AuthorEventDto> for AuthorEventEntry {
             author_created_at: dto.author_created_at.map(|t| t.unix_timestamp()),
             author_updated_at: dto.author_updated_at.map(|t| t.unix_timestamp()),
             changed_at: dto.changed_at.unix_timestamp(),
+            extra: dto.extra.map(Json),
         }
     }
 }

@@ -1,3 +1,4 @@
+use serde_json::Value;
 use time::OffsetDateTime;
 
 use crate::{
@@ -14,6 +15,8 @@ pub enum HistoryOperation {
     Create,
     Update,
     Delete,
+    Restore,
+    Snapshot,
 }
 
 impl HistoryOperation {
@@ -22,6 +25,8 @@ impl HistoryOperation {
             HistoryOperation::Create => "create",
             HistoryOperation::Update => "update",
             HistoryOperation::Delete => "delete",
+            HistoryOperation::Restore => "restore",
+            HistoryOperation::Snapshot => "snapshot",
         }
     }
 }
@@ -34,6 +39,8 @@ impl TryFrom<&str> for HistoryOperation {
             "create" => Ok(HistoryOperation::Create),
             "update" => Ok(HistoryOperation::Update),
             "delete" => Ok(HistoryOperation::Delete),
+            "restore" => Ok(HistoryOperation::Restore),
+            "snapshot" => Ok(HistoryOperation::Snapshot),
             _ => Err(format!("Unknown history operation: {}", value)),
         }
     }
@@ -45,7 +52,7 @@ pub struct BookEvent {
     pub event_set_id: EventSetId,
     pub operation: HistoryOperation,
     pub book_id: BookId,
-    // Some for create/update; None for delete:
+    // Some for create/update/restore/snapshot; None for delete:
     pub title: Option<BookTitle>,
     pub author_ids: Vec<AuthorId>,
     pub isbn: Option<Isbn>,
@@ -57,6 +64,8 @@ pub struct BookEvent {
     pub book_created_at: Option<OffsetDateTime>,
     pub book_updated_at: Option<OffsetDateTime>,
     pub changed_at: OffsetDateTime,
+    // Operation-specific extra data (e.g. source_event_id for restore)
+    pub extra: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,10 +74,12 @@ pub struct AuthorEvent {
     pub event_set_id: EventSetId,
     pub operation: HistoryOperation,
     pub author_id: AuthorId,
-    // Some for create/update; None for delete:
+    // Some for create/update/restore/snapshot; None for delete:
     pub name: Option<String>,
     pub yomi: Option<String>,
     pub author_created_at: Option<OffsetDateTime>,
     pub author_updated_at: Option<OffsetDateTime>,
     pub changed_at: OffsetDateTime,
+    // Operation-specific extra data (e.g. source_event_id for restore)
+    pub extra: Option<Value>,
 }

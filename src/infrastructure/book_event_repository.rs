@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde_json::Value;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -35,6 +36,7 @@ struct BookEventRow {
     book_updated_at: Option<OffsetDateTime>,
     changed_at: OffsetDateTime,
     author_ids: Option<Vec<Uuid>>,
+    extra: Option<Value>,
 }
 
 fn row_to_book_event(row: BookEventRow) -> Result<BookEvent, DomainError> {
@@ -76,6 +78,7 @@ fn row_to_book_event(row: BookEventRow) -> Result<BookEvent, DomainError> {
         book_created_at: row.book_created_at,
         book_updated_at: row.book_updated_at,
         changed_at: row.changed_at,
+        extra: row.extra,
     })
 }
 
@@ -113,7 +116,8 @@ impl BookEventRepository for PgBookEventRepository {
                 be.book_created_at,
                 be.book_updated_at,
                 be.changed_at,
-                array_agg(bea.author_id) FILTER (WHERE bea.author_id IS NOT NULL) AS author_ids
+                array_agg(bea.author_id) FILTER (WHERE bea.author_id IS NOT NULL) AS author_ids,
+                be.extra
             FROM book_event be
             LEFT JOIN book_event_author bea ON be.event_id = bea.event_id
             WHERE be.user_id = $1 AND be.book_id = $2
@@ -149,7 +153,8 @@ impl BookEventRepository for PgBookEventRepository {
                 be.book_created_at,
                 be.book_updated_at,
                 be.changed_at,
-                array_agg(bea.author_id) FILTER (WHERE bea.author_id IS NOT NULL) AS author_ids
+                array_agg(bea.author_id) FILTER (WHERE bea.author_id IS NOT NULL) AS author_ids,
+                be.extra
             FROM book_event be
             LEFT JOIN book_event_author bea ON be.event_id = bea.event_id
             WHERE be.user_id = $1 AND be.event_id = $2

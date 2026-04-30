@@ -8,7 +8,6 @@ use crate::{
             history::HistoryOperation,
             user::UserId,
         },
-        error::DomainError,
         repository::{
             author_event_repository::AuthorEventRepository, author_repository::AuthorRepository,
             book_event_repository::BookEventRepository, book_repository::BookRepository,
@@ -121,7 +120,10 @@ where
             })?;
 
         match event.operation {
-            HistoryOperation::Create | HistoryOperation::Update => {
+            HistoryOperation::Create
+            | HistoryOperation::Update
+            | HistoryOperation::Restore
+            | HistoryOperation::Snapshot => {
                 let book = Book::new(
                     event.book_id,
                     event.title.ok_or_else(|| {
@@ -154,21 +156,16 @@ where
                     })?,
                 )?;
 
-                match self.book_repository.update(&user_id, &book).await {
-                    Ok(()) => {}
-                    Err(DomainError::NotFound { .. }) => {
-                        self.book_repository.create(&user_id, &book).await?;
-                    }
-                    Err(e) => return Err(UseCaseError::from(e)),
-                }
-
-                Ok(Some(BookDto::from(book)))
+                let dto = BookDto::from(book.clone());
+                self.book_repository
+                    .restore(&user_id, event_id, Some(book))
+                    .await?;
+                Ok(Some(dto))
             }
             HistoryOperation::Delete => {
-                match self.book_repository.delete(&user_id, &event.book_id).await {
-                    Ok(()) | Err(DomainError::NotFound { .. }) => {}
-                    Err(e) => return Err(UseCaseError::from(e)),
-                }
+                self.book_repository
+                    .restore(&user_id, event_id, None)
+                    .await?;
                 Ok(None)
             }
         }
@@ -212,32 +209,26 @@ where
             })?;
 
         match event.operation {
-            HistoryOperation::Create | HistoryOperation::Update => {
+            HistoryOperation::Create
+            | HistoryOperation::Update
+            | HistoryOperation::Restore
+            | HistoryOperation::Snapshot => {
                 let name = event.name.ok_or_else(|| {
                     UseCaseError::Validation("author_event name is null".to_string())
                 })?;
                 let author_name = AuthorName::new(name)?;
                 let author = Author::new(event.author_id, author_name)?;
 
-                match self.author_repository.update(&user_id, &author).await {
-                    Ok(()) => {}
-                    Err(DomainError::NotFound { .. }) => {
-                        self.author_repository.create(&user_id, &author).await?;
-                    }
-                    Err(e) => return Err(UseCaseError::from(e)),
-                }
-
-                Ok(Some(AuthorDto::from(author)))
+                let dto = AuthorDto::from(author.clone());
+                self.author_repository
+                    .restore(&user_id, event_id, Some(author))
+                    .await?;
+                Ok(Some(dto))
             }
             HistoryOperation::Delete => {
-                match self
-                    .author_repository
-                    .delete(&user_id, &event.author_id)
-                    .await
-                {
-                    Ok(()) | Err(DomainError::NotFound { .. }) => {}
-                    Err(e) => return Err(UseCaseError::from(e)),
-                }
+                self.author_repository
+                    .restore(&user_id, event_id, None)
+                    .await?;
                 Ok(None)
             }
         }
@@ -294,6 +285,7 @@ mod tests {
             book_created_at: Some(OffsetDateTime::now_utc()),
             book_updated_at: Some(OffsetDateTime::now_utc()),
             changed_at: OffsetDateTime::now_utc(),
+            extra: None,
         }
     }
 
@@ -314,6 +306,7 @@ mod tests {
             book_created_at: None,
             book_updated_at: None,
             changed_at: OffsetDateTime::now_utc(),
+            extra: None,
         }
     }
 
@@ -328,6 +321,7 @@ mod tests {
             author_created_at: Some(OffsetDateTime::now_utc()),
             author_updated_at: Some(OffsetDateTime::now_utc()),
             changed_at: OffsetDateTime::now_utc(),
+            extra: None,
         }
     }
 
@@ -342,6 +336,7 @@ mod tests {
             author_created_at: None,
             author_updated_at: None,
             changed_at: OffsetDateTime::now_utc(),
+            extra: None,
         }
     }
 
@@ -429,49 +424,15 @@ mod tests {
 
         let mut book_repo = MockBookRepository::new();
         book_repo
-            .expect_update()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .expect_restore()
+            .with(always(), eq(1i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor = RestoreBookInteractor::new(book_repo, history_repo);
         let result = interactor.restore("user1", 1).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().unwrap().title, "Old Title");
-    }
-
-    #[tokio::test]
-    async fn restore_book_falls_back_to_create_when_deleted() {
-        let book_uuid = Uuid::new_v4();
-        let event = make_book_event(book_uuid);
-
-        let mut history_repo = MockBookEventRepository::new();
-        history_repo
-            .expect_find_by_event_id()
-            .with(always(), always())
-            .returning(move |_, _| Ok(Some(event.clone())));
-
-        let mut book_repo = MockBookRepository::new();
-        book_repo
-            .expect_update()
-            .with(always(), always())
-            .returning(|_, _| {
-                Err(crate::domain::error::DomainError::NotFound {
-                    entity_type: "book",
-                    entity_id: "some-id".to_string(),
-                    user_id: "user1".to_string(),
-                })
-            });
-        book_repo
-            .expect_create()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
-
-        let interactor = RestoreBookInteractor::new(book_repo, history_repo);
-        let result = interactor.restore("user1", 1).await;
-
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -487,15 +448,40 @@ mod tests {
 
         let mut book_repo = MockBookRepository::new();
         book_repo
-            .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .expect_restore()
+            .with(always(), eq(10i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor = RestoreBookInteractor::new(book_repo, history_repo);
         let result = interactor.restore("user1", 10).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn restore_book_snapshot_event_applies_state() {
+        let book_uuid = Uuid::new_v4();
+        let mut event = make_book_event(book_uuid);
+        event.operation = HistoryOperation::Snapshot;
+
+        let mut history_repo = MockBookEventRepository::new();
+        history_repo
+            .expect_find_by_event_id()
+            .with(always(), eq(1i64))
+            .returning(move |_, _| Ok(Some(event.clone())));
+
+        let mut book_repo = MockBookRepository::new();
+        book_repo
+            .expect_restore()
+            .with(always(), eq(1i64), always())
+            .returning(|_, _, _| Ok(()));
+
+        let interactor = RestoreBookInteractor::new(book_repo, history_repo);
+        let result = interactor.restore("user1", 1).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -526,49 +512,15 @@ mod tests {
 
         let mut author_repo = MockAuthorRepository::new();
         author_repo
-            .expect_update()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .expect_restore()
+            .with(always(), eq(2i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
         let result = interactor.restore("user1", 2).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().unwrap().name, "Old Name");
-    }
-
-    #[tokio::test]
-    async fn restore_author_falls_back_to_create_when_deleted() {
-        let author_uuid = Uuid::new_v4();
-        let event = make_author_event(author_uuid);
-
-        let mut history_repo = MockAuthorEventRepository::new();
-        history_repo
-            .expect_find_by_event_id()
-            .with(always(), always())
-            .returning(move |_, _| Ok(Some(event.clone())));
-
-        let mut author_repo = MockAuthorRepository::new();
-        author_repo
-            .expect_update()
-            .with(always(), always())
-            .returning(|_, _| {
-                Err(crate::domain::error::DomainError::NotFound {
-                    entity_type: "author",
-                    entity_id: "some-id".to_string(),
-                    user_id: "user1".to_string(),
-                })
-            });
-        author_repo
-            .expect_create()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
-
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
-        let result = interactor.restore("user1", 2).await;
-
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -584,14 +536,39 @@ mod tests {
 
         let mut author_repo = MockAuthorRepository::new();
         author_repo
-            .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .expect_restore()
+            .with(always(), eq(20i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
         let result = interactor.restore("user1", 20).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn restore_author_snapshot_event_applies_state() {
+        let author_uuid = Uuid::new_v4();
+        let mut event = make_author_event(author_uuid);
+        event.operation = HistoryOperation::Snapshot;
+
+        let mut history_repo = MockAuthorEventRepository::new();
+        history_repo
+            .expect_find_by_event_id()
+            .with(always(), eq(2i64))
+            .returning(move |_, _| Ok(Some(event.clone())));
+
+        let mut author_repo = MockAuthorRepository::new();
+        author_repo
+            .expect_restore()
+            .with(always(), eq(2i64), always())
+            .returning(|_, _, _| Ok(()));
+
+        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let result = interactor.restore("user1", 2).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
     }
 }

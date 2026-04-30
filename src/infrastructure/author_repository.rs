@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
+use serde_json::json;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -272,6 +273,103 @@ impl AuthorRepository for PgAuthorRepository {
         .bind(user_id.as_str())
         .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    async fn restore(
+        &self,
+        user_id: &UserId,
+        source_event_id: i64,
+        author: Option<Author>,
+    ) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'restore_author')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        let extra = json!({"version": 1, "source_event_id": source_event_id});
+
+        match author {
+            Some(author) => {
+                let result = sqlx::query("UPDATE author SET name=$2 WHERE id=$1 AND user_id=$3")
+                    .bind(author.id().to_uuid())
+                    .bind(author.name().as_str())
+                    .bind(user_id.as_str())
+                    .execute(&mut *tx)
+                    .await?;
+
+                if result.rows_affected() == 0 {
+                    sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
+                        .bind(author.id().to_uuid())
+                        .bind(user_id.as_str())
+                        .bind(author.name().as_str())
+                        .execute(&mut *tx)
+                        .await?;
+                }
+
+                let snapshot: AuthorSnapshotRow = sqlx::query_as(
+                    "SELECT name, yomi, created_at, updated_at FROM author
+                     WHERE id = $1 AND user_id = $2",
+                )
+                .bind(author.id().to_uuid())
+                .bind(user_id.as_str())
+                .fetch_one(&mut *tx)
+                .await?;
+
+                sqlx::query(
+                    "INSERT INTO author_event
+                       (event_set_id, operation, author_id, user_id,
+                        name, yomi, author_created_at, author_updated_at, extra)
+                     VALUES ($1, 'restore', $2, $3, $4, $5, $6, $7, $8)",
+                )
+                .bind(es_id)
+                .bind(author.id().to_uuid())
+                .bind(user_id.as_str())
+                .bind(&snapshot.name)
+                .bind(&snapshot.yomi)
+                .bind(snapshot.created_at)
+                .bind(snapshot.updated_at)
+                .bind(sqlx::types::Json(&extra))
+                .execute(&mut *tx)
+                .await?;
+            }
+            None => {
+                let (author_id,): (Uuid,) = sqlx::query_as(
+                    "SELECT author_id FROM author_event WHERE event_id = $1 AND user_id = $2",
+                )
+                .bind(source_event_id)
+                .bind(user_id.as_str())
+                .fetch_one(&mut *tx)
+                .await?;
+
+                sqlx::query("DELETE FROM author WHERE id=$1 AND user_id=$2")
+                    .bind(author_id)
+                    .bind(user_id.as_str())
+                    .execute(&mut *tx)
+                    .await
+                    .ok(); // NotFound is acceptable
+
+                sqlx::query(
+                    "INSERT INTO author_event (event_set_id, operation, author_id, user_id, extra)
+                     VALUES ($1, 'restore', $2, $3, $4)",
+                )
+                .bind(es_id)
+                .bind(author_id)
+                .bind(user_id.as_str())
+                .bind(sqlx::types::Json(&extra))
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
 
         tx.commit().await?;
 
