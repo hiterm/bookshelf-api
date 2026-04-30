@@ -3,7 +3,7 @@
 ## Overview
 
 The event log records every state change to `book` and `author` entities.
-Each operation (create, update, delete, restore, snapshot) produces one
+Each operation (create, update, delete, restore, snapshot_all) produces one
 `event_set` row and one or more event rows in `book_event` / `author_event`.
 The event tables are append-only; live entity data lives in `book` and
 `author` as before.
@@ -24,7 +24,7 @@ Lookup table for valid `event_set.operation` values.
 | `update_author` | An author was updated                            |
 | `delete_author` | An author was deleted                            |
 | `restore_author`| An author restore was performed                  |
-| `snapshot`      | A point-in-time snapshot of all entities (system)|
+| `snapshot_all`  | A point-in-time snapshot of all entities (system)|
 
 ### `event_set`
 
@@ -37,7 +37,7 @@ Groups one or more event rows belonging to a single logical user operation.
 | `operation`  | text FK     | Operation type (references `event_set_operation`)  |
 | `created_at` | timestamptz | When the operation occurred                        |
 
-For `snapshot` operations, one `event_set` is created per user, and all of
+For `snapshot_all` operations, one `event_set` is created per user, and all of
 that user's books and authors are inserted as event rows under that single
 `event_set`.
 
