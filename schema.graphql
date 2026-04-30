@@ -3,15 +3,15 @@ type Author {
 	name: String!
 }
 
-type AuthorHistoryEntry {
-	historyId: ID!
-	changeSetId: ID!
+type AuthorEventEntry {
+	eventId: ID!
+	eventSetId: ID!
 	operation: String!
 	authorId: ID!
-	name: String!
-	yomi: String!
-	authorCreatedAt: Int!
-	authorUpdatedAt: Int!
+	name: String
+	yomi: String
+	authorCreatedAt: Int
+	authorUpdatedAt: Int
 	changedAt: Int!
 }
 
@@ -29,28 +29,28 @@ type Book {
 	authors: [Author!]!
 }
 
+type BookEventEntry {
+	eventId: ID!
+	eventSetId: ID!
+	operation: String!
+	bookId: ID!
+	title: String
+	authorIds: [ID!]!
+	isbn: String
+	read: Boolean
+	owned: Boolean
+	priority: Int
+	format: BookFormat
+	store: BookStore
+	bookCreatedAt: Int
+	bookUpdatedAt: Int
+	changedAt: Int!
+}
+
 enum BookFormat {
 	E_BOOK
 	PRINTED
 	UNKNOWN
-}
-
-type BookHistoryEntry {
-	historyId: ID!
-	changeSetId: ID!
-	operation: String!
-	bookId: ID!
-	title: String!
-	authorIds: [ID!]!
-	isbn: String!
-	read: Boolean!
-	owned: Boolean!
-	priority: Int!
-	format: BookFormat!
-	store: BookStore!
-	bookCreatedAt: Int!
-	bookUpdatedAt: Int!
-	changedAt: Int!
 }
 
 enum BookStore {
@@ -81,8 +81,8 @@ type Mutation {
 	createAuthor(authorData: CreateAuthorInput!): Author!
 	updateAuthor(authorData: UpdateAuthorInput!): Author!
 	deleteAuthor(authorId: ID!): String!
-	restoreBook(historyId: ID!): Book!
-	restoreAuthor(historyId: ID!): Author!
+	restoreBook(eventId: ID!): Book
+	restoreAuthor(eventId: ID!): Author
 }
 
 type Query {
@@ -91,8 +91,8 @@ type Query {
 	books: [Book!]!
 	author(id: ID!): Author
 	authors: [Author!]!
-	bookHistory(bookId: ID!): [BookHistoryEntry!]!
-	authorHistory(authorId: ID!): [AuthorHistoryEntry!]!
+	bookHistory(bookId: ID!): [BookEventEntry!]!
+	authorHistory(authorId: ID!): [AuthorEventEntry!]!
 }
 
 input UpdateAuthorInput {

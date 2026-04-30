@@ -5,7 +5,7 @@ use crate::{
     domain::entity::{
         author::AuthorId,
         book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-        change_set::ChangeSetId,
+        event_set::EventSetId,
     },
 };
 
@@ -40,33 +40,35 @@ impl TryFrom<&str> for HistoryOperation {
 }
 
 #[derive(Debug, Clone)]
-pub struct BookHistory {
-    pub history_id: i64,
-    pub change_set_id: ChangeSetId,
+pub struct BookEvent {
+    pub event_id: i64,
+    pub event_set_id: EventSetId,
     pub operation: HistoryOperation,
     pub book_id: BookId,
-    pub title: BookTitle,
+    // Some for create/update; None for delete:
+    pub title: Option<BookTitle>,
     pub author_ids: Vec<AuthorId>,
-    pub isbn: Isbn,
-    pub read: ReadFlag,
-    pub owned: OwnedFlag,
-    pub priority: Priority,
-    pub format: BookFormat,
-    pub store: BookStore,
-    pub book_created_at: OffsetDateTime,
-    pub book_updated_at: OffsetDateTime,
+    pub isbn: Option<Isbn>,
+    pub read: Option<ReadFlag>,
+    pub owned: Option<OwnedFlag>,
+    pub priority: Option<Priority>,
+    pub format: Option<BookFormat>,
+    pub store: Option<BookStore>,
+    pub book_created_at: Option<OffsetDateTime>,
+    pub book_updated_at: Option<OffsetDateTime>,
     pub changed_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone)]
-pub struct AuthorHistory {
-    pub history_id: i64,
-    pub change_set_id: ChangeSetId,
+pub struct AuthorEvent {
+    pub event_id: i64,
+    pub event_set_id: EventSetId,
     pub operation: HistoryOperation,
     pub author_id: AuthorId,
-    pub name: String,
-    pub yomi: String,
-    pub author_created_at: OffsetDateTime,
-    pub author_updated_at: OffsetDateTime,
+    // Some for create/update; None for delete:
+    pub name: Option<String>,
+    pub yomi: Option<String>,
+    pub author_created_at: Option<OffsetDateTime>,
+    pub author_updated_at: Option<OffsetDateTime>,
     pub changed_at: OffsetDateTime,
 }

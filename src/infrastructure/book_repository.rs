@@ -32,20 +32,6 @@ struct BookRow {
     updated_at: OffsetDateTime,
 }
 
-#[derive(sqlx::FromRow)]
-struct BookSnapshotRow {
-    title: String,
-    isbn: String,
-    read: bool,
-    owned: bool,
-    priority: i32,
-    format: String,
-    store: String,
-    created_at: OffsetDateTime,
-    updated_at: OffsetDateTime,
-    author_ids: Option<Vec<Uuid>>,
-}
-
 #[derive(Debug, Clone)]
 pub struct PgBookRepository {
     pool: PgPool,
@@ -109,23 +95,23 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
-        let cs_id = Uuid::new_v4();
+        let es_id = Uuid::new_v4();
         sqlx::query(
-            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'create_book')",
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_book')",
         )
-        .bind(cs_id)
+        .bind(es_id)
         .bind(user_id.as_str())
         .execute(&mut *tx)
         .await?;
 
-        let (history_id,): (i64,) = sqlx::query_as(
-            "INSERT INTO book_history
-               (change_set_id, operation, book_id, user_id, title, isbn, read, owned,
+        let (event_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO book_event
+               (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
                 priority, format, store, book_created_at, book_updated_at)
              VALUES ($1, 'create', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-             RETURNING history_id",
+             RETURNING event_id",
         )
-        .bind(cs_id)
+        .bind(es_id)
         .bind(book.id().to_uuid())
         .bind(user_id.as_str())
         .bind(book.title().as_str())
@@ -142,10 +128,10 @@ impl BookRepository for PgBookRepository {
 
         if !author_ids.is_empty() {
             sqlx::query(
-                "INSERT INTO book_history_author (history_id, author_id)
+                "INSERT INTO book_event_author (event_id, author_id)
                         SELECT $1, * FROM UNNEST($2::uuid[])",
             )
-            .bind(history_id)
+            .bind(event_id)
             .bind(&author_ids)
             .execute(&mut *tx)
             .await?;
@@ -299,24 +285,6 @@ impl BookRepository for PgBookRepository {
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
 
-        // Snapshot current state before overwriting
-        let snapshot: Option<BookSnapshotRow> = sqlx::query_as(
-            "WITH snap AS (
-                SELECT b.title, b.isbn, b.read, b.owned, b.priority, b.format, b.store,
-                       b.created_at, b.updated_at
-                FROM book b WHERE b.id = $1 AND b.user_id = $2
-            )
-            SELECT snap.*, array_agg(ba.author_id) FILTER (WHERE ba.author_id IS NOT NULL) AS author_ids
-            FROM snap
-            LEFT JOIN book_author ba ON ba.book_id = $1 AND ba.user_id = $2
-            GROUP BY snap.title, snap.isbn, snap.read, snap.owned, snap.priority,
-                     snap.format, snap.store, snap.created_at, snap.updated_at",
-        )
-        .bind(book.id().to_uuid())
-        .bind(user_id.as_str())
-        .fetch_optional(&mut *tx)
-        .await?;
-
         let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
@@ -390,49 +358,47 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
-        if let Some(snap) = snapshot {
-            let cs_id = Uuid::new_v4();
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'update_book')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        let (event_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO book_event
+               (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                priority, format, store, book_created_at, book_updated_at)
+             VALUES ($1, 'update', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             RETURNING event_id",
+        )
+        .bind(es_id)
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+        if !author_ids.is_empty() {
             sqlx::query(
-                "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'update_book')",
+                "INSERT INTO book_event_author (event_id, author_id)
+                        SELECT $1, * FROM UNNEST($2::uuid[])",
             )
-            .bind(cs_id)
-            .bind(user_id.as_str())
+            .bind(event_id)
+            .bind(&author_ids)
             .execute(&mut *tx)
             .await?;
-
-            let (history_id,): (i64,) = sqlx::query_as(
-                "INSERT INTO book_history
-                   (change_set_id, operation, book_id, user_id, title, isbn, read, owned,
-                    priority, format, store, book_created_at, book_updated_at)
-                 VALUES ($1, 'update', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                 RETURNING history_id",
-            )
-            .bind(cs_id)
-            .bind(book.id().to_uuid())
-            .bind(user_id.as_str())
-            .bind(&snap.title)
-            .bind(&snap.isbn)
-            .bind(snap.read)
-            .bind(snap.owned)
-            .bind(snap.priority)
-            .bind(&snap.format)
-            .bind(&snap.store)
-            .bind(snap.created_at)
-            .bind(snap.updated_at)
-            .fetch_one(&mut *tx)
-            .await?;
-
-            let snap_author_ids: Vec<Uuid> = snap.author_ids.unwrap_or_default();
-            if !snap_author_ids.is_empty() {
-                sqlx::query(
-                    "INSERT INTO book_history_author (history_id, author_id)
-                            SELECT $1, * FROM UNNEST($2::uuid[])",
-                )
-                .bind(history_id)
-                .bind(&snap_author_ids)
-                .execute(&mut *tx)
-                .await?;
-            }
         }
 
         tx.commit().await?;
@@ -442,24 +408,6 @@ impl BookRepository for PgBookRepository {
 
     async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
-
-        // Snapshot current state before deletion
-        let snapshot: Option<BookSnapshotRow> = sqlx::query_as(
-            "WITH snap AS (
-                SELECT b.title, b.isbn, b.read, b.owned, b.priority, b.format, b.store,
-                       b.created_at, b.updated_at
-                FROM book b WHERE b.id = $1 AND b.user_id = $2
-            )
-            SELECT snap.*, array_agg(ba.author_id) FILTER (WHERE ba.author_id IS NOT NULL) AS author_ids
-            FROM snap
-            LEFT JOIN book_author ba ON ba.book_id = $1 AND ba.user_id = $2
-            GROUP BY snap.title, snap.isbn, snap.read, snap.owned, snap.priority,
-                     snap.format, snap.store, snap.created_at, snap.updated_at",
-        )
-        .bind(book_id.to_uuid())
-        .bind(user_id.as_str())
-        .fetch_optional(&mut *tx)
-        .await?;
 
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
@@ -490,50 +438,24 @@ impl BookRepository for PgBookRepository {
             }
         }
 
-        if let Some(snap) = snapshot {
-            let cs_id = Uuid::new_v4();
-            sqlx::query(
-                "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'delete_book')",
-            )
-            .bind(cs_id)
-            .bind(user_id.as_str())
-            .execute(&mut *tx)
-            .await?;
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'delete_book')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
 
-            let (history_id,): (i64,) = sqlx::query_as(
-                "INSERT INTO book_history
-                   (change_set_id, operation, book_id, user_id, title, isbn, read, owned,
-                    priority, format, store, book_created_at, book_updated_at)
-                 VALUES ($1, 'delete', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                 RETURNING history_id",
-            )
-            .bind(cs_id)
-            .bind(book_id.to_uuid())
-            .bind(user_id.as_str())
-            .bind(&snap.title)
-            .bind(&snap.isbn)
-            .bind(snap.read)
-            .bind(snap.owned)
-            .bind(snap.priority)
-            .bind(&snap.format)
-            .bind(&snap.store)
-            .bind(snap.created_at)
-            .bind(snap.updated_at)
-            .fetch_one(&mut *tx)
-            .await?;
-
-            let snap_author_ids: Vec<Uuid> = snap.author_ids.unwrap_or_default();
-            if !snap_author_ids.is_empty() {
-                sqlx::query(
-                    "INSERT INTO book_history_author (history_id, author_id)
-                            SELECT $1, * FROM UNNEST($2::uuid[])",
-                )
-                .bind(history_id)
-                .bind(&snap_author_ids)
-                .execute(&mut *tx)
-                .await?;
-            }
-        }
+        sqlx::query(
+            "INSERT INTO book_event (event_set_id, operation, book_id, user_id)
+             VALUES ($1, 'delete', $2, $3)",
+        )
+        .bind(es_id)
+        .bind(book_id.to_uuid())
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
 
         tx.commit().await?;
 
@@ -992,7 +914,7 @@ mod tests {
         book_repository.create(&user_id, &book).await?;
 
         let (cs_op,): (String,) = sqlx::query_as(
-            "SELECT operation FROM change_set WHERE user_id = $1 AND operation = 'create_book'",
+            "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'create_book'",
         )
         .bind(user_id.as_str())
         .fetch_one(&pool)
@@ -1000,7 +922,7 @@ mod tests {
         assert_eq!(cs_op, "create_book");
 
         let (bh_op, bh_title): (String, String) =
-            sqlx::query_as("SELECT operation, title FROM book_history WHERE user_id = $1")
+            sqlx::query_as("SELECT operation, title FROM book_event WHERE user_id = $1")
                 .bind(user_id.as_str())
                 .fetch_one(&pool)
                 .await?;
@@ -1008,9 +930,9 @@ mod tests {
         assert_eq!(bh_title, "title1");
 
         let (author_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM book_history_author bha
-             JOIN book_history bh ON bha.history_id = bh.history_id
-             WHERE bh.user_id = $1",
+            "SELECT COUNT(*) FROM book_event_author bea
+             JOIN book_event be ON bea.event_id = be.event_id
+             WHERE be.user_id = $1",
         )
         .bind(user_id.as_str())
         .fetch_one(&pool)
@@ -1021,7 +943,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_update_records_pre_update_snapshot(pool: PgPool) -> anyhow::Result<()> {
+    async fn test_update_records_post_update_state(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
@@ -1048,7 +970,7 @@ mod tests {
         book_repository.update(&user_id, &updated).await?;
 
         let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT operation, title FROM book_history WHERE user_id = $1
+            "SELECT operation, title FROM book_event WHERE user_id = $1
              ORDER BY changed_at DESC",
         )
         .bind(user_id.as_str())
@@ -1056,13 +978,13 @@ mod tests {
         .await?;
 
         assert_eq!(rows.len(), 2);
-        // Most recent entry is the update snapshot (pre-update state)
+        // Most recent entry is the update event (post-update state)
         assert_eq!(rows[0].0, "update");
-        assert_eq!(rows[0].1, "title1"); // original title captured before update
+        assert_eq!(rows[0].1, "title2");
         assert_eq!(rows[1].0, "create");
 
         let cs_count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM change_set WHERE user_id = $1
+            "SELECT COUNT(*) FROM event_set WHERE user_id = $1
              AND operation IN ('create_book', 'update_book', 'delete_book')",
         )
         .bind(user_id.as_str())
@@ -1074,7 +996,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_delete_records_pre_delete_snapshot(pool: PgPool) -> anyhow::Result<()> {
+    async fn test_delete_records_event_with_id_only(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
@@ -1086,8 +1008,8 @@ mod tests {
 
         book_repository.delete(&user_id, book.id()).await?;
 
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT operation, title FROM book_history WHERE user_id = $1
+        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT operation, title FROM book_event WHERE user_id = $1
              ORDER BY changed_at DESC",
         )
         .bind(user_id.as_str())
@@ -1096,8 +1018,20 @@ mod tests {
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].0, "delete");
-        assert_eq!(rows[0].1, "title1");
+        // delete event stores no data fields
+        assert_eq!(rows[0].1, None);
         assert_eq!(rows[1].0, "create");
+
+        // no book_event_author rows for the delete event
+        let (author_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_event_author bea
+             JOIN book_event be ON bea.event_id = be.event_id
+             WHERE be.user_id = $1 AND be.operation = 'delete'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(author_count, 0);
 
         Ok(())
     }
@@ -1119,7 +1053,7 @@ mod tests {
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
         // Only user1's create entry should exist
-        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book_history")
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book_event")
             .fetch_one(&pool)
             .await?;
         assert_eq!(count, 1);

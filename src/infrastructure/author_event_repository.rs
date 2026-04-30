@@ -6,34 +6,34 @@ use uuid::Uuid;
 use crate::domain::{
     entity::{
         author::AuthorId,
-        change_set::ChangeSetId,
-        history::{AuthorHistory, HistoryOperation},
+        event_set::EventSetId,
+        history::{AuthorEvent, HistoryOperation},
         user::UserId,
     },
     error::DomainError,
-    repository::author_history_repository::AuthorHistoryRepository,
+    repository::author_event_repository::AuthorEventRepository,
 };
 
 #[derive(sqlx::FromRow)]
-struct AuthorHistoryRow {
-    history_id: i64,
-    change_set_id: Uuid,
+struct AuthorEventRow {
+    event_id: i64,
+    event_set_id: Uuid,
     operation: String,
     author_id: Uuid,
-    name: String,
-    yomi: String,
-    author_created_at: OffsetDateTime,
-    author_updated_at: OffsetDateTime,
+    name: Option<String>,
+    yomi: Option<String>,
+    author_created_at: Option<OffsetDateTime>,
+    author_updated_at: Option<OffsetDateTime>,
     changed_at: OffsetDateTime,
 }
 
-fn row_to_author_history(row: AuthorHistoryRow) -> Result<AuthorHistory, DomainError> {
+fn row_to_author_event(row: AuthorEventRow) -> Result<AuthorEvent, DomainError> {
     let operation =
         HistoryOperation::try_from(row.operation.as_str()).map_err(DomainError::Unexpected)?;
 
-    Ok(AuthorHistory {
-        history_id: row.history_id,
-        change_set_id: ChangeSetId::from(row.change_set_id),
+    Ok(AuthorEvent {
+        event_id: row.event_id,
+        event_set_id: EventSetId::from(row.event_set_id),
         operation,
         author_id: AuthorId::new(row.author_id),
         name: row.name,
@@ -45,27 +45,27 @@ fn row_to_author_history(row: AuthorHistoryRow) -> Result<AuthorHistory, DomainE
 }
 
 #[derive(Debug, Clone)]
-pub struct PgAuthorHistoryRepository {
+pub struct PgAuthorEventRepository {
     pool: PgPool,
 }
 
-impl PgAuthorHistoryRepository {
+impl PgAuthorEventRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 }
 
 #[async_trait]
-impl AuthorHistoryRepository for PgAuthorHistoryRepository {
+impl AuthorEventRepository for PgAuthorEventRepository {
     async fn find_by_author(
         &self,
         user_id: &UserId,
         author_id: &AuthorId,
-    ) -> Result<Vec<AuthorHistory>, DomainError> {
-        let rows: Vec<AuthorHistoryRow> = sqlx::query_as(
-            "SELECT history_id, change_set_id, operation, author_id, name, yomi,
+    ) -> Result<Vec<AuthorEvent>, DomainError> {
+        let rows: Vec<AuthorEventRow> = sqlx::query_as(
+            "SELECT event_id, event_set_id, operation, author_id, name, yomi,
                     author_created_at, author_updated_at, changed_at
-             FROM author_history
+             FROM author_event
              WHERE user_id = $1 AND author_id = $2
              ORDER BY changed_at DESC",
         )
@@ -74,25 +74,25 @@ impl AuthorHistoryRepository for PgAuthorHistoryRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        rows.into_iter().map(row_to_author_history).collect()
+        rows.into_iter().map(row_to_author_event).collect()
     }
 
-    async fn find_by_history_id(
+    async fn find_by_event_id(
         &self,
         user_id: &UserId,
-        history_id: i64,
-    ) -> Result<Option<AuthorHistory>, DomainError> {
-        let row: Option<AuthorHistoryRow> = sqlx::query_as(
-            "SELECT history_id, change_set_id, operation, author_id, name, yomi,
+        event_id: i64,
+    ) -> Result<Option<AuthorEvent>, DomainError> {
+        let row: Option<AuthorEventRow> = sqlx::query_as(
+            "SELECT event_id, event_set_id, operation, author_id, name, yomi,
                     author_created_at, author_updated_at, changed_at
-             FROM author_history
-             WHERE user_id = $1 AND history_id = $2",
+             FROM author_event
+             WHERE user_id = $1 AND event_id = $2",
         )
         .bind(user_id.as_str())
-        .bind(history_id)
+        .bind(event_id)
         .fetch_optional(&self.pool)
         .await?;
 
-        row.map(row_to_author_history).transpose()
+        row.map(row_to_author_event).transpose()
     }
 }

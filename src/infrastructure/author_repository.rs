@@ -52,11 +52,11 @@ impl AuthorRepository for PgAuthorRepository {
             .execute(&mut *tx)
             .await?;
 
-        let cs_id = Uuid::new_v4();
+        let es_id = Uuid::new_v4();
         sqlx::query(
-            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'create_author')",
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_author')",
         )
-        .bind(cs_id)
+        .bind(es_id)
         .bind(user_id.as_str())
         .execute(&mut *tx)
         .await?;
@@ -71,12 +71,12 @@ impl AuthorRepository for PgAuthorRepository {
         .await?;
 
         sqlx::query(
-            "INSERT INTO author_history
-               (change_set_id, operation, author_id, user_id, name, yomi,
+            "INSERT INTO author_event
+               (event_set_id, operation, author_id, user_id, name, yomi,
                 author_created_at, author_updated_at)
              VALUES ($1, 'create', $2, $3, $4, $5, $6, $7)",
         )
-        .bind(cs_id)
+        .bind(es_id)
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
         .bind(&snap.name)
@@ -134,15 +134,6 @@ impl AuthorRepository for PgAuthorRepository {
     async fn update(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
 
-        // Snapshot before update
-        let snap: Option<AuthorSnapshotRow> = sqlx::query_as(
-            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE",
-        )
-        .bind(author.id().to_uuid())
-        .bind(user_id.as_str())
-        .fetch_optional(&mut *tx)
-        .await?;
-
         let result = sqlx::query(
             "UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
         )
@@ -168,23 +159,31 @@ impl AuthorRepository for PgAuthorRepository {
             }
         }
 
-        let snap = snap.expect("snap must be Some after successful UPDATE");
-        let cs_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'update_author')",
+        // Fetch post-update state (yomi and timestamps are DB-managed)
+        let snap: AuthorSnapshotRow = sqlx::query_as(
+            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
         )
-        .bind(cs_id)
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'update_author')",
+        )
+        .bind(es_id)
         .bind(user_id.as_str())
         .execute(&mut *tx)
         .await?;
 
         sqlx::query(
-            "INSERT INTO author_history
-               (change_set_id, operation, author_id, user_id, name, yomi,
+            "INSERT INTO author_event
+               (event_set_id, operation, author_id, user_id, name, yomi,
                 author_created_at, author_updated_at)
              VALUES ($1, 'update', $2, $3, $4, $5, $6, $7)",
         )
-        .bind(cs_id)
+        .bind(es_id)
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
         .bind(&snap.name)
@@ -203,16 +202,14 @@ impl AuthorRepository for PgAuthorRepository {
         let mut tx = self.pool.begin().await?;
 
         // Lock the author row to prevent concurrent inserts into book_author after the count check.
-        let snap: Option<AuthorSnapshotRow> = sqlx::query_as(
-            "SELECT name, yomi, created_at, updated_at FROM author
-             WHERE id = $1 AND user_id = $2 FOR UPDATE",
-        )
-        .bind(author_id.to_uuid())
-        .bind(user_id.as_str())
-        .fetch_optional(&mut *tx)
-        .await?;
+        let exists: Option<(i64,)> =
+            sqlx::query_as("SELECT 1 FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
+                .bind(author_id.to_uuid())
+                .bind(user_id.as_str())
+                .fetch_optional(&mut *tx)
+                .await?;
 
-        if snap.is_none() {
+        if exists.is_none() {
             return Err(DomainError::NotFound {
                 entity_type: "author",
                 entity_id: author_id.to_string(),
@@ -257,29 +254,22 @@ impl AuthorRepository for PgAuthorRepository {
             }
         }
 
-        let snap = snap.expect("snap must be Some after guard");
-        let cs_id = Uuid::new_v4();
+        let es_id = Uuid::new_v4();
         sqlx::query(
-            "INSERT INTO change_set (id, user_id, operation) VALUES ($1, $2, 'delete_author')",
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'delete_author')",
         )
-        .bind(cs_id)
+        .bind(es_id)
         .bind(user_id.as_str())
         .execute(&mut *tx)
         .await?;
 
         sqlx::query(
-            "INSERT INTO author_history
-               (change_set_id, operation, author_id, user_id, name, yomi,
-                author_created_at, author_updated_at)
-             VALUES ($1, 'delete', $2, $3, $4, $5, $6, $7)",
+            "INSERT INTO author_event (event_set_id, operation, author_id, user_id)
+             VALUES ($1, 'delete', $2, $3)",
         )
-        .bind(cs_id)
+        .bind(es_id)
         .bind(author_id.to_uuid())
         .bind(user_id.as_str())
-        .bind(&snap.name)
-        .bind(&snap.yomi)
-        .bind(snap.created_at)
-        .bind(snap.updated_at)
         .execute(&mut *tx)
         .await?;
 
@@ -674,7 +664,7 @@ mod tests {
         Ok(user_id)
     }
 
-    // ---- history recording tests ----
+    // ---- event recording tests ----
 
     #[sqlx::test]
     async fn create_records_history(pool: PgPool) -> anyhow::Result<()> {
@@ -687,26 +677,26 @@ mod tests {
 
         author_repository.create(&user_id, &author).await?;
 
-        let (cs_op,): (String,) =
-            sqlx::query_as("SELECT operation FROM change_set WHERE user_id = $1")
+        let (es_op,): (String,) =
+            sqlx::query_as("SELECT operation FROM event_set WHERE user_id = $1")
                 .bind(user_id.as_str())
                 .fetch_one(&pool)
                 .await?;
-        assert_eq!(cs_op, "create_author");
+        assert_eq!(es_op, "create_author");
 
-        let (ah_op, ah_name): (String, String) =
-            sqlx::query_as("SELECT operation, name FROM author_history WHERE user_id = $1")
+        let (ae_op, ae_name): (String, String) =
+            sqlx::query_as("SELECT operation, name FROM author_event WHERE user_id = $1")
                 .bind(user_id.as_str())
                 .fetch_one(&pool)
                 .await?;
-        assert_eq!(ah_op, "create");
-        assert_eq!(ah_name, "author1");
+        assert_eq!(ae_op, "create");
+        assert_eq!(ae_name, "author1");
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn update_records_pre_update_snapshot(pool: PgPool) -> anyhow::Result<()> {
+    async fn update_records_post_update_state(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
 
@@ -719,30 +709,31 @@ mod tests {
         author_repository.update(&user_id, &updated).await?;
 
         let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT operation, name FROM author_history WHERE user_id = $1
-             ORDER BY changed_at DESC",
+            "SELECT operation, name FROM author_event WHERE user_id = $1
+             ORDER BY changed_at ASC",
         )
         .bind(user_id.as_str())
         .fetch_all(&pool)
         .await?;
 
         assert_eq!(rows.len(), 2);
-        // Most recent: update snapshot with pre-update name
-        assert_eq!(rows[0].0, "update");
+        assert_eq!(rows[0].0, "create");
         assert_eq!(rows[0].1, "original");
-        assert_eq!(rows[1].0, "create");
+        // Post-state: update event records the new name
+        assert_eq!(rows[1].0, "update");
+        assert_eq!(rows[1].1, "updated");
 
-        let cs_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM change_set WHERE user_id = $1")
+        let es_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
             .bind(user_id.as_str())
             .fetch_one(&pool)
             .await?;
-        assert_eq!(cs_count.0, 2);
+        assert_eq!(es_count.0, 2);
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn delete_records_pre_delete_snapshot(pool: PgPool) -> anyhow::Result<()> {
+    async fn delete_records_event_with_id_only(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
 
@@ -753,18 +744,19 @@ mod tests {
 
         author_repository.delete(&user_id, &author_id).await?;
 
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT operation, name FROM author_history WHERE user_id = $1
-             ORDER BY changed_at DESC",
+        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT operation, name FROM author_event WHERE user_id = $1
+             ORDER BY changed_at ASC",
         )
         .bind(user_id.as_str())
         .fetch_all(&pool)
         .await?;
 
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].0, "delete");
-        assert_eq!(rows[0].1, "author1");
-        assert_eq!(rows[1].0, "create");
+        assert_eq!(rows[0].0, "create");
+        // Delete event: only author_id stored, name is NULL
+        assert_eq!(rows[1].0, "delete");
+        assert_eq!(rows[1].1, None);
 
         Ok(())
     }

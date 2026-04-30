@@ -7,16 +7,16 @@ use crate::{
         entity::{author::AuthorId, book::BookId, user::UserId},
         error::DomainError,
         repository::{
-            author_history_repository::AuthorHistoryRepository,
-            author_repository::AuthorRepository, book_history_repository::BookHistoryRepository,
-            book_repository::BookRepository, user_repository::UserRepository,
+            author_event_repository::AuthorEventRepository, author_repository::AuthorRepository,
+            book_event_repository::BookEventRepository, book_repository::BookRepository,
+            user_repository::UserRepository,
         },
     },
     use_case::{
         dto::{
             author::AuthorDto,
             book::BookDto,
-            history::{AuthorHistoryDto, BookHistoryDto},
+            history::{AuthorEventDto, BookEventDto},
             user::UserDto,
         },
         error::UseCaseError,
@@ -25,22 +25,22 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct QueryInteractor<UR, BR, AR, BHR, AHR> {
+pub struct QueryInteractor<UR, BR, AR, BER, AER> {
     pub user_repository: UR,
     pub book_repository: BR,
     pub author_repository: AR,
-    pub book_history_repository: BHR,
-    pub author_history_repository: AHR,
+    pub book_event_repository: BER,
+    pub author_event_repository: AER,
 }
 
 #[async_trait]
-impl<UR, BR, AR, BHR, AHR> QueryUseCase for QueryInteractor<UR, BR, AR, BHR, AHR>
+impl<UR, BR, AR, BER, AER> QueryUseCase for QueryInteractor<UR, BR, AR, BER, AER>
 where
     UR: UserRepository,
     BR: BookRepository,
     AR: AuthorRepository,
-    BHR: BookHistoryRepository,
-    AHR: AuthorHistoryRepository,
+    BER: BookEventRepository,
+    AER: AuthorEventRepository,
 {
     async fn find_user_by_id(&self, raw_user_id: &str) -> Result<Option<UserDto>, UseCaseError> {
         let user_id = UserId::new(raw_user_id.to_string())?;
@@ -118,28 +118,28 @@ where
         &self,
         user_id: &str,
         book_id: &str,
-    ) -> Result<Vec<BookHistoryDto>, UseCaseError> {
+    ) -> Result<Vec<BookEventDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let book_id = BookId::try_from(book_id)?;
         let entries = self
-            .book_history_repository
+            .book_event_repository
             .find_by_book(&user_id, &book_id)
             .await?;
-        Ok(entries.into_iter().map(BookHistoryDto::from).collect())
+        Ok(entries.into_iter().map(BookEventDto::from).collect())
     }
 
     async fn list_author_history(
         &self,
         user_id: &str,
         author_id: &str,
-    ) -> Result<Vec<AuthorHistoryDto>, UseCaseError> {
+    ) -> Result<Vec<AuthorEventDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let author_id = AuthorId::try_from(author_id)?;
         let entries = self
-            .author_history_repository
+            .author_event_repository
             .find_by_author(&user_id, &author_id)
             .await?;
-        Ok(entries.into_iter().map(AuthorHistoryDto::from).collect())
+        Ok(entries.into_iter().map(AuthorEventDto::from).collect())
     }
 }
 
@@ -158,14 +158,14 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                change_set::ChangeSetId,
-                history::{AuthorHistory, BookHistory, HistoryOperation},
+                event_set::EventSetId,
+                history::{AuthorEvent, BookEvent, HistoryOperation},
                 user::{User, UserId},
             },
             repository::{
-                author_history_repository::MockAuthorHistoryRepository,
+                author_event_repository::MockAuthorEventRepository,
                 author_repository::MockAuthorRepository,
-                book_history_repository::MockBookHistoryRepository,
+                book_event_repository::MockBookEventRepository,
                 book_repository::MockBookRepository, user_repository::MockUserRepository,
             },
         },
@@ -220,8 +220,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -249,8 +249,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -279,8 +279,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -311,8 +311,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -340,8 +340,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -380,8 +380,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         let actual = query_interactor
@@ -417,8 +417,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -445,8 +445,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -475,8 +475,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -506,8 +506,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -538,8 +538,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -568,8 +568,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -610,8 +610,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -631,58 +631,58 @@ mod tests {
         );
     }
 
-    fn make_book_history(book_id: uuid::Uuid) -> BookHistory {
-        BookHistory {
-            history_id: 1,
-            change_set_id: ChangeSetId::from(uuid::Uuid::new_v4()),
+    fn make_book_event(book_id: Uuid) -> BookEvent {
+        BookEvent {
+            event_id: 1,
+            event_set_id: EventSetId::from(Uuid::new_v4()),
             operation: HistoryOperation::Update,
             book_id: BookId::new(book_id).unwrap(),
-            title: BookTitle::new("Old Title".to_string()).unwrap(),
+            title: Some(BookTitle::new("Old Title".to_string()).unwrap()),
             author_ids: vec![],
-            isbn: Isbn::new("".to_string()).unwrap(),
-            read: ReadFlag::new(false),
-            owned: OwnedFlag::new(false),
-            priority: Priority::new(50).unwrap(),
-            format: BookFormat::Unknown,
-            store: BookStore::Unknown,
-            book_created_at: OffsetDateTime::now_utc(),
-            book_updated_at: OffsetDateTime::now_utc(),
+            isbn: Some(Isbn::new("".to_string()).unwrap()),
+            read: Some(ReadFlag::new(false)),
+            owned: Some(OwnedFlag::new(false)),
+            priority: Some(Priority::new(50).unwrap()),
+            format: Some(BookFormat::Unknown),
+            store: Some(BookStore::Unknown),
+            book_created_at: Some(OffsetDateTime::now_utc()),
+            book_updated_at: Some(OffsetDateTime::now_utc()),
             changed_at: OffsetDateTime::now_utc(),
         }
     }
 
-    fn make_author_history(author_id: uuid::Uuid) -> AuthorHistory {
-        AuthorHistory {
-            history_id: 2,
-            change_set_id: ChangeSetId::from(uuid::Uuid::new_v4()),
+    fn make_author_event(author_id: Uuid) -> AuthorEvent {
+        AuthorEvent {
+            event_id: 2,
+            event_set_id: EventSetId::from(Uuid::new_v4()),
             operation: HistoryOperation::Update,
             author_id: AuthorId::new(author_id),
-            name: "Old Name".to_string(),
-            yomi: "".to_string(),
-            author_created_at: OffsetDateTime::now_utc(),
-            author_updated_at: OffsetDateTime::now_utc(),
+            name: Some("Old Name".to_string()),
+            yomi: Some("".to_string()),
+            author_created_at: Some(OffsetDateTime::now_utc()),
+            author_updated_at: Some(OffsetDateTime::now_utc()),
             changed_at: OffsetDateTime::now_utc(),
         }
     }
 
     #[tokio::test]
     async fn list_book_history_returns_dto_list() {
-        let book_uuid = uuid::Uuid::new_v4();
+        let book_uuid = Uuid::new_v4();
         let book_id_str = book_uuid.hyphenated().to_string();
-        let history = make_book_history(book_uuid);
+        let event = make_book_event(book_uuid);
 
-        let mut book_history_repository = MockBookHistoryRepository::new();
-        book_history_repository
+        let mut book_event_repository = MockBookEventRepository::new();
+        book_event_repository
             .expect_find_by_book()
             .with(always(), always())
-            .returning(move |_, _| Ok(vec![history.clone()]));
+            .returning(move |_, _| Ok(vec![event.clone()]));
 
         let query_interactor = QueryInteractor {
             user_repository: MockUserRepository::new(),
             book_repository: MockBookRepository::new(),
             author_repository: MockAuthorRepository::new(),
-            book_history_repository,
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository,
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         let result = query_interactor
@@ -692,16 +692,16 @@ mod tests {
         assert!(result.is_ok());
         let list = result.unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].title, "Old Title");
+        assert_eq!(list[0].title, Some("Old Title".to_string()));
     }
 
     #[tokio::test]
     async fn list_book_history_returns_empty() {
-        let book_uuid = uuid::Uuid::new_v4();
+        let book_uuid = Uuid::new_v4();
         let book_id_str = book_uuid.hyphenated().to_string();
 
-        let mut book_history_repository = MockBookHistoryRepository::new();
-        book_history_repository
+        let mut book_event_repository = MockBookEventRepository::new();
+        book_event_repository
             .expect_find_by_book()
             .with(always(), always())
             .returning(|_, _| Ok(vec![]));
@@ -710,8 +710,8 @@ mod tests {
             user_repository: MockUserRepository::new(),
             book_repository: MockBookRepository::new(),
             author_repository: MockAuthorRepository::new(),
-            book_history_repository,
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository,
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         let result = query_interactor
@@ -728,8 +728,8 @@ mod tests {
             user_repository: MockUserRepository::new(),
             book_repository: MockBookRepository::new(),
             author_repository: MockAuthorRepository::new(),
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         let result = query_interactor
@@ -741,22 +741,22 @@ mod tests {
 
     #[tokio::test]
     async fn list_author_history_returns_dto_list() {
-        let author_uuid = uuid::Uuid::new_v4();
+        let author_uuid = Uuid::new_v4();
         let author_id_str = author_uuid.hyphenated().to_string();
-        let history = make_author_history(author_uuid);
+        let event = make_author_event(author_uuid);
 
-        let mut author_history_repository = MockAuthorHistoryRepository::new();
-        author_history_repository
+        let mut author_event_repository = MockAuthorEventRepository::new();
+        author_event_repository
             .expect_find_by_author()
             .with(always(), always())
-            .returning(move |_, _| Ok(vec![history.clone()]));
+            .returning(move |_, _| Ok(vec![event.clone()]));
 
         let query_interactor = QueryInteractor {
             user_repository: MockUserRepository::new(),
             book_repository: MockBookRepository::new(),
             author_repository: MockAuthorRepository::new(),
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository,
         };
 
         let result = query_interactor
@@ -766,16 +766,16 @@ mod tests {
         assert!(result.is_ok());
         let list = result.unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].name, "Old Name");
+        assert_eq!(list[0].name, Some("Old Name".to_string()));
     }
 
     #[tokio::test]
     async fn list_author_history_returns_empty() {
-        let author_uuid = uuid::Uuid::new_v4();
+        let author_uuid = Uuid::new_v4();
         let author_id_str = author_uuid.hyphenated().to_string();
 
-        let mut author_history_repository = MockAuthorHistoryRepository::new();
-        author_history_repository
+        let mut author_event_repository = MockAuthorEventRepository::new();
+        author_event_repository
             .expect_find_by_author()
             .with(always(), always())
             .returning(|_, _| Ok(vec![]));
@@ -784,8 +784,8 @@ mod tests {
             user_repository: MockUserRepository::new(),
             book_repository: MockBookRepository::new(),
             author_repository: MockAuthorRepository::new(),
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository,
         };
 
         let result = query_interactor
@@ -802,8 +802,8 @@ mod tests {
             user_repository: MockUserRepository::new(),
             book_repository: MockBookRepository::new(),
             author_repository: MockAuthorRepository::new(),
-            book_history_repository: MockBookHistoryRepository::new(),
-            author_history_repository: MockAuthorHistoryRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         let result = query_interactor

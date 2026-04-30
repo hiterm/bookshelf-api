@@ -5,7 +5,7 @@ use crate::use_case::{
     dto::{
         author::AuthorDto,
         book::BookDto,
-        history::{AuthorHistoryDto, BookHistoryDto},
+        history::{AuthorEventDto, BookEventDto},
     },
     error::UseCaseError,
 };
@@ -13,8 +13,7 @@ use crate::use_case::{
 #[automock]
 #[async_trait]
 pub trait ListBookHistoryUseCase: Send + Sync + 'static {
-    async fn list(&self, user_id: &str, book_id: &str)
-    -> Result<Vec<BookHistoryDto>, UseCaseError>;
+    async fn list(&self, user_id: &str, book_id: &str) -> Result<Vec<BookEventDto>, UseCaseError>;
 }
 
 #[automock]
@@ -24,17 +23,21 @@ pub trait ListAuthorHistoryUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         author_id: &str,
-    ) -> Result<Vec<AuthorHistoryDto>, UseCaseError>;
+    ) -> Result<Vec<AuthorEventDto>, UseCaseError>;
 }
 
 #[automock]
 #[async_trait]
 pub trait RestoreBookUseCase: Send + Sync + 'static {
-    async fn restore(&self, user_id: &str, history_id: i64) -> Result<BookDto, UseCaseError>;
+    async fn restore(&self, user_id: &str, event_id: i64) -> Result<Option<BookDto>, UseCaseError>;
 }
 
 #[automock]
 #[async_trait]
 pub trait RestoreAuthorUseCase: Send + Sync + 'static {
-    async fn restore(&self, user_id: &str, history_id: i64) -> Result<AuthorDto, UseCaseError>;
+    async fn restore(
+        &self,
+        user_id: &str,
+        event_id: i64,
+    ) -> Result<Option<AuthorDto>, UseCaseError>;
 }

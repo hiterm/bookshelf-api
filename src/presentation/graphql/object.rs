@@ -6,7 +6,7 @@ use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBo
 use crate::dependency_injection::QI;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{BookDto, CreateBookDto, UpdateBookDto};
-use crate::use_case::dto::history::{AuthorHistoryDto, BookHistoryDto};
+use crate::use_case::dto::history::{AuthorEventDto, BookEventDto};
 
 use super::loader::AuthorLoader;
 
@@ -281,29 +281,29 @@ impl From<UpdateAuthorInput> for UpdateAuthorDto {
 }
 
 #[derive(SimpleObject)]
-pub struct BookHistoryEntry {
-    pub history_id: ID,
-    pub change_set_id: ID,
+pub struct BookEventEntry {
+    pub event_id: ID,
+    pub event_set_id: ID,
     pub operation: String,
     pub book_id: ID,
-    pub title: String,
+    pub title: Option<String>,
     pub author_ids: Vec<ID>,
-    pub isbn: String,
-    pub read: bool,
-    pub owned: bool,
-    pub priority: i32,
-    pub format: BookFormat,
-    pub store: BookStore,
-    pub book_created_at: i64,
-    pub book_updated_at: i64,
+    pub isbn: Option<String>,
+    pub read: Option<bool>,
+    pub owned: Option<bool>,
+    pub priority: Option<i32>,
+    pub format: Option<BookFormat>,
+    pub store: Option<BookStore>,
+    pub book_created_at: Option<i64>,
+    pub book_updated_at: Option<i64>,
     pub changed_at: i64,
 }
 
-impl From<BookHistoryDto> for BookHistoryEntry {
-    fn from(dto: BookHistoryDto) -> Self {
+impl From<BookEventDto> for BookEventEntry {
+    fn from(dto: BookEventDto) -> Self {
         Self {
-            history_id: ID(dto.history_id.to_string()),
-            change_set_id: ID(dto.change_set_id),
+            event_id: ID(dto.event_id.to_string()),
+            event_set_id: ID(dto.event_set_id),
             operation: dto.operation,
             book_id: ID(dto.book_id),
             title: dto.title,
@@ -312,39 +312,39 @@ impl From<BookHistoryDto> for BookHistoryEntry {
             read: dto.read,
             owned: dto.owned,
             priority: dto.priority,
-            format: dto.format.into(),
-            store: dto.store.into(),
-            book_created_at: dto.book_created_at.unix_timestamp(),
-            book_updated_at: dto.book_updated_at.unix_timestamp(),
+            format: dto.format.map(Into::into),
+            store: dto.store.map(Into::into),
+            book_created_at: dto.book_created_at.map(|t| t.unix_timestamp()),
+            book_updated_at: dto.book_updated_at.map(|t| t.unix_timestamp()),
             changed_at: dto.changed_at.unix_timestamp(),
         }
     }
 }
 
 #[derive(SimpleObject)]
-pub struct AuthorHistoryEntry {
-    pub history_id: ID,
-    pub change_set_id: ID,
+pub struct AuthorEventEntry {
+    pub event_id: ID,
+    pub event_set_id: ID,
     pub operation: String,
     pub author_id: ID,
-    pub name: String,
-    pub yomi: String,
-    pub author_created_at: i64,
-    pub author_updated_at: i64,
+    pub name: Option<String>,
+    pub yomi: Option<String>,
+    pub author_created_at: Option<i64>,
+    pub author_updated_at: Option<i64>,
     pub changed_at: i64,
 }
 
-impl From<AuthorHistoryDto> for AuthorHistoryEntry {
-    fn from(dto: AuthorHistoryDto) -> Self {
+impl From<AuthorEventDto> for AuthorEventEntry {
+    fn from(dto: AuthorEventDto) -> Self {
         Self {
-            history_id: ID(dto.history_id.to_string()),
-            change_set_id: ID(dto.change_set_id),
+            event_id: ID(dto.event_id.to_string()),
+            event_set_id: ID(dto.event_set_id),
             operation: dto.operation,
             author_id: ID(dto.author_id),
             name: dto.name,
             yomi: dto.yomi,
-            author_created_at: dto.author_created_at.unix_timestamp(),
-            author_updated_at: dto.author_updated_at.unix_timestamp(),
+            author_created_at: dto.author_created_at.map(|t| t.unix_timestamp()),
+            author_updated_at: dto.author_updated_at.map(|t| t.unix_timestamp()),
             changed_at: dto.changed_at.unix_timestamp(),
         }
     }

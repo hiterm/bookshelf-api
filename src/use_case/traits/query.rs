@@ -7,7 +7,7 @@ use crate::use_case::{
     dto::{
         author::AuthorDto,
         book::BookDto,
-        history::{AuthorHistoryDto, BookHistoryDto},
+        history::{AuthorEventDto, BookEventDto},
         user::UserDto,
     },
     error::UseCaseError,
@@ -38,10 +38,10 @@ pub trait QueryUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         book_id: &str,
-    ) -> Result<Vec<BookHistoryDto>, UseCaseError>;
+    ) -> Result<Vec<BookEventDto>, UseCaseError>;
     async fn list_author_history(
         &self,
         user_id: &str,
         author_id: &str,
-    ) -> Result<Vec<AuthorHistoryDto>, UseCaseError>;
+    ) -> Result<Vec<AuthorEventDto>, UseCaseError>;
 }

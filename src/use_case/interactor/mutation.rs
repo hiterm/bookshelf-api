@@ -133,19 +133,21 @@ where
         Ok(())
     }
 
-    async fn restore_book(&self, user_id: &str, history_id: i64) -> Result<BookDto, UseCaseError> {
-        self.restore_book_use_case
-            .restore(user_id, history_id)
-            .await
+    async fn restore_book(
+        &self,
+        user_id: &str,
+        event_id: i64,
+    ) -> Result<Option<BookDto>, UseCaseError> {
+        self.restore_book_use_case.restore(user_id, event_id).await
     }
 
     async fn restore_author(
         &self,
         user_id: &str,
-        history_id: i64,
-    ) -> Result<AuthorDto, UseCaseError> {
+        event_id: i64,
+    ) -> Result<Option<AuthorDto>, UseCaseError> {
         self.restore_author_use_case
-            .restore(user_id, history_id)
+            .restore(user_id, event_id)
             .await
     }
 }
@@ -494,7 +496,7 @@ mod tests {
         mock_restore_book
             .expect_restore()
             .with(always(), always())
-            .returning(move |_, _| Ok(make_book_dto(&book_id)));
+            .returning(move |_, _| Ok(Some(make_book_dto(&book_id))));
 
         let interactor = InteractorBuilder::new()
             .with_restore_book(mock_restore_book)
@@ -505,7 +507,28 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().id, expected_id);
+        assert_eq!(result.unwrap().unwrap().id, expected_id);
+    }
+
+    #[tokio::test]
+    async fn restore_book_delete_event_returns_none() {
+        // Given
+        let mut mock_restore_book = MockRestoreBookUseCase::new();
+        mock_restore_book
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_book(mock_restore_book)
+            .build();
+
+        // When
+        let result = interactor.restore_book("user1", 42).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -516,10 +539,10 @@ mod tests {
             .expect_restore()
             .with(always(), always())
             .returning(|_, _| {
-                Ok(AuthorDto {
+                Ok(Some(AuthorDto {
                     id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                     name: "Test Author".to_string(),
-                })
+                }))
             });
 
         let interactor = InteractorBuilder::new()
@@ -531,6 +554,27 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().name, "Test Author");
+        assert_eq!(result.unwrap().unwrap().name, "Test Author");
+    }
+
+    #[tokio::test]
+    async fn restore_author_delete_event_returns_none() {
+        // Given
+        let mut mock_restore_author = MockRestoreAuthorUseCase::new();
+        mock_restore_author
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_author(mock_restore_author)
+            .build();
+
+        // When
+        let result = interactor.restore_author("user1", 99).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 }

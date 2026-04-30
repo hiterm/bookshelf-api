@@ -9,43 +9,50 @@ use crate::{
         entity::{
             author::AuthorId,
             book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-            change_set::ChangeSetId,
-            history::{BookHistory, HistoryOperation},
+            event_set::EventSetId,
+            history::{BookEvent, HistoryOperation},
             user::UserId,
         },
         error::DomainError,
-        repository::book_history_repository::BookHistoryRepository,
+        repository::book_event_repository::BookEventRepository,
     },
 };
 
 #[derive(sqlx::FromRow)]
-struct BookHistoryRow {
-    history_id: i64,
-    change_set_id: Uuid,
+struct BookEventRow {
+    event_id: i64,
+    event_set_id: Uuid,
     operation: String,
     book_id: Uuid,
-    title: String,
-    isbn: String,
-    read: bool,
-    owned: bool,
-    priority: i32,
-    format: String,
-    store: String,
-    book_created_at: OffsetDateTime,
-    book_updated_at: OffsetDateTime,
+    title: Option<String>,
+    isbn: Option<String>,
+    read: Option<bool>,
+    owned: Option<bool>,
+    priority: Option<i32>,
+    format: Option<String>,
+    store: Option<String>,
+    book_created_at: Option<OffsetDateTime>,
+    book_updated_at: Option<OffsetDateTime>,
     changed_at: OffsetDateTime,
     author_ids: Option<Vec<Uuid>>,
 }
 
-fn row_to_book_history(row: BookHistoryRow) -> Result<BookHistory, DomainError> {
+fn row_to_book_event(row: BookEventRow) -> Result<BookEvent, DomainError> {
     let operation =
         HistoryOperation::try_from(row.operation.as_str()).map_err(DomainError::Unexpected)?;
     let book_id = BookId::new(row.book_id)?;
-    let title = BookTitle::new(row.title)?;
-    let isbn = Isbn::new(row.isbn)?;
-    let priority = Priority::new(row.priority)?;
-    let format = BookFormat::try_from(row.format.as_str())?;
-    let store = BookStore::try_from(row.store.as_str())?;
+
+    let title = row.title.map(BookTitle::new).transpose()?;
+    let isbn = row.isbn.map(Isbn::new).transpose()?;
+    let priority = row.priority.map(Priority::new).transpose()?;
+    let format = row
+        .format
+        .map(|s| BookFormat::try_from(s.as_str()))
+        .transpose()?;
+    let store = row
+        .store
+        .map(|s| BookStore::try_from(s.as_str()))
+        .transpose()?;
     let author_ids: Vec<AuthorId> = row
         .author_ids
         .unwrap_or_default()
@@ -53,16 +60,16 @@ fn row_to_book_history(row: BookHistoryRow) -> Result<BookHistory, DomainError> 
         .map(AuthorId::new)
         .collect();
 
-    Ok(BookHistory {
-        history_id: row.history_id,
-        change_set_id: ChangeSetId::from(row.change_set_id),
+    Ok(BookEvent {
+        event_id: row.event_id,
+        event_set_id: EventSetId::from(row.event_set_id),
         operation,
         book_id,
         title,
         author_ids,
         isbn,
-        read: ReadFlag::new(row.read),
-        owned: OwnedFlag::new(row.owned),
+        read: row.read.map(ReadFlag::new),
+        owned: row.owned.map(OwnedFlag::new),
         priority,
         format,
         store,
@@ -73,87 +80,87 @@ fn row_to_book_history(row: BookHistoryRow) -> Result<BookHistory, DomainError> 
 }
 
 #[derive(Debug, Clone)]
-pub struct PgBookHistoryRepository {
+pub struct PgBookEventRepository {
     pool: PgPool,
 }
 
-impl PgBookHistoryRepository {
+impl PgBookEventRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 }
 
 #[async_trait]
-impl BookHistoryRepository for PgBookHistoryRepository {
+impl BookEventRepository for PgBookEventRepository {
     async fn find_by_book(
         &self,
         user_id: &UserId,
         book_id: &BookId,
-    ) -> Result<Vec<BookHistory>, DomainError> {
-        let rows: Vec<BookHistoryRow> = sqlx::query_as(
+    ) -> Result<Vec<BookEvent>, DomainError> {
+        let rows: Vec<BookEventRow> = sqlx::query_as(
             "SELECT
-                bh.history_id,
-                bh.change_set_id,
-                bh.operation,
-                bh.book_id,
-                bh.title,
-                bh.isbn,
-                bh.read,
-                bh.owned,
-                bh.priority,
-                bh.format,
-                bh.store,
-                bh.book_created_at,
-                bh.book_updated_at,
-                bh.changed_at,
-                array_agg(bha.author_id) FILTER (WHERE bha.author_id IS NOT NULL) AS author_ids
-            FROM book_history bh
-            LEFT JOIN book_history_author bha ON bh.history_id = bha.history_id
-            WHERE bh.user_id = $1 AND bh.book_id = $2
-            GROUP BY bh.history_id
-            ORDER BY bh.changed_at DESC",
+                be.event_id,
+                be.event_set_id,
+                be.operation,
+                be.book_id,
+                be.title,
+                be.isbn,
+                be.read,
+                be.owned,
+                be.priority,
+                be.format,
+                be.store,
+                be.book_created_at,
+                be.book_updated_at,
+                be.changed_at,
+                array_agg(bea.author_id) FILTER (WHERE bea.author_id IS NOT NULL) AS author_ids
+            FROM book_event be
+            LEFT JOIN book_event_author bea ON be.event_id = bea.event_id
+            WHERE be.user_id = $1 AND be.book_id = $2
+            GROUP BY be.event_id
+            ORDER BY be.changed_at DESC",
         )
         .bind(user_id.as_str())
         .bind(book_id.to_uuid())
         .fetch_all(&self.pool)
         .await?;
 
-        rows.into_iter().map(row_to_book_history).collect()
+        rows.into_iter().map(row_to_book_event).collect()
     }
 
-    async fn find_by_history_id(
+    async fn find_by_event_id(
         &self,
         user_id: &UserId,
-        history_id: i64,
-    ) -> Result<Option<BookHistory>, DomainError> {
-        let row: Option<BookHistoryRow> = sqlx::query_as(
+        event_id: i64,
+    ) -> Result<Option<BookEvent>, DomainError> {
+        let row: Option<BookEventRow> = sqlx::query_as(
             "SELECT
-                bh.history_id,
-                bh.change_set_id,
-                bh.operation,
-                bh.book_id,
-                bh.title,
-                bh.isbn,
-                bh.read,
-                bh.owned,
-                bh.priority,
-                bh.format,
-                bh.store,
-                bh.book_created_at,
-                bh.book_updated_at,
-                bh.changed_at,
-                array_agg(bha.author_id) FILTER (WHERE bha.author_id IS NOT NULL) AS author_ids
-            FROM book_history bh
-            LEFT JOIN book_history_author bha ON bh.history_id = bha.history_id
-            WHERE bh.user_id = $1 AND bh.history_id = $2
-            GROUP BY bh.history_id",
+                be.event_id,
+                be.event_set_id,
+                be.operation,
+                be.book_id,
+                be.title,
+                be.isbn,
+                be.read,
+                be.owned,
+                be.priority,
+                be.format,
+                be.store,
+                be.book_created_at,
+                be.book_updated_at,
+                be.changed_at,
+                array_agg(bea.author_id) FILTER (WHERE bea.author_id IS NOT NULL) AS author_ids
+            FROM book_event be
+            LEFT JOIN book_event_author bea ON be.event_id = bea.event_id
+            WHERE be.user_id = $1 AND be.event_id = $2
+            GROUP BY be.event_id",
         )
         .bind(user_id.as_str())
-        .bind(history_id)
+        .bind(event_id)
         .fetch_optional(&self.pool)
         .await?;
 
-        row.map(row_to_book_history).transpose()
+        row.map(row_to_book_event).transpose()
     }
 }
 
@@ -171,9 +178,8 @@ mod tests {
             },
             error::DomainError,
             repository::{
-                author_repository::AuthorRepository,
-                book_history_repository::BookHistoryRepository, book_repository::BookRepository,
-                user_repository::UserRepository,
+                author_repository::AuthorRepository, book_event_repository::BookEventRepository,
+                book_repository::BookRepository, user_repository::UserRepository,
             },
         },
         infrastructure::{
@@ -217,11 +223,11 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn find_by_book_returns_history_ordered_desc(pool: PgPool) -> anyhow::Result<()> {
+    async fn find_by_book_returns_events_ordered_desc(pool: PgPool) -> anyhow::Result<()> {
         let user_repo = PgUserRepository::new(pool.clone());
         let author_repo = PgAuthorRepository::new(pool.clone());
         let book_repo = PgBookRepository::new(pool.clone());
-        let history_repo = PgBookHistoryRepository::new(pool.clone());
+        let event_repo = PgBookEventRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
@@ -246,12 +252,13 @@ mod tests {
         )?;
         book_repo.update(&user_id, &updated).await?;
 
-        let entries = history_repo.find_by_book(&user_id, book.id()).await?;
+        let entries = event_repo.find_by_book(&user_id, book.id()).await?;
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].operation, HistoryOperation::Update);
-        assert_eq!(entries[0].title.as_str(), "original"); // pre-update snapshot
+        // post-update state
+        assert_eq!(entries[0].title.as_ref().unwrap().as_str(), "updated");
         assert_eq!(entries[1].operation, HistoryOperation::Create);
-        assert_eq!(entries[1].title.as_str(), "original");
+        assert_eq!(entries[1].title.as_ref().unwrap().as_str(), "original");
 
         Ok(())
     }
@@ -261,7 +268,7 @@ mod tests {
         let user_repo = PgUserRepository::new(pool.clone());
         let author_repo = PgAuthorRepository::new(pool.clone());
         let book_repo = PgBookRepository::new(pool.clone());
-        let history_repo = PgBookHistoryRepository::new(pool.clone());
+        let event_repo = PgBookEventRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
@@ -286,7 +293,7 @@ mod tests {
         )?;
         book_repo.create(&user_id, &book).await?;
 
-        let entries = history_repo.find_by_book(&user_id, book.id()).await?;
+        let entries = event_repo.find_by_book(&user_id, book.id()).await?;
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].author_ids.len(), 2);
         assert!(entries[0].author_ids.contains(&author_id1));
@@ -298,25 +305,23 @@ mod tests {
     #[sqlx::test]
     async fn find_by_book_returns_empty_for_unknown_book(pool: PgPool) -> anyhow::Result<()> {
         let user_repo = PgUserRepository::new(pool.clone());
-        let history_repo = PgBookHistoryRepository::new(pool.clone());
+        let event_repo = PgBookEventRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repo, "user1").await?;
         let unknown_book_id = BookId::try_from("00000000-0000-0000-0000-000000000000")?;
 
-        let entries = history_repo
-            .find_by_book(&user_id, &unknown_book_id)
-            .await?;
+        let entries = event_repo.find_by_book(&user_id, &unknown_book_id).await?;
         assert!(entries.is_empty());
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn find_by_history_id_returns_correct_entry(pool: PgPool) -> anyhow::Result<()> {
+    async fn find_by_event_id_returns_correct_entry(pool: PgPool) -> anyhow::Result<()> {
         let user_repo = PgUserRepository::new(pool.clone());
         let author_repo = PgAuthorRepository::new(pool.clone());
         let book_repo = PgBookRepository::new(pool.clone());
-        let history_repo = PgBookHistoryRepository::new(pool.clone());
+        let event_repo = PgBookEventRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
@@ -334,30 +339,28 @@ mod tests {
         )?;
         book_repo.create(&user_id, &book).await?;
 
-        let (history_id,): (i64,) =
-            sqlx::query_as("SELECT history_id FROM book_history WHERE user_id = $1")
+        let (event_id,): (i64,) =
+            sqlx::query_as("SELECT event_id FROM book_event WHERE user_id = $1")
                 .bind(user_id.as_str())
                 .fetch_one(&pool)
                 .await?;
 
-        let entry = history_repo
-            .find_by_history_id(&user_id, history_id)
-            .await?;
+        let entry = event_repo.find_by_event_id(&user_id, event_id).await?;
         assert!(entry.is_some());
         let entry = entry.unwrap();
-        assert_eq!(entry.history_id, history_id);
-        assert_eq!(entry.title.as_str(), "title1");
+        assert_eq!(entry.event_id, event_id);
+        assert_eq!(entry.title.as_ref().unwrap().as_str(), "title1");
         assert_eq!(entry.operation, HistoryOperation::Create);
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn find_by_history_id_returns_none_for_wrong_user(pool: PgPool) -> anyhow::Result<()> {
+    async fn find_by_event_id_returns_none_for_wrong_user(pool: PgPool) -> anyhow::Result<()> {
         let user_repo = PgUserRepository::new(pool.clone());
         let author_repo = PgAuthorRepository::new(pool.clone());
         let book_repo = PgBookRepository::new(pool.clone());
-        let history_repo = PgBookHistoryRepository::new(pool.clone());
+        let event_repo = PgBookEventRepository::new(pool.clone());
 
         let user1_id = prepare_user(&user_repo, "user1").await?;
         let user2_id = prepare_user(&user_repo, "user2").await?;
@@ -376,16 +379,14 @@ mod tests {
         )?;
         book_repo.create(&user1_id, &book).await?;
 
-        let (history_id,): (i64,) =
-            sqlx::query_as("SELECT history_id FROM book_history WHERE user_id = $1")
+        let (event_id,): (i64,) =
+            sqlx::query_as("SELECT event_id FROM book_event WHERE user_id = $1")
                 .bind(user1_id.as_str())
                 .fetch_one(&pool)
                 .await?;
 
-        // user2 must not see user1's history entry
-        let entry = history_repo
-            .find_by_history_id(&user2_id, history_id)
-            .await?;
+        // user2 must not see user1's event entry
+        let entry = event_repo.find_by_event_id(&user2_id, event_id).await?;
         assert!(entry.is_none());
 
         Ok(())

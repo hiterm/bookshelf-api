@@ -114,37 +114,37 @@ where
     async fn restore_book(
         &self,
         ctx: &Context<'_>,
-        history_id: ID,
-    ) -> Result<Book, PresentationalError> {
+        event_id: ID,
+    ) -> Result<Option<Book>, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let hid: i64 = history_id.parse().map_err(|_| {
+        let eid: i64 = event_id.parse().map_err(|_| {
             PresentationalError::OtherError(std::sync::Arc::new(anyhow::anyhow!(
-                "history_id must be an integer"
+                "event_id must be an integer"
             )))
         })?;
         let book = self
             .mutation_use_case
-            .restore_book(&claims.sub, hid)
+            .restore_book(&claims.sub, eid)
             .await?;
-        Ok(book.into())
+        Ok(book.map(Book::from))
     }
 
     async fn restore_author(
         &self,
         ctx: &Context<'_>,
-        history_id: ID,
-    ) -> Result<Author, PresentationalError> {
+        event_id: ID,
+    ) -> Result<Option<Author>, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let hid: i64 = history_id.parse().map_err(|_| {
+        let eid: i64 = event_id.parse().map_err(|_| {
             PresentationalError::OtherError(std::sync::Arc::new(anyhow::anyhow!(
-                "history_id must be an integer"
+                "event_id must be an integer"
             )))
         })?;
         let author = self
             .mutation_use_case
-            .restore_author(&claims.sub, hid)
+            .restore_author(&claims.sub, eid)
             .await?;
-        Ok(author.into())
+        Ok(author.map(Author::from))
     }
 }
 

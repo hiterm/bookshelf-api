@@ -2,75 +2,75 @@ use time::OffsetDateTime;
 
 use crate::{
     common::types::{BookFormat, BookStore},
-    domain::entity::history::{AuthorHistory, BookHistory},
+    domain::entity::history::{AuthorEvent, BookEvent},
 };
 
 #[derive(Debug, Clone)]
-pub struct BookHistoryDto {
-    pub history_id: i64,
-    pub change_set_id: String,
+pub struct BookEventDto {
+    pub event_id: i64,
+    pub event_set_id: String,
     pub operation: String,
     pub book_id: String,
-    pub title: String,
+    pub title: Option<String>,
     pub author_ids: Vec<String>,
-    pub isbn: String,
-    pub read: bool,
-    pub owned: bool,
-    pub priority: i32,
-    pub format: BookFormat,
-    pub store: BookStore,
-    pub book_created_at: OffsetDateTime,
-    pub book_updated_at: OffsetDateTime,
+    pub isbn: Option<String>,
+    pub read: Option<bool>,
+    pub owned: Option<bool>,
+    pub priority: Option<i32>,
+    pub format: Option<BookFormat>,
+    pub store: Option<BookStore>,
+    pub book_created_at: Option<OffsetDateTime>,
+    pub book_updated_at: Option<OffsetDateTime>,
     pub changed_at: OffsetDateTime,
 }
 
-impl From<BookHistory> for BookHistoryDto {
-    fn from(h: BookHistory) -> Self {
+impl From<BookEvent> for BookEventDto {
+    fn from(e: BookEvent) -> Self {
         Self {
-            history_id: h.history_id,
-            change_set_id: h.change_set_id.to_string(),
-            operation: h.operation.as_str().to_string(),
-            book_id: h.book_id.to_string(),
-            title: h.title.into_string(),
-            author_ids: h.author_ids.into_iter().map(|a| a.to_string()).collect(),
-            isbn: h.isbn.into_string(),
-            read: h.read.to_bool(),
-            owned: h.owned.to_bool(),
-            priority: h.priority.to_i32(),
-            format: h.format,
-            store: h.store,
-            book_created_at: h.book_created_at,
-            book_updated_at: h.book_updated_at,
-            changed_at: h.changed_at,
+            event_id: e.event_id,
+            event_set_id: e.event_set_id.to_string(),
+            operation: e.operation.as_str().to_string(),
+            book_id: e.book_id.to_string(),
+            title: e.title.map(|t| t.into_string()),
+            author_ids: e.author_ids.into_iter().map(|a| a.to_string()).collect(),
+            isbn: e.isbn.map(|i| i.into_string()),
+            read: e.read.map(|r| r.to_bool()),
+            owned: e.owned.map(|o| o.to_bool()),
+            priority: e.priority.map(|p| p.to_i32()),
+            format: e.format,
+            store: e.store,
+            book_created_at: e.book_created_at,
+            book_updated_at: e.book_updated_at,
+            changed_at: e.changed_at,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct AuthorHistoryDto {
-    pub history_id: i64,
-    pub change_set_id: String,
+pub struct AuthorEventDto {
+    pub event_id: i64,
+    pub event_set_id: String,
     pub operation: String,
     pub author_id: String,
-    pub name: String,
-    pub yomi: String,
-    pub author_created_at: OffsetDateTime,
-    pub author_updated_at: OffsetDateTime,
+    pub name: Option<String>,
+    pub yomi: Option<String>,
+    pub author_created_at: Option<OffsetDateTime>,
+    pub author_updated_at: Option<OffsetDateTime>,
     pub changed_at: OffsetDateTime,
 }
 
-impl From<AuthorHistory> for AuthorHistoryDto {
-    fn from(h: AuthorHistory) -> Self {
+impl From<AuthorEvent> for AuthorEventDto {
+    fn from(e: AuthorEvent) -> Self {
         Self {
-            history_id: h.history_id,
-            change_set_id: h.change_set_id.to_string(),
-            operation: h.operation.as_str().to_string(),
-            author_id: h.author_id.to_string(),
-            name: h.name,
-            yomi: h.yomi,
-            author_created_at: h.author_created_at,
-            author_updated_at: h.author_updated_at,
-            changed_at: h.changed_at,
+            event_id: e.event_id,
+            event_set_id: e.event_set_id.to_string(),
+            operation: e.operation.as_str().to_string(),
+            author_id: e.author_id.to_string(),
+            name: e.name,
+            yomi: e.yomi,
+            author_created_at: e.author_created_at,
+            author_updated_at: e.author_updated_at,
+            changed_at: e.changed_at,
         }
     }
 }
