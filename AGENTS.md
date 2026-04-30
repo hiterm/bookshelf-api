@@ -49,6 +49,28 @@ When adding or modifying features, always include tests:
   explaining why it is safe to ignore. Place the comment on the line immediately
   before the ignore directive.
 
+## Event Recording
+
+Every `create`, `update`, `delete`, and `restore` operation on any entity
+must record an event inside the same database transaction. This applies to
+existing entities (`Book`, `Author`) and any new entity added in the future.
+Event recording belongs exclusively in the infrastructure layer (inside the
+`Pg*` repository implementation) — domain traits and use-case interactors
+must not be aware of it.
+
+When adding a new entity or mutation operation:
+
+- Wrap the entire operation in a single transaction.
+- Generate a new `event_set` UUID inside the transaction.
+- Create a dedicated `<entity>_event` table (and `<entity>_event_author`-style
+  join tables if needed) following the `book_event` / `author_event` schema.
+- Insert one row into `event_set` and one row into the entity's event table.
+- Add appropriate `event_set_operation` values (e.g. `create_foo`,
+  `update_foo`) via migration.
+
+See `.agent/plans/20260429-add-change-history.md` for the full design and
+the Decision Log for rationale.
+
 ## Pre-commit Checks
 
 **MANDATORY — do not skip under any circumstances**, except:
