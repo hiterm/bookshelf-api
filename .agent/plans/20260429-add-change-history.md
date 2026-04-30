@@ -58,18 +58,18 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
 
 **Phase 2 — Refactor to post-state event log** (started 2026-04-29)
 
-- [ ] Milestone 9: Merge migrations and refactor schema
-  - [ ] plan updated
-- [ ] Milestone 10: Rename domain entities and repository traits
-  - [ ] plan updated
-- [ ] Milestone 11: Refactor infrastructure — post-state recording and renamed tables
-  - [ ] plan updated
-- [ ] Milestone 12: Refactor use case — restore semantics and return types
-  - [ ] plan updated
-- [ ] Milestone 13: Refactor presentation — nullable GraphQL fields and return types
-  - [ ] plan updated
-- [ ] Milestone 14: Update all tests
-  - [ ] plan updated
+- [x] Milestone 9: Merge migrations and refactor schema
+  - [x] plan updated
+- [x] Milestone 10: Rename domain entities and repository traits
+  - [x] plan updated
+- [x] Milestone 11: Refactor infrastructure — post-state recording and renamed tables
+  - [x] plan updated
+- [x] Milestone 12: Refactor use case — restore semantics and return types
+  - [x] plan updated
+- [x] Milestone 13: Refactor presentation — nullable GraphQL fields and return types
+  - [x] plan updated
+- [x] Milestone 14: Update all tests
+  - [x] plan updated
 
 ## Surprises & Discoveries
 
