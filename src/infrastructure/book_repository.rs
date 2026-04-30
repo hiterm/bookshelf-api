@@ -599,12 +599,12 @@ impl BookRepository for PgBookRepository {
                     .execute(&mut *tx)
                     .await?;
 
+                // 0 rows affected is acceptable (book already absent)
                 sqlx::query("DELETE FROM book WHERE user_id=$1 AND id=$2")
                     .bind(user_id.as_str())
                     .bind(book_id)
                     .execute(&mut *tx)
-                    .await
-                    .ok(); // NotFound is acceptable
+                    .await?;
 
                 sqlx::query(
                     "INSERT INTO book_event (event_set_id, operation, book_id, user_id, extra)

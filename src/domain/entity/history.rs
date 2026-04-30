@@ -46,6 +46,32 @@ impl TryFrom<&str> for EventOperation {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::EventOperation;
+
+    #[test]
+    fn event_operation_round_trip() {
+        let variants = [
+            EventOperation::Create,
+            EventOperation::Update,
+            EventOperation::Delete,
+            EventOperation::Restore,
+            EventOperation::Snapshot,
+        ];
+        for variant in &variants {
+            let s = variant.as_str();
+            let back = EventOperation::try_from(s).expect("round-trip failed");
+            assert_eq!(&back, variant, "round-trip mismatch for {:?}", variant);
+        }
+    }
+
+    #[test]
+    fn event_operation_unknown_returns_err() {
+        assert!(EventOperation::try_from("invalid").is_err());
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BookEvent {
     pub event_id: i64,

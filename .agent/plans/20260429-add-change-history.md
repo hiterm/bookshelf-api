@@ -1741,7 +1741,7 @@ Run all commands from the repository root
 8. Run pre-commit checks (mandatory per CLAUDE.md):
 
        cargo fmt --check
-       cargo clippy --all-targets -- -D warnings
+       cargo clippy --fix --all-targets -- -D warnings
        cargo test
 
    Fix any failures before committing.

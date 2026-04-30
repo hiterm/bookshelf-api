@@ -351,12 +351,12 @@ impl AuthorRepository for PgAuthorRepository {
                 .fetch_one(&mut *tx)
                 .await?;
 
+                // 0 rows affected is acceptable (author already absent)
                 sqlx::query("DELETE FROM author WHERE id=$1 AND user_id=$2")
                     .bind(author_id)
                     .bind(user_id.as_str())
                     .execute(&mut *tx)
-                    .await
-                    .ok(); // NotFound is acceptable
+                    .await?;
 
                 sqlx::query(
                     "INSERT INTO author_event (event_set_id, operation, author_id, user_id, extra)

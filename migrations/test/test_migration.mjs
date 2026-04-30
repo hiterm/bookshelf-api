@@ -11,7 +11,7 @@
 //   MIGRATION_TEST_DATA_URL=postgres://... \
 //   node migrations/test/test_migration.mjs
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,7 @@ if (!EMPTY_URL || !DATA_URL) {
 
 // Run SQL against the given database URL via stdin.
 function psql(url, sql) {
-  execSync(`psql --set ON_ERROR_STOP=1 ${JSON.stringify(url)}`, {
+  execFileSync('psql', ['--set', 'ON_ERROR_STOP=1', url], {
     input: sql,
     stdio: ['pipe', 'pipe', 'inherit'],
   });
@@ -36,7 +36,7 @@ function psql(url, sql) {
 
 // Run a single-column SELECT and return the trimmed scalar result.
 function queryOne(url, sql) {
-  return execSync(`psql -t -A ${JSON.stringify(url)}`, {
+  return execFileSync('psql', ['-t', '-A', url], {
     input: sql,
     encoding: 'utf8',
     stdio: ['pipe', 'pipe', 'pipe'],
