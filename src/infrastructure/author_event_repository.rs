@@ -8,7 +8,7 @@ use crate::domain::{
     entity::{
         author::AuthorId,
         event_set::EventSetId,
-        history::{AuthorEvent, HistoryOperation},
+        history::{AuthorEvent, EventOperation},
         user::UserId,
     },
     error::DomainError,
@@ -31,7 +31,7 @@ struct AuthorEventRow {
 
 fn row_to_author_event(row: AuthorEventRow) -> Result<AuthorEvent, DomainError> {
     let operation =
-        HistoryOperation::try_from(row.operation.as_str()).map_err(DomainError::Unexpected)?;
+        EventOperation::try_from(row.operation.as_str()).map_err(DomainError::Unexpected)?;
 
     Ok(AuthorEvent {
         event_id: row.event_id,

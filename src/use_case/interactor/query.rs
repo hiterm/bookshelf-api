@@ -159,7 +159,7 @@ mod tests {
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
                 event_set::EventSetId,
-                history::{AuthorEvent, BookEvent, HistoryOperation},
+                history::{AuthorEvent, BookEvent, EventOperation},
                 user::{User, UserId},
             },
             repository::{
@@ -635,7 +635,7 @@ mod tests {
         BookEvent {
             event_id: 1,
             event_set_id: EventSetId::from(Uuid::new_v4()),
-            operation: HistoryOperation::Update,
+            operation: EventOperation::Update,
             book_id: BookId::new(book_id).unwrap(),
             title: Some(BookTitle::new("Old Title".to_string()).unwrap()),
             author_ids: vec![],
@@ -656,7 +656,7 @@ mod tests {
         AuthorEvent {
             event_id: 2,
             event_set_id: EventSetId::from(Uuid::new_v4()),
-            operation: HistoryOperation::Update,
+            operation: EventOperation::Update,
             author_id: AuthorId::new(author_id),
             name: Some("Old Name".to_string()),
             yomi: Some("".to_string()),

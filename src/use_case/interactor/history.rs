@@ -5,7 +5,7 @@ use crate::{
         entity::{
             author::{Author, AuthorId, AuthorName},
             book::{Book, BookId},
-            history::HistoryOperation,
+            history::EventOperation,
             user::UserId,
         },
         repository::{
@@ -120,10 +120,10 @@ where
             })?;
 
         match event.operation {
-            HistoryOperation::Create
-            | HistoryOperation::Update
-            | HistoryOperation::Restore
-            | HistoryOperation::Snapshot => {
+            EventOperation::Create
+            | EventOperation::Update
+            | EventOperation::Restore
+            | EventOperation::Snapshot => {
                 let book = Book::new(
                     event.book_id,
                     event.title.ok_or_else(|| {
@@ -162,7 +162,7 @@ where
                     .await?;
                 Ok(Some(dto))
             }
-            HistoryOperation::Delete => {
+            EventOperation::Delete => {
                 self.book_repository
                     .restore(&user_id, event_id, None)
                     .await?;
@@ -209,10 +209,10 @@ where
             })?;
 
         match event.operation {
-            HistoryOperation::Create
-            | HistoryOperation::Update
-            | HistoryOperation::Restore
-            | HistoryOperation::Snapshot => {
+            EventOperation::Create
+            | EventOperation::Update
+            | EventOperation::Restore
+            | EventOperation::Snapshot => {
                 let name = event.name.ok_or_else(|| {
                     UseCaseError::Validation("author_event name is null".to_string())
                 })?;
@@ -225,7 +225,7 @@ where
                     .await?;
                 Ok(Some(dto))
             }
-            HistoryOperation::Delete => {
+            EventOperation::Delete => {
                 self.author_repository
                     .restore(&user_id, event_id, None)
                     .await?;
@@ -248,7 +248,7 @@ mod tests {
                 author::AuthorId,
                 book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
                 event_set::EventSetId,
-                history::{AuthorEvent, BookEvent, HistoryOperation},
+                history::{AuthorEvent, BookEvent, EventOperation},
             },
             repository::{
                 author_event_repository::MockAuthorEventRepository,
@@ -272,7 +272,7 @@ mod tests {
         BookEvent {
             event_id: 1,
             event_set_id: EventSetId::from(Uuid::new_v4()),
-            operation: HistoryOperation::Update,
+            operation: EventOperation::Update,
             book_id: BookId::new(book_id).unwrap(),
             title: Some(BookTitle::new("Old Title".to_string()).unwrap()),
             author_ids: vec![],
@@ -293,7 +293,7 @@ mod tests {
         BookEvent {
             event_id: 10,
             event_set_id: EventSetId::from(Uuid::new_v4()),
-            operation: HistoryOperation::Delete,
+            operation: EventOperation::Delete,
             book_id: BookId::new(book_id).unwrap(),
             title: None,
             author_ids: vec![],
@@ -314,7 +314,7 @@ mod tests {
         AuthorEvent {
             event_id: 2,
             event_set_id: EventSetId::from(Uuid::new_v4()),
-            operation: HistoryOperation::Update,
+            operation: EventOperation::Update,
             author_id: AuthorId::new(author_id),
             name: Some("Old Name".to_string()),
             yomi: Some("".to_string()),
@@ -329,7 +329,7 @@ mod tests {
         AuthorEvent {
             event_id: 20,
             event_set_id: EventSetId::from(Uuid::new_v4()),
-            operation: HistoryOperation::Delete,
+            operation: EventOperation::Delete,
             author_id: AuthorId::new(author_id),
             name: None,
             yomi: None,
@@ -463,7 +463,7 @@ mod tests {
     async fn restore_book_snapshot_event_applies_state() {
         let book_uuid = Uuid::new_v4();
         let mut event = make_book_event(book_uuid);
-        event.operation = HistoryOperation::Snapshot;
+        event.operation = EventOperation::Snapshot;
 
         let mut history_repo = MockBookEventRepository::new();
         history_repo
@@ -551,7 +551,7 @@ mod tests {
     async fn restore_author_snapshot_event_applies_state() {
         let author_uuid = Uuid::new_v4();
         let mut event = make_author_event(author_uuid);
-        event.operation = HistoryOperation::Snapshot;
+        event.operation = EventOperation::Snapshot;
 
         let mut history_repo = MockAuthorEventRepository::new();
         history_repo

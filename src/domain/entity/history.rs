@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HistoryOperation {
+pub enum EventOperation {
     Create,
     Update,
     Delete,
@@ -19,29 +19,29 @@ pub enum HistoryOperation {
     Snapshot,
 }
 
-impl HistoryOperation {
+impl EventOperation {
     pub fn as_str(&self) -> &'static str {
         match self {
-            HistoryOperation::Create => "create",
-            HistoryOperation::Update => "update",
-            HistoryOperation::Delete => "delete",
-            HistoryOperation::Restore => "restore",
-            HistoryOperation::Snapshot => "snapshot",
+            EventOperation::Create => "create",
+            EventOperation::Update => "update",
+            EventOperation::Delete => "delete",
+            EventOperation::Restore => "restore",
+            EventOperation::Snapshot => "snapshot",
         }
     }
 }
 
-impl TryFrom<&str> for HistoryOperation {
+impl TryFrom<&str> for EventOperation {
     type Error = String;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "create" => Ok(HistoryOperation::Create),
-            "update" => Ok(HistoryOperation::Update),
-            "delete" => Ok(HistoryOperation::Delete),
-            "restore" => Ok(HistoryOperation::Restore),
-            "snapshot" => Ok(HistoryOperation::Snapshot),
-            _ => Err(format!("Unknown history operation: {}", value)),
+            "create" => Ok(EventOperation::Create),
+            "update" => Ok(EventOperation::Update),
+            "delete" => Ok(EventOperation::Delete),
+            "restore" => Ok(EventOperation::Restore),
+            "snapshot" => Ok(EventOperation::Snapshot),
+            _ => Err(format!("Unknown event operation: {}", value)),
         }
     }
 }
@@ -50,7 +50,7 @@ impl TryFrom<&str> for HistoryOperation {
 pub struct BookEvent {
     pub event_id: i64,
     pub event_set_id: EventSetId,
-    pub operation: HistoryOperation,
+    pub operation: EventOperation,
     pub book_id: BookId,
     // Some for create/update/restore/snapshot; None for delete:
     pub title: Option<BookTitle>,
@@ -72,7 +72,7 @@ pub struct BookEvent {
 pub struct AuthorEvent {
     pub event_id: i64,
     pub event_set_id: EventSetId,
-    pub operation: HistoryOperation,
+    pub operation: EventOperation,
     pub author_id: AuthorId,
     // Some for create/update/restore/snapshot; None for delete:
     pub name: Option<String>,

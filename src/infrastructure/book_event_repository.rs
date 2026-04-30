@@ -11,7 +11,7 @@ use crate::{
             author::AuthorId,
             book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
             event_set::EventSetId,
-            history::{BookEvent, HistoryOperation},
+            history::{BookEvent, EventOperation},
             user::UserId,
         },
         error::DomainError,
@@ -41,7 +41,7 @@ struct BookEventRow {
 
 fn row_to_book_event(row: BookEventRow) -> Result<BookEvent, DomainError> {
     let operation =
-        HistoryOperation::try_from(row.operation.as_str()).map_err(DomainError::Unexpected)?;
+        EventOperation::try_from(row.operation.as_str()).map_err(DomainError::Unexpected)?;
     let book_id = BookId::new(row.book_id)?;
 
     let title = row.title.map(BookTitle::new).transpose()?;
@@ -178,7 +178,7 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                history::HistoryOperation,
+                history::EventOperation,
                 user::User,
             },
             error::DomainError,
@@ -259,10 +259,10 @@ mod tests {
 
         let entries = event_repo.find_by_book(&user_id, book.id()).await?;
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].operation, HistoryOperation::Update);
+        assert_eq!(entries[0].operation, EventOperation::Update);
         // post-update state
         assert_eq!(entries[0].title.as_ref().unwrap().as_str(), "updated");
-        assert_eq!(entries[1].operation, HistoryOperation::Create);
+        assert_eq!(entries[1].operation, EventOperation::Create);
         assert_eq!(entries[1].title.as_ref().unwrap().as_str(), "original");
 
         Ok(())
@@ -355,7 +355,7 @@ mod tests {
         let entry = entry.unwrap();
         assert_eq!(entry.event_id, event_id);
         assert_eq!(entry.title.as_ref().unwrap().as_str(), "title1");
-        assert_eq!(entry.operation, HistoryOperation::Create);
+        assert_eq!(entry.operation, EventOperation::Create);
 
         Ok(())
     }

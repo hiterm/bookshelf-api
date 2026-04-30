@@ -1640,6 +1640,61 @@ Create `docs/database.md` documenting:
 
 ---
 
+## Phase 4 — Cleanup and Consistency
+
+### Overview
+
+Post-Phase 3 cleanup addressing naming inconsistencies, migration hygiene, and
+test coverage gaps identified during review.
+
+1. **`HistoryOperation` → `EventOperation`** — the DB table was renamed to
+   `event_operation` in Phase 3, but the Rust enum kept the old name. Rename
+   the enum and all references for consistency.
+2. **`snapshot` → `snapshot_all` in `event_set_operation`** — distinguish the
+   bulk migration snapshot (all entities for a user) from a potential future
+   per-entity snapshot operation.
+3. **Consolidate PR migrations into one** — the PR introduced two files
+   (`20260429040611_add_change_history.sql` and `20260430102404_add_restore_snapshot.sql`);
+   neither has been applied to production, so they can be merged into one clean file.
+4. **Migration data test** — verify that the snapshot CTE in the migration
+   produces the correct rows; still under discussion.
+
+### Progress
+
+**Phase 4 — Cleanup** (started 2026-04-30)
+
+- [x] Milestone 22: Rename `HistoryOperation` → `EventOperation` in all Rust files
+  - [x] plan updated
+- [x] Milestone 23: `snapshot_all` rename + consolidate migrations to one file
+  - [x] plan updated
+- [ ] Milestone 24: Migration data test
+  - [ ] plan updated
+
+### Decision Log (Phase 4)
+
+- Decision: `HistoryOperation` → `EventOperation`. The DB lookup table was already
+  renamed from `history_operation` to `event_operation` in Phase 3; the Rust type
+  should mirror it. Module names (`src/domain/entity/history.rs`, `pub mod history`)
+  are kept as-is because they refer to the change-history feature, not the DB table.
+  Date/Author: 2026-04-30 / hiterm
+
+- Decision: `event_set_operation.snapshot` → `snapshot_all`. The event_set-level
+  operation describes a bulk snapshot of all entities for a user, which `snapshot_all`
+  names more precisely. The per-entity event_operation value (`snapshot`) remains
+  unchanged because each row is always a single-entity snapshot regardless of trigger.
+  This leaves room for a future per-entity `snapshot` event_set operation if needed.
+  Date/Author: 2026-04-30 / hiterm
+
+- Decision: Consolidate the two PR migration files into one
+  (`20260429040611_add_change_history.sql`). Both were introduced in this PR and have
+  never been applied to production, so merging carries no migration risk. A single file
+  is simpler: it creates `event_operation` directly (no `history_operation` → rename),
+  includes `restore`/`snapshot` from the start, includes `extra jsonb` columns, and
+  runs the snapshot CTE.
+  Date/Author: 2026-04-30 / hiterm
+
+---
+
 ## Concrete Steps
 
 Run all commands from the repository root
