@@ -1805,3 +1805,11 @@ In `src/domain/repository/author_history_repository.rs`:
 
 `BookRepository` and `AuthorRepository` trait signatures are **unchanged** from
 the current codebase. No new parameters are added to `update` or `delete`.
+
+## Rename Note (2026-05-01)
+
+`migrations/20260429040611_add_change_history.sql` was renamed to
+`migrations/20260429040611_add_event_tables.sql` before the migration was
+applied to any environment. Reason: the file name `add_change_history` was
+inconsistent with the table names (`book_event`, `author_event`, `event_set`,
+etc.) and the Rust code conventions (`BookEventRepository`, etc.).

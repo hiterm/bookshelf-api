@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Migration test: verifies that the add_change_history migration correctly
+// Migration test: verifies that the add_event_tables migration correctly
 // creates snapshot events for all existing books and authors.
 //
 // Requires two empty PostgreSQL databases to be created before running:
@@ -98,9 +98,9 @@ psql(DATA_URL, `
     ('user_alpha', 'a0000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001');
 `);
 
-console.log('Applying change-history migration...');
-applyMigration(EMPTY_URL, '20260429040611_add_change_history.sql');
-applyMigration(DATA_URL, '20260429040611_add_change_history.sql');
+console.log('Applying event-tables migration...');
+applyMigration(EMPTY_URL, '20260429040611_add_event_tables.sql');
+applyMigration(DATA_URL, '20260429040611_add_event_tables.sql');
 
 // ---- Empty-DB scenario ----
 
