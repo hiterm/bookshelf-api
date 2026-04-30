@@ -98,13 +98,13 @@ new_book_events AS (
     b.created_at, b.updated_at
   FROM book b
   JOIN new_sets ns ON b.user_id = ns.user_id
-  RETURNING event_id, book_id
+  RETURNING event_id, book_id, user_id
 ),
 _book_event_authors AS (
   INSERT INTO book_event_author (event_id, author_id)
   SELECT nbe.event_id, ba.author_id
   FROM new_book_events nbe
-  JOIN book_author ba ON ba.book_id = nbe.book_id
+  JOIN book_author ba ON ba.book_id = nbe.book_id AND ba.user_id = nbe.user_id
 )
 INSERT INTO author_event
   (event_set_id, operation, author_id, user_id,
