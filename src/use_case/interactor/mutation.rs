@@ -154,9 +154,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use mockall::predicate::always;
+    use mockall::predicate::{always, eq};
 
     use crate::common::types::{BookFormat, BookStore};
+    use crate::use_case::error::UseCaseError;
     use crate::use_case::{
         dto::{
             author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
@@ -576,5 +577,97 @@ mod tests {
         // Then
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn restore_book_forwards_exact_arguments() {
+        // Given
+        let mut mock_restore_book = MockRestoreBookUseCase::new();
+        mock_restore_book
+            .expect_restore()
+            .with(eq("user1"), eq(42_i64))
+            .returning(|_, _| Ok(None));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_book(mock_restore_book)
+            .build();
+
+        // When
+        let result = interactor.restore_book("user1", 42).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn restore_book_propagates_error() {
+        // Given
+        let mut mock_restore_book = MockRestoreBookUseCase::new();
+        mock_restore_book
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| {
+                Err(UseCaseError::NotFound {
+                    entity_type: "Book",
+                    entity_id: "999".to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_book(mock_restore_book)
+            .build();
+
+        // When
+        let result = interactor.restore_book("user1", 999).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn restore_author_forwards_exact_arguments() {
+        // Given
+        let mut mock_restore_author = MockRestoreAuthorUseCase::new();
+        mock_restore_author
+            .expect_restore()
+            .with(eq("user1"), eq(99_i64))
+            .returning(|_, _| Ok(None));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_author(mock_restore_author)
+            .build();
+
+        // When
+        let result = interactor.restore_author("user1", 99).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn restore_author_propagates_error() {
+        // Given
+        let mut mock_restore_author = MockRestoreAuthorUseCase::new();
+        mock_restore_author
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| {
+                Err(UseCaseError::NotFound {
+                    entity_type: "Author",
+                    entity_id: "999".to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_author(mock_restore_author)
+            .build();
+
+        // When
+        let result = interactor.restore_author("user1", 999).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
     }
 }
