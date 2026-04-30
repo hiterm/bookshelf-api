@@ -1,11 +1,13 @@
 use async_graphql::dataloader::DataLoader;
-use async_graphql::{ComplexObject, Context, Enum, Result};
+use async_graphql::{ComplexObject, Context, Enum, Json, Result};
 use async_graphql::{ID, InputObject, SimpleObject};
+use serde_json::Value;
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::QI;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{BookDto, CreateBookDto, UpdateBookDto};
+use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
 
 use super::loader::AuthorLoader;
 
@@ -276,5 +278,79 @@ pub struct UpdateAuthorInput {
 impl From<UpdateAuthorInput> for UpdateAuthorDto {
     fn from(val: UpdateAuthorInput) -> Self {
         UpdateAuthorDto::new(val.id.to_string(), val.name)
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct BookEventEntry {
+    pub event_id: ID,
+    pub event_set_id: ID,
+    pub operation: String,
+    pub book_id: ID,
+    pub title: Option<String>,
+    pub author_ids: Vec<ID>,
+    pub isbn: Option<String>,
+    pub read: Option<bool>,
+    pub owned: Option<bool>,
+    pub priority: Option<i32>,
+    pub format: Option<BookFormat>,
+    pub store: Option<BookStore>,
+    pub book_created_at: Option<i64>,
+    pub book_updated_at: Option<i64>,
+    pub changed_at: i64,
+    pub extra: Option<Json<Value>>,
+}
+
+impl From<BookEventDto> for BookEventEntry {
+    fn from(dto: BookEventDto) -> Self {
+        Self {
+            event_id: ID(dto.event_id.to_string()),
+            event_set_id: ID(dto.event_set_id),
+            operation: dto.operation,
+            book_id: ID(dto.book_id),
+            title: dto.title,
+            author_ids: dto.author_ids.into_iter().map(ID).collect(),
+            isbn: dto.isbn,
+            read: dto.read,
+            owned: dto.owned,
+            priority: dto.priority,
+            format: dto.format.map(Into::into),
+            store: dto.store.map(Into::into),
+            book_created_at: dto.book_created_at.map(|t| t.unix_timestamp()),
+            book_updated_at: dto.book_updated_at.map(|t| t.unix_timestamp()),
+            changed_at: dto.changed_at.unix_timestamp(),
+            extra: dto.extra.map(Json),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct AuthorEventEntry {
+    pub event_id: ID,
+    pub event_set_id: ID,
+    pub operation: String,
+    pub author_id: ID,
+    pub name: Option<String>,
+    pub yomi: Option<String>,
+    pub author_created_at: Option<i64>,
+    pub author_updated_at: Option<i64>,
+    pub changed_at: i64,
+    pub extra: Option<Json<Value>>,
+}
+
+impl From<AuthorEventDto> for AuthorEventEntry {
+    fn from(dto: AuthorEventDto) -> Self {
+        Self {
+            event_id: ID(dto.event_id.to_string()),
+            event_set_id: ID(dto.event_set_id),
+            operation: dto.operation,
+            author_id: ID(dto.author_id),
+            name: dto.name,
+            yomi: dto.yomi,
+            author_created_at: dto.author_created_at.map(|t| t.unix_timestamp()),
+            author_updated_at: dto.author_updated_at.map(|t| t.unix_timestamp()),
+            changed_at: dto.changed_at.unix_timestamp(),
+            extra: dto.extra.map(Json),
+        }
     }
 }

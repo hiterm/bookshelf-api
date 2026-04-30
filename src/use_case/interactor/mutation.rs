@@ -10,12 +10,13 @@ use crate::use_case::{
     traits::{
         author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
         book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
+        event::{RestoreAuthorUseCase, RestoreBookUseCase},
         mutation::MutationUseCase,
         user::RegisterUserUseCase,
     },
 };
 
-pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> {
+pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC> {
     register_user_use_case: RUUC,
     create_book_use_case: CBUC,
     update_book_use_case: UBUC,
@@ -23,11 +24,17 @@ pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> {
     create_author_use_case: CAUC,
     update_author_use_case: UAUC,
     delete_author_use_case: DAUC,
+    restore_book_use_case: RBUC,
+    restore_author_use_case: RAUC,
 }
 
-impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
-    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
+    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
 {
+    // This constructor takes many arguments because MutationInteractor composes all
+    // mutation use cases via dependency injection. Splitting it would reduce clarity
+    // without reducing actual coupling.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         register_user_use_case: RUUC,
         create_book_use_case: CBUC,
@@ -36,6 +43,8 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
         create_author_use_case: CAUC,
         update_author_use_case: UAUC,
         delete_author_use_case: DAUC,
+        restore_book_use_case: RBUC,
+        restore_author_use_case: RAUC,
     ) -> Self {
         Self {
             register_user_use_case,
@@ -45,13 +54,15 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
             create_author_use_case,
             update_author_use_case,
             delete_author_use_case,
+            restore_book_use_case,
+            restore_author_use_case,
         }
     }
 }
 
 #[async_trait]
-impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC> MutationUseCase
-    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC> MutationUseCase
+    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
 where
     RUUC: RegisterUserUseCase,
     CBUC: CreateBookUseCase,
@@ -60,6 +71,8 @@ where
     CAUC: CreateAuthorUseCase,
     UAUC: UpdateAuthorUseCase,
     DAUC: DeleteAuthorUseCase,
+    RBUC: RestoreBookUseCase,
+    RAUC: RestoreAuthorUseCase,
 {
     async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError> {
         let user = self.register_user_use_case.register_user(user_id).await?;
@@ -119,13 +132,32 @@ where
             .await?;
         Ok(())
     }
+
+    async fn restore_book(
+        &self,
+        user_id: &str,
+        event_id: i64,
+    ) -> Result<Option<BookDto>, UseCaseError> {
+        self.restore_book_use_case.restore(user_id, event_id).await
+    }
+
+    async fn restore_author(
+        &self,
+        user_id: &str,
+        event_id: i64,
+    ) -> Result<Option<AuthorDto>, UseCaseError> {
+        self.restore_author_use_case
+            .restore(user_id, event_id)
+            .await
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use mockall::predicate::always;
+    use mockall::predicate::{always, eq};
 
     use crate::common::types::{BookFormat, BookStore};
+    use crate::use_case::error::UseCaseError;
     use crate::use_case::{
         dto::{
             author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
@@ -136,6 +168,7 @@ mod tests {
         traits::{
             author::{MockCreateAuthorUseCase, MockDeleteAuthorUseCase, MockUpdateAuthorUseCase},
             book::{MockCreateBookUseCase, MockDeleteBookUseCase, MockUpdateBookUseCase},
+            event::{MockRestoreAuthorUseCase, MockRestoreBookUseCase},
             mutation::MutationUseCase,
             user::MockRegisterUserUseCase,
         },
@@ -151,6 +184,8 @@ mod tests {
         MockCreateAuthorUseCase,
         MockUpdateAuthorUseCase,
         MockDeleteAuthorUseCase,
+        MockRestoreBookUseCase,
+        MockRestoreAuthorUseCase,
     >;
 
     struct InteractorBuilder {
@@ -161,6 +196,8 @@ mod tests {
         create_author: MockCreateAuthorUseCase,
         update_author: MockUpdateAuthorUseCase,
         delete_author: MockDeleteAuthorUseCase,
+        restore_book: MockRestoreBookUseCase,
+        restore_author: MockRestoreAuthorUseCase,
     }
 
     impl InteractorBuilder {
@@ -173,6 +210,8 @@ mod tests {
                 create_author: MockCreateAuthorUseCase::new(),
                 update_author: MockUpdateAuthorUseCase::new(),
                 delete_author: MockDeleteAuthorUseCase::new(),
+                restore_book: MockRestoreBookUseCase::new(),
+                restore_author: MockRestoreAuthorUseCase::new(),
             }
         }
 
@@ -211,6 +250,16 @@ mod tests {
             self
         }
 
+        fn with_restore_book(mut self, mock: MockRestoreBookUseCase) -> Self {
+            self.restore_book = mock;
+            self
+        }
+
+        fn with_restore_author(mut self, mock: MockRestoreAuthorUseCase) -> Self {
+            self.restore_author = mock;
+            self
+        }
+
         fn build(self) -> DefaultInteractor {
             MutationInteractor::new(
                 self.register_user,
@@ -220,6 +269,8 @@ mod tests {
                 self.create_author,
                 self.update_author,
                 self.delete_author,
+                self.restore_book,
+                self.restore_author,
             )
         }
     }
@@ -433,5 +484,190 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn restore_book_delegates_to_sub_use_case() {
+        // Given
+        let book_id = Uuid::new_v4().hyphenated().to_string();
+        let expected_dto = make_book_dto(&book_id);
+        let expected_id = expected_dto.id.clone();
+
+        let mut mock_restore_book = MockRestoreBookUseCase::new();
+        mock_restore_book
+            .expect_restore()
+            .with(always(), always())
+            .returning(move |_, _| Ok(Some(make_book_dto(&book_id))));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_book(mock_restore_book)
+            .build();
+
+        // When
+        let result = interactor.restore_book("user1", 42).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().unwrap().id, expected_id);
+    }
+
+    #[tokio::test]
+    async fn restore_book_delete_event_returns_none() {
+        // Given
+        let mut mock_restore_book = MockRestoreBookUseCase::new();
+        mock_restore_book
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_book(mock_restore_book)
+            .build();
+
+        // When
+        let result = interactor.restore_book("user1", 42).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn restore_author_delegates_to_sub_use_case() {
+        // Given
+        let mut mock_restore_author = MockRestoreAuthorUseCase::new();
+        mock_restore_author
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| {
+                Ok(Some(AuthorDto {
+                    id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                    name: "Test Author".to_string(),
+                }))
+            });
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_author(mock_restore_author)
+            .build();
+
+        // When
+        let result = interactor.restore_author("user1", 99).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().unwrap().name, "Test Author");
+    }
+
+    #[tokio::test]
+    async fn restore_author_delete_event_returns_none() {
+        // Given
+        let mut mock_restore_author = MockRestoreAuthorUseCase::new();
+        mock_restore_author
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| Ok(None));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_author(mock_restore_author)
+            .build();
+
+        // When
+        let result = interactor.restore_author("user1", 99).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn restore_book_forwards_exact_arguments() {
+        // Given
+        let mut mock_restore_book = MockRestoreBookUseCase::new();
+        mock_restore_book
+            .expect_restore()
+            .with(eq("user1"), eq(42_i64))
+            .returning(|_, _| Ok(None));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_book(mock_restore_book)
+            .build();
+
+        // When
+        let result = interactor.restore_book("user1", 42).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn restore_book_propagates_error() {
+        // Given
+        let mut mock_restore_book = MockRestoreBookUseCase::new();
+        mock_restore_book
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| {
+                Err(UseCaseError::NotFound {
+                    entity_type: "Book",
+                    entity_id: "999".to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_book(mock_restore_book)
+            .build();
+
+        // When
+        let result = interactor.restore_book("user1", 999).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn restore_author_forwards_exact_arguments() {
+        // Given
+        let mut mock_restore_author = MockRestoreAuthorUseCase::new();
+        mock_restore_author
+            .expect_restore()
+            .with(eq("user1"), eq(99_i64))
+            .returning(|_, _| Ok(None));
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_author(mock_restore_author)
+            .build();
+
+        // When
+        let result = interactor.restore_author("user1", 99).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn restore_author_propagates_error() {
+        // Given
+        let mut mock_restore_author = MockRestoreAuthorUseCase::new();
+        mock_restore_author
+            .expect_restore()
+            .with(always(), always())
+            .returning(|_, _| {
+                Err(UseCaseError::NotFound {
+                    entity_type: "Author",
+                    entity_id: "999".to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
+
+        let interactor = InteractorBuilder::new()
+            .with_restore_author(mock_restore_author)
+            .build();
+
+        // When
+        let result = interactor.restore_author("user1", 999).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
     }
 }

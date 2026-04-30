@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
+use serde_json::json;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -46,6 +47,8 @@ impl PgBookRepository {
 #[async_trait]
 impl BookRepository for PgBookRepository {
     async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -73,7 +76,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         let author_ids: Vec<Uuid> = book
@@ -90,8 +93,52 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_book')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        let (event_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO book_event
+               (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                priority, format, store, book_created_at, book_updated_at)
+             VALUES ($1, 'create', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             RETURNING event_id",
+        )
+        .bind(es_id)
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if !author_ids.is_empty() {
+            sqlx::query(
+                "INSERT INTO book_event_author (event_id, author_id)
+                        SELECT $1, * FROM UNNEST($2::uuid[])",
+            )
+            .bind(event_id)
+            .bind(&author_ids)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
 
         Ok(())
     }
@@ -312,22 +359,67 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'update_book')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        let (event_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO book_event
+               (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                priority, format, store, book_created_at, book_updated_at)
+             VALUES ($1, 'update', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             RETURNING event_id",
+        )
+        .bind(es_id)
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+        if !author_ids.is_empty() {
+            sqlx::query(
+                "INSERT INTO book_event_author (event_id, author_id)
+                        SELECT $1, * FROM UNNEST($2::uuid[])",
+            )
+            .bind(event_id)
+            .bind(&author_ids)
+            .execute(&mut *tx)
+            .await?;
+        }
+
         tx.commit().await?;
 
         Ok(())
     }
 
     async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         let result = sqlx::query("DELETE FROM book WHERE user_id = $1 AND id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         let rows_affected = result.rows_affected();
@@ -346,6 +438,169 @@ impl BookRepository for PgBookRepository {
                 )));
             }
         }
+
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'delete_book')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO book_event (event_set_id, operation, book_id, user_id)
+             VALUES ($1, 'delete', $2, $3)",
+        )
+        .bind(es_id)
+        .bind(book_id.to_uuid())
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    async fn restore(
+        &self,
+        user_id: &UserId,
+        source_event_id: i64,
+        book: Option<Book>,
+    ) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'restore_book')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        let extra = json!({"version": 1, "source_event_id": source_event_id});
+
+        match book {
+            Some(book) => {
+                let author_ids: Vec<Uuid> =
+                    book.author_ids().iter().map(|id| id.to_uuid()).collect();
+
+                sqlx::query(
+                    "INSERT INTO book (id, user_id, title, isbn, read, owned, priority,
+                       format, store, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                     ON CONFLICT (id, user_id) DO UPDATE SET
+                       title=$3, isbn=$4, read=$5, owned=$6, priority=$7,
+                       format=$8, store=$9, created_at=$10, updated_at=$11",
+                )
+                .bind(book.id().to_uuid())
+                .bind(user_id.as_str())
+                .bind(book.title().as_str())
+                .bind(book.isbn().as_str())
+                .bind(book.read().to_bool())
+                .bind(book.owned().to_bool())
+                .bind(book.priority().to_i32())
+                .bind(book.format().to_string())
+                .bind(book.store().to_string())
+                .bind(book.created_at())
+                .bind(book.updated_at())
+                .execute(&mut *tx)
+                .await?;
+
+                sqlx::query(
+                    "DELETE FROM book_author WHERE user_id=$1 AND book_id=$2 AND author_id != ALL($3)",
+                )
+                .bind(user_id.as_str())
+                .bind(book.id().to_uuid())
+                .bind(&author_ids)
+                .execute(&mut *tx)
+                .await?;
+
+                sqlx::query(
+                    "INSERT INTO book_author (user_id, book_id, author_id)
+                            SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
+                     ON CONFLICT DO NOTHING",
+                )
+                .bind(user_id.as_str())
+                .bind(book.id().to_uuid())
+                .bind(&author_ids)
+                .execute(&mut *tx)
+                .await?;
+
+                let (event_id,): (i64,) = sqlx::query_as(
+                    "INSERT INTO book_event
+                       (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                        priority, format, store, book_created_at, book_updated_at, extra)
+                     VALUES ($1, 'restore', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                     RETURNING event_id",
+                )
+                .bind(es_id)
+                .bind(book.id().to_uuid())
+                .bind(user_id.as_str())
+                .bind(book.title().as_str())
+                .bind(book.isbn().as_str())
+                .bind(book.read().to_bool())
+                .bind(book.owned().to_bool())
+                .bind(book.priority().to_i32())
+                .bind(book.format().to_string())
+                .bind(book.store().to_string())
+                .bind(book.created_at())
+                .bind(book.updated_at())
+                .bind(sqlx::types::Json(&extra))
+                .fetch_one(&mut *tx)
+                .await?;
+
+                if !author_ids.is_empty() {
+                    sqlx::query(
+                        "INSERT INTO book_event_author (event_id, author_id)
+                                SELECT $1, * FROM UNNEST($2::uuid[])",
+                    )
+                    .bind(event_id)
+                    .bind(&author_ids)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+            }
+            None => {
+                // book_id comes from the event; we need to identify which book to delete.
+                // The caller ensures source_event_id belongs to user_id so we look it up.
+                let (book_id,): (Uuid,) = sqlx::query_as(
+                    "SELECT book_id FROM book_event WHERE event_id = $1 AND user_id = $2",
+                )
+                .bind(source_event_id)
+                .bind(user_id.as_str())
+                .fetch_one(&mut *tx)
+                .await?;
+
+                sqlx::query("DELETE FROM book_author WHERE user_id=$1 AND book_id=$2")
+                    .bind(user_id.as_str())
+                    .bind(book_id)
+                    .execute(&mut *tx)
+                    .await?;
+
+                // 0 rows affected is acceptable (book already absent)
+                sqlx::query("DELETE FROM book WHERE user_id=$1 AND id=$2")
+                    .bind(user_id.as_str())
+                    .bind(book_id)
+                    .execute(&mut *tx)
+                    .await?;
+
+                sqlx::query(
+                    "INSERT INTO book_event (event_set_id, operation, book_id, user_id, extra)
+                     VALUES ($1, 'restore', $2, $3, $4)",
+                )
+                .bind(es_id)
+                .bind(book_id)
+                .bind(user_id.as_str())
+                .bind(sqlx::types::Json(&extra))
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
 
         Ok(())
     }
@@ -785,5 +1040,351 @@ mod tests {
         )?;
 
         Ok(book)
+    }
+
+    // ---- history recording tests ----
+
+    #[sqlx::test]
+    async fn test_create_records_history(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+
+        book_repository.create(&user_id, &book).await?;
+
+        let (cs_op,): (String,) = sqlx::query_as(
+            "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'create_book'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(cs_op, "create_book");
+
+        let (bh_op, bh_title): (String, String) =
+            sqlx::query_as("SELECT operation, title FROM book_event WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(bh_op, "create");
+        assert_eq!(bh_title, "title1");
+
+        let (author_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_event_author bea
+             JOIN book_event be ON bea.event_id = be.event_id
+             WHERE be.user_id = $1",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(author_count, 2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_records_post_update_state(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user_id, &book).await?;
+
+        // Build an updated book with the same ID but a new title
+        let updated = Book::new(
+            book.id().clone(),
+            BookTitle::new("title2".to_owned())?,
+            author_ids.clone(),
+            Isbn::new("1111111111116".to_owned())?,
+            ReadFlag::new(false),
+            OwnedFlag::new(false),
+            Priority::new(50)?,
+            BookFormat::EBook,
+            BookStore::Kindle,
+            PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
+            PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
+        )?;
+        book_repository.update(&user_id, &updated).await?;
+
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT operation, title FROM book_event WHERE user_id = $1
+             ORDER BY changed_at DESC",
+        )
+        .bind(user_id.as_str())
+        .fetch_all(&pool)
+        .await?;
+
+        assert_eq!(rows.len(), 2);
+        // Most recent entry is the update event (post-update state)
+        assert_eq!(rows[0].0, "update");
+        assert_eq!(rows[0].1, "title2");
+        assert_eq!(rows[1].0, "create");
+
+        let cs_count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM event_set WHERE user_id = $1
+             AND operation IN ('create_book', 'update_book', 'delete_book')",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(cs_count.0, 2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_delete_records_event_with_id_only(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user_id, &book).await?;
+
+        book_repository.delete(&user_id, book.id()).await?;
+
+        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT operation, title FROM book_event WHERE user_id = $1
+             ORDER BY changed_at DESC",
+        )
+        .bind(user_id.as_str())
+        .fetch_all(&pool)
+        .await?;
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "delete");
+        // delete event stores no data fields
+        assert_eq!(rows[0].1, None);
+        assert_eq!(rows[1].0, "create");
+
+        // no book_event_author rows for the delete event
+        let (author_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_event_author bea
+             JOIN book_event be ON bea.event_id = be.event_id
+             WHERE be.user_id = $1 AND be.operation = 'delete'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(author_count, 0);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_restore_some_upserts_existing_book(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user_id, &book).await?;
+
+        let (source_event_id,): (i64,) = sqlx::query_as(
+            "SELECT event_id FROM book_event WHERE user_id = $1 AND operation = 'create'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+
+        let restored = Book::new(
+            book.id().clone(),
+            BookTitle::new("restored_title".to_owned())?,
+            author_ids.clone(),
+            Isbn::new("1111111111116".to_owned())?,
+            ReadFlag::new(false),
+            OwnedFlag::new(false),
+            Priority::new(50)?,
+            BookFormat::EBook,
+            BookStore::Kindle,
+            PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
+            PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
+        )?;
+
+        book_repository
+            .restore(&user_id, source_event_id, Some(restored))
+            .await?;
+
+        // Book row must have the restored title
+        let found = book_repository.find_by_id(&user_id, book.id()).await?;
+        assert_eq!(found.unwrap().title().as_str(), "restored_title");
+
+        // restore event has correct operation and title
+        let (op, title): (String, Option<String>) = sqlx::query_as(
+            "SELECT operation, title FROM book_event WHERE user_id = $1 AND operation = 'restore'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(op, "restore");
+        assert_eq!(title.as_deref(), Some("restored_title"));
+
+        // event_set has a restore_book row
+        let (es_op,): (String,) = sqlx::query_as(
+            "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'restore_book'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(es_op, "restore_book");
+
+        // extra.source_event_id is persisted
+        let (stored_source_id,): (i64,) = sqlx::query_as(
+            "SELECT (extra->>'source_event_id')::bigint
+             FROM book_event WHERE user_id = $1 AND operation = 'restore'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(stored_source_id, source_event_id);
+
+        // book_event_author rows are re-synced for the restore event
+        let (author_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_event_author bea
+             JOIN book_event be ON bea.event_id = be.event_id
+             WHERE be.user_id = $1 AND be.operation = 'restore'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(author_count, 2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_restore_some_inserts_when_book_absent(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+
+        // Create then delete so the book is absent
+        book_repository.create(&user_id, &book).await?;
+        let (source_event_id,): (i64,) = sqlx::query_as(
+            "SELECT event_id FROM book_event WHERE user_id = $1 AND operation = 'create'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        book_repository.delete(&user_id, book.id()).await?;
+
+        // restore(Some(book)) must INSERT the row since it no longer exists
+        book_repository
+            .restore(&user_id, source_event_id, Some(book.clone()))
+            .await?;
+
+        let found = book_repository.find_by_id(&user_id, book.id()).await?;
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().title().as_str(), "title1");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_restore_none_deletes_book_and_records_event(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user_id, &book).await?;
+
+        let (source_event_id,): (i64,) = sqlx::query_as(
+            "SELECT event_id FROM book_event WHERE user_id = $1 AND operation = 'create'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+
+        book_repository
+            .restore(&user_id, source_event_id, None)
+            .await?;
+
+        // Book must no longer exist
+        let found = book_repository.find_by_id(&user_id, book.id()).await?;
+        assert!(found.is_none());
+
+        // restore event has no data fields
+        let (op, title): (String, Option<String>) = sqlx::query_as(
+            "SELECT operation, title FROM book_event WHERE user_id = $1 AND operation = 'restore'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(op, "restore");
+        assert_eq!(title, None);
+
+        // event_set has a restore_book row
+        let (es_op,): (String,) = sqlx::query_as(
+            "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'restore_book'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(es_op, "restore_book");
+
+        // extra.source_event_id is persisted
+        let (stored_source_id,): (i64,) = sqlx::query_as(
+            "SELECT (extra->>'source_event_id')::bigint
+             FROM book_event WHERE user_id = $1 AND operation = 'restore'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(stored_source_id, source_event_id);
+
+        // no book_event_author rows for the delete-restore event
+        let (author_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_event_author bea
+             JOIN book_event be ON bea.event_id = be.event_id
+             WHERE be.user_id = $1 AND be.operation = 'restore'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(author_count, 0);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_failed_update_does_not_record_history(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        book_repository.create(&user1_id, &book).await?;
+
+        // Attempt update as wrong user — must fail
+        let result = book_repository.update(&user2_id, &book).await;
+        assert!(matches!(result, Err(DomainError::NotFound { .. })));
+
+        // Only user1's create entry should exist
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book_event")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(count, 1);
+
+        Ok(())
     }
 }

@@ -4,7 +4,12 @@ use async_trait::async_trait;
 use mockall::automock;
 
 use crate::use_case::{
-    dto::{author::AuthorDto, book::BookDto, user::UserDto},
+    dto::{
+        author::AuthorDto,
+        book::BookDto,
+        event::{AuthorEventDto, BookEventDto},
+        user::UserDto,
+    },
     error::UseCaseError,
 };
 
@@ -29,4 +34,14 @@ pub trait QueryUseCase: Send + Sync + 'static {
         user_id: &str,
         author_ids: &[String],
     ) -> Result<HashMap<String, AuthorDto>, UseCaseError>;
+    async fn list_book_events(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<Vec<BookEventDto>, UseCaseError>;
+    async fn list_author_events(
+        &self,
+        user_id: &str,
+        author_id: &str,
+    ) -> Result<Vec<AuthorEventDto>, UseCaseError>;
 }

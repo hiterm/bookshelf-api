@@ -3,6 +3,19 @@ type Author {
 	name: String!
 }
 
+type AuthorEventEntry {
+	eventId: ID!
+	eventSetId: ID!
+	operation: String!
+	authorId: ID!
+	name: String
+	yomi: String
+	authorCreatedAt: Int
+	authorUpdatedAt: Int
+	changedAt: Int!
+	extra: JSON
+}
+
 type Book {
 	id: String!
 	title: String!
@@ -15,6 +28,25 @@ type Book {
 	createdAt: Int!
 	updatedAt: Int!
 	authors: [Author!]!
+}
+
+type BookEventEntry {
+	eventId: ID!
+	eventSetId: ID!
+	operation: String!
+	bookId: ID!
+	title: String
+	authorIds: [ID!]!
+	isbn: String
+	read: Boolean
+	owned: Boolean
+	priority: Int
+	format: BookFormat
+	store: BookStore
+	bookCreatedAt: Int
+	bookUpdatedAt: Int
+	changedAt: Int!
+	extra: JSON
 }
 
 enum BookFormat {
@@ -43,6 +75,11 @@ input CreateBookInput {
 	store: BookStore!
 }
 
+"""
+A scalar that can represent any JSON value.
+"""
+scalar JSON
+
 type Mutation {
 	registerUser: User!
 	createBook(bookData: CreateBookInput!): Book!
@@ -51,6 +88,8 @@ type Mutation {
 	createAuthor(authorData: CreateAuthorInput!): Author!
 	updateAuthor(authorData: UpdateAuthorInput!): Author!
 	deleteAuthor(authorId: ID!): String!
+	restoreBook(eventId: ID!): Book
+	restoreAuthor(eventId: ID!): Author
 }
 
 type Query {
@@ -59,6 +98,8 @@ type Query {
 	books: [Book!]!
 	author(id: ID!): Author
 	authors: [Author!]!
+	bookEvents(bookId: ID!): [BookEventEntry!]!
+	authorEvents(authorId: ID!): [AuthorEventEntry!]!
 }
 
 input UpdateAuthorInput {

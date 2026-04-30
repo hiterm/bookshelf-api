@@ -7,30 +7,40 @@ use crate::{
         entity::{author::AuthorId, book::BookId, user::UserId},
         error::DomainError,
         repository::{
-            author_repository::AuthorRepository, book_repository::BookRepository,
+            author_event_repository::AuthorEventRepository, author_repository::AuthorRepository,
+            book_event_repository::BookEventRepository, book_repository::BookRepository,
             user_repository::UserRepository,
         },
     },
     use_case::{
-        dto::{author::AuthorDto, book::BookDto, user::UserDto},
+        dto::{
+            author::AuthorDto,
+            book::BookDto,
+            event::{AuthorEventDto, BookEventDto},
+            user::UserDto,
+        },
         error::UseCaseError,
         traits::query::QueryUseCase,
     },
 };
 
 #[derive(Debug, Clone)]
-pub struct QueryInteractor<UR, BR, AR> {
+pub struct QueryInteractor<UR, BR, AR, BER, AER> {
     pub user_repository: UR,
     pub book_repository: BR,
     pub author_repository: AR,
+    pub book_event_repository: BER,
+    pub author_event_repository: AER,
 }
 
 #[async_trait]
-impl<UR, BR, AR> QueryUseCase for QueryInteractor<UR, BR, AR>
+impl<UR, BR, AR, BER, AER> QueryUseCase for QueryInteractor<UR, BR, AR, BER, AER>
 where
     UR: UserRepository,
     BR: BookRepository,
     AR: AuthorRepository,
+    BER: BookEventRepository,
+    AER: AuthorEventRepository,
 {
     async fn find_user_by_id(&self, raw_user_id: &str) -> Result<Option<UserDto>, UseCaseError> {
         let user_id = UserId::new(raw_user_id.to_string())?;
@@ -103,6 +113,34 @@ where
 
         Ok(authors_map)
     }
+
+    async fn list_book_events(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<Vec<BookEventDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let book_id = BookId::try_from(book_id)?;
+        let entries = self
+            .book_event_repository
+            .find_by_book(&user_id, &book_id)
+            .await?;
+        Ok(entries.into_iter().map(BookEventDto::from).collect())
+    }
+
+    async fn list_author_events(
+        &self,
+        user_id: &str,
+        author_id: &str,
+    ) -> Result<Vec<AuthorEventDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let author_id = AuthorId::try_from(author_id)?;
+        let entries = self
+            .author_event_repository
+            .find_by_author(&user_id, &author_id)
+            .await?;
+        Ok(entries.into_iter().map(AuthorEventDto::from).collect())
+    }
 }
 
 #[cfg(test)]
@@ -120,11 +158,15 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                event::{AuthorEvent, BookEvent, EventOperation},
+                event_set::EventSetId,
                 user::{User, UserId},
             },
             repository::{
-                author_repository::MockAuthorRepository, book_repository::MockBookRepository,
-                user_repository::MockUserRepository,
+                author_event_repository::MockAuthorEventRepository,
+                author_repository::MockAuthorRepository,
+                book_event_repository::MockBookEventRepository,
+                book_repository::MockBookRepository, user_repository::MockUserRepository,
             },
         },
         use_case::{
@@ -178,6 +220,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -205,6 +249,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -233,6 +279,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -263,6 +311,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -290,6 +340,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -328,6 +380,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         let actual = query_interactor
@@ -363,6 +417,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -389,6 +445,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -417,6 +475,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -446,6 +506,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -476,6 +538,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -504,6 +568,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -544,6 +610,8 @@ mod tests {
             user_repository,
             book_repository,
             author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
         };
 
         // When
@@ -561,5 +629,189 @@ mod tests {
                 name: "author1".to_string(),
             }
         );
+    }
+
+    fn make_book_event(book_id: Uuid) -> BookEvent {
+        BookEvent {
+            event_id: 1,
+            event_set_id: EventSetId::from(Uuid::new_v4()),
+            operation: EventOperation::Update,
+            book_id: BookId::new(book_id).unwrap(),
+            title: Some(BookTitle::new("Old Title".to_string()).unwrap()),
+            author_ids: vec![],
+            isbn: Some(Isbn::new("".to_string()).unwrap()),
+            read: Some(ReadFlag::new(false)),
+            owned: Some(OwnedFlag::new(false)),
+            priority: Some(Priority::new(50).unwrap()),
+            format: Some(BookFormat::Unknown),
+            store: Some(BookStore::Unknown),
+            book_created_at: Some(OffsetDateTime::now_utc()),
+            book_updated_at: Some(OffsetDateTime::now_utc()),
+            changed_at: OffsetDateTime::now_utc(),
+            extra: None,
+        }
+    }
+
+    fn make_author_event(author_id: Uuid) -> AuthorEvent {
+        AuthorEvent {
+            event_id: 2,
+            event_set_id: EventSetId::from(Uuid::new_v4()),
+            operation: EventOperation::Update,
+            author_id: AuthorId::new(author_id),
+            name: Some("Old Name".to_string()),
+            yomi: Some("".to_string()),
+            author_created_at: Some(OffsetDateTime::now_utc()),
+            author_updated_at: Some(OffsetDateTime::now_utc()),
+            changed_at: OffsetDateTime::now_utc(),
+            extra: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn list_book_events_returns_dto_list() {
+        let book_uuid = Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+        let event = make_book_event(book_uuid);
+
+        let mut book_event_repository = MockBookEventRepository::new();
+        book_event_repository
+            .expect_find_by_book()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![event.clone()]));
+
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_event_repository,
+            author_event_repository: MockAuthorEventRepository::new(),
+        };
+
+        let result = query_interactor
+            .list_book_events("user1", &book_id_str)
+            .await;
+
+        assert!(result.is_ok());
+        let list = result.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].title, Some("Old Title".to_string()));
+    }
+
+    #[tokio::test]
+    async fn list_book_events_returns_empty() {
+        let book_uuid = Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+
+        let mut book_event_repository = MockBookEventRepository::new();
+        book_event_repository
+            .expect_find_by_book()
+            .with(always(), always())
+            .returning(|_, _| Ok(vec![]));
+
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_event_repository,
+            author_event_repository: MockAuthorEventRepository::new(),
+        };
+
+        let result = query_interactor
+            .list_book_events("user1", &book_id_str)
+            .await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_book_events_invalid_book_id_returns_error() {
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
+        };
+
+        let result = query_interactor
+            .list_book_events("user1", "not-a-uuid")
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn list_author_events_returns_dto_list() {
+        let author_uuid = Uuid::new_v4();
+        let author_id_str = author_uuid.hyphenated().to_string();
+        let event = make_author_event(author_uuid);
+
+        let mut author_event_repository = MockAuthorEventRepository::new();
+        author_event_repository
+            .expect_find_by_author()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![event.clone()]));
+
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository,
+        };
+
+        let result = query_interactor
+            .list_author_events("user1", &author_id_str)
+            .await;
+
+        assert!(result.is_ok());
+        let list = result.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, Some("Old Name".to_string()));
+    }
+
+    #[tokio::test]
+    async fn list_author_events_returns_empty() {
+        let author_uuid = Uuid::new_v4();
+        let author_id_str = author_uuid.hyphenated().to_string();
+
+        let mut author_event_repository = MockAuthorEventRepository::new();
+        author_event_repository
+            .expect_find_by_author()
+            .with(always(), always())
+            .returning(|_, _| Ok(vec![]));
+
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository,
+        };
+
+        let result = query_interactor
+            .list_author_events("user1", &author_id_str)
+            .await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_author_events_invalid_author_id_returns_error() {
+        let query_interactor = QueryInteractor {
+            user_repository: MockUserRepository::new(),
+            book_repository: MockBookRepository::new(),
+            author_repository: MockAuthorRepository::new(),
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
+        };
+
+        let result = query_interactor
+            .list_author_events("user1", "not-a-uuid")
+            .await;
+
+        assert!(result.is_err());
     }
 }
