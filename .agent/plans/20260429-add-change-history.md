@@ -156,7 +156,7 @@ call the `bookHistory` GraphQL query. One entry should appear. Call
   is acceptable at the infrastructure layer.
   Date/Author: 2026-04-29 / hiterm
 
-## Decision Log (Phase 2)
+## Decision Log (Phase 2) — Event Naming
 
 - Decision: Rename tables from history-based to event-based naming:
   `change_set` → `event_set`, `book_history` → `book_event`,
