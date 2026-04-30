@@ -150,6 +150,23 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo clippy --all-targets --locked -- -D warnings
 
+  migration-test:
+    name: Migration Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - run: sudo systemctl start postgresql.service
+      - run: pg_isready
+      - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" postgres
+      - run: sudo -u postgres createdb --owner=bookshelf bookshelf_migration_test_empty
+      - run: sudo -u postgres createdb --owner=bookshelf bookshelf_migration_test_data
+      - run: node migrations/test/test_migration.mjs
+        env:
+          MIGRATION_TEST_EMPTY_URL: postgres://bookshelf:password@localhost:5432/bookshelf_migration_test_empty
+          MIGRATION_TEST_DATA_URL: postgres://bookshelf:password@localhost:5432/bookshelf_migration_test_data
+
   check-schema:
     name: Check Schema
     runs-on: ubuntu-latest

@@ -1667,8 +1667,8 @@ test coverage gaps identified during review.
   - [x] plan updated
 - [x] Milestone 23: `snapshot_all` rename + consolidate migrations to one file
   - [x] plan updated
-- [ ] Milestone 24: Migration data test
-  - [ ] plan updated
+- [x] Milestone 24: Migration data test
+  - [x] plan updated
 
 ### Decision Log (Phase 4)
 
@@ -1691,6 +1691,13 @@ test coverage gaps identified during review.
   is simpler: it creates `event_operation` directly (no `history_operation` → rename),
   includes `restore`/`snapshot` from the start, includes `extra jsonb` columns, and
   runs the snapshot CTE.
+  Date/Author: 2026-04-30 / hiterm
+
+- Decision: Migration test is a Node.js script (`migrations/test/test_migration.mjs`)
+  using `child_process.execSync` to call `psql` — no extra npm dependencies. CI creates
+  two dedicated databases (empty and data scenarios) so the script can apply migrations
+  from a clean state in each case. Tests verify both counts and field-level content of
+  snapshot rows, plus the empty-DB edge case.
   Date/Author: 2026-04-30 / hiterm
 
 ---
