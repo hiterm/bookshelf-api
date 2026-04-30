@@ -68,7 +68,7 @@ where
         Ok(authors)
     }
 
-    async fn book_history(
+    async fn book_events(
         &self,
         ctx: &Context<'_>,
         book_id: ID,
@@ -76,12 +76,12 @@ where
         let claims = get_claims(ctx)?;
         let entries = self
             .query_use_case
-            .list_book_history(&claims.sub, book_id.as_str())
+            .list_book_events(&claims.sub, book_id.as_str())
             .await?;
         Ok(entries.into_iter().map(BookEventEntry::from).collect())
     }
 
-    async fn author_history(
+    async fn author_events(
         &self,
         ctx: &Context<'_>,
         author_id: ID,
@@ -89,7 +89,7 @@ where
         let claims = get_claims(ctx)?;
         let entries = self
             .query_use_case
-            .list_author_history(&claims.sub, author_id.as_str())
+            .list_author_events(&claims.sub, author_id.as_str())
             .await?;
         Ok(entries.into_iter().map(AuthorEventEntry::from).collect())
     }

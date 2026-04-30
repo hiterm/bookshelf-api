@@ -12,13 +12,13 @@ use crate::use_case::{
 
 #[automock]
 #[async_trait]
-pub trait ListBookHistoryUseCase: Send + Sync + 'static {
+pub trait ListBookEventsUseCase: Send + Sync + 'static {
     async fn list(&self, user_id: &str, book_id: &str) -> Result<Vec<BookEventDto>, UseCaseError>;
 }
 
 #[automock]
 #[async_trait]
-pub trait ListAuthorHistoryUseCase: Send + Sync + 'static {
+pub trait ListAuthorEventsUseCase: Send + Sync + 'static {
     async fn list(
         &self,
         user_id: &str,

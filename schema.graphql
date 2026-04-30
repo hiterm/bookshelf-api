@@ -98,8 +98,8 @@ type Query {
 	books: [Book!]!
 	author(id: ID!): Author
 	authors: [Author!]!
-	bookHistory(bookId: ID!): [BookEventEntry!]!
-	authorHistory(authorId: ID!): [AuthorEventEntry!]!
+	bookEvents(bookId: ID!): [BookEventEntry!]!
+	authorEvents(authorId: ID!): [AuthorEventEntry!]!
 }
 
 input UpdateAuthorInput {

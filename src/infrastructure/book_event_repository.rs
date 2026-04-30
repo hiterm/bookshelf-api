@@ -10,8 +10,8 @@ use crate::{
         entity::{
             author::AuthorId,
             book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-            event_set::EventSetId,
             event::{BookEvent, EventOperation},
+            event_set::EventSetId,
             user::UserId,
         },
         error::DomainError,

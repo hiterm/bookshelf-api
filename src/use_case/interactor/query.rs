@@ -114,7 +114,7 @@ where
         Ok(authors_map)
     }
 
-    async fn list_book_history(
+    async fn list_book_events(
         &self,
         user_id: &str,
         book_id: &str,
@@ -128,7 +128,7 @@ where
         Ok(entries.into_iter().map(BookEventDto::from).collect())
     }
 
-    async fn list_author_history(
+    async fn list_author_events(
         &self,
         user_id: &str,
         author_id: &str,
@@ -158,8 +158,8 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                event_set::EventSetId,
                 event::{AuthorEvent, BookEvent, EventOperation},
+                event_set::EventSetId,
                 user::{User, UserId},
             },
             repository::{
@@ -668,7 +668,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_book_history_returns_dto_list() {
+    async fn list_book_events_returns_dto_list() {
         let book_uuid = Uuid::new_v4();
         let book_id_str = book_uuid.hyphenated().to_string();
         let event = make_book_event(book_uuid);
@@ -688,7 +688,7 @@ mod tests {
         };
 
         let result = query_interactor
-            .list_book_history("user1", &book_id_str)
+            .list_book_events("user1", &book_id_str)
             .await;
 
         assert!(result.is_ok());
@@ -698,7 +698,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_book_history_returns_empty() {
+    async fn list_book_events_returns_empty() {
         let book_uuid = Uuid::new_v4();
         let book_id_str = book_uuid.hyphenated().to_string();
 
@@ -717,7 +717,7 @@ mod tests {
         };
 
         let result = query_interactor
-            .list_book_history("user1", &book_id_str)
+            .list_book_events("user1", &book_id_str)
             .await;
 
         assert!(result.is_ok());
@@ -725,7 +725,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_book_history_invalid_book_id_returns_error() {
+    async fn list_book_events_invalid_book_id_returns_error() {
         let query_interactor = QueryInteractor {
             user_repository: MockUserRepository::new(),
             book_repository: MockBookRepository::new(),
@@ -735,14 +735,14 @@ mod tests {
         };
 
         let result = query_interactor
-            .list_book_history("user1", "not-a-uuid")
+            .list_book_events("user1", "not-a-uuid")
             .await;
 
         assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn list_author_history_returns_dto_list() {
+    async fn list_author_events_returns_dto_list() {
         let author_uuid = Uuid::new_v4();
         let author_id_str = author_uuid.hyphenated().to_string();
         let event = make_author_event(author_uuid);
@@ -762,7 +762,7 @@ mod tests {
         };
 
         let result = query_interactor
-            .list_author_history("user1", &author_id_str)
+            .list_author_events("user1", &author_id_str)
             .await;
 
         assert!(result.is_ok());
@@ -772,7 +772,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_author_history_returns_empty() {
+    async fn list_author_events_returns_empty() {
         let author_uuid = Uuid::new_v4();
         let author_id_str = author_uuid.hyphenated().to_string();
 
@@ -791,7 +791,7 @@ mod tests {
         };
 
         let result = query_interactor
-            .list_author_history("user1", &author_id_str)
+            .list_author_events("user1", &author_id_str)
             .await;
 
         assert!(result.is_ok());
@@ -799,7 +799,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_author_history_invalid_author_id_returns_error() {
+    async fn list_author_events_invalid_author_id_returns_error() {
         let query_interactor = QueryInteractor {
             user_repository: MockUserRepository::new(),
             book_repository: MockBookRepository::new(),
@@ -809,7 +809,7 @@ mod tests {
         };
 
         let result = query_interactor
-            .list_author_history("user1", "not-a-uuid")
+            .list_author_events("user1", "not-a-uuid")
             .await;
 
         assert!(result.is_err());

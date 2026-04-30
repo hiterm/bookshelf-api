@@ -34,12 +34,12 @@ pub trait QueryUseCase: Send + Sync + 'static {
         user_id: &str,
         author_ids: &[String],
     ) -> Result<HashMap<String, AuthorDto>, UseCaseError>;
-    async fn list_book_history(
+    async fn list_book_events(
         &self,
         user_id: &str,
         book_id: &str,
     ) -> Result<Vec<BookEventDto>, UseCaseError>;
-    async fn list_author_history(
+    async fn list_author_events(
         &self,
         user_id: &str,
         author_id: &str,

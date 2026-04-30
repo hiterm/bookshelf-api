@@ -21,17 +21,17 @@ use crate::{
         },
         error::UseCaseError,
         traits::event::{
-            ListAuthorHistoryUseCase, ListBookHistoryUseCase, RestoreAuthorUseCase,
+            ListAuthorEventsUseCase, ListBookEventsUseCase, RestoreAuthorUseCase,
             RestoreBookUseCase,
         },
     },
 };
 
-pub struct ListBookHistoryInteractor<BER> {
+pub struct ListBookEventsInteractor<BER> {
     book_event_repository: BER,
 }
 
-impl<BER> ListBookHistoryInteractor<BER> {
+impl<BER> ListBookEventsInteractor<BER> {
     pub fn new(book_event_repository: BER) -> Self {
         Self {
             book_event_repository,
@@ -40,7 +40,7 @@ impl<BER> ListBookHistoryInteractor<BER> {
 }
 
 #[async_trait]
-impl<BER> ListBookHistoryUseCase for ListBookHistoryInteractor<BER>
+impl<BER> ListBookEventsUseCase for ListBookEventsInteractor<BER>
 where
     BER: BookEventRepository,
 {
@@ -55,11 +55,11 @@ where
     }
 }
 
-pub struct ListAuthorHistoryInteractor<AER> {
+pub struct ListAuthorEventsInteractor<AER> {
     author_event_repository: AER,
 }
 
-impl<AER> ListAuthorHistoryInteractor<AER> {
+impl<AER> ListAuthorEventsInteractor<AER> {
     pub fn new(author_event_repository: AER) -> Self {
         Self {
             author_event_repository,
@@ -68,7 +68,7 @@ impl<AER> ListAuthorHistoryInteractor<AER> {
 }
 
 #[async_trait]
-impl<AER> ListAuthorHistoryUseCase for ListAuthorHistoryInteractor<AER>
+impl<AER> ListAuthorEventsUseCase for ListAuthorEventsInteractor<AER>
 where
     AER: AuthorEventRepository,
 {
@@ -247,8 +247,8 @@ mod tests {
             entity::{
                 author::AuthorId,
                 book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                event_set::EventSetId,
                 event::{AuthorEvent, BookEvent, EventOperation},
+                event_set::EventSetId,
             },
             repository::{
                 author_event_repository::MockAuthorEventRepository,
@@ -260,7 +260,7 @@ mod tests {
         use_case::{
             error::UseCaseError,
             traits::event::{
-                ListAuthorHistoryUseCase, ListBookHistoryUseCase, RestoreAuthorUseCase,
+                ListAuthorEventsUseCase, ListBookEventsUseCase, RestoreAuthorUseCase,
                 RestoreBookUseCase,
             },
         },
@@ -341,7 +341,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_book_history_returns_dto_list() {
+    async fn list_book_events_returns_dto_list() {
         let book_uuid = Uuid::new_v4();
         let book_id_str = book_uuid.hyphenated().to_string();
         let event = make_book_event(book_uuid);
@@ -351,7 +351,7 @@ mod tests {
             .with(always(), always())
             .returning(move |_, _| Ok(vec![event.clone()]));
 
-        let interactor = ListBookHistoryInteractor::new(repo);
+        let interactor = ListBookEventsInteractor::new(repo);
         let result = interactor.list("user1", &book_id_str).await;
 
         assert!(result.is_ok());
@@ -361,7 +361,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_book_history_returns_empty_when_none() {
+    async fn list_book_events_returns_empty_when_none() {
         let book_uuid = Uuid::new_v4();
         let book_id_str = book_uuid.hyphenated().to_string();
 
@@ -370,7 +370,7 @@ mod tests {
             .with(always(), always())
             .returning(|_, _| Ok(vec![]));
 
-        let interactor = ListBookHistoryInteractor::new(repo);
+        let interactor = ListBookEventsInteractor::new(repo);
         let result = interactor.list("user1", &book_id_str).await;
 
         assert!(result.is_ok());
@@ -378,7 +378,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_author_history_returns_dto_list() {
+    async fn list_author_events_returns_dto_list() {
         let author_uuid = Uuid::new_v4();
         let author_id_str = author_uuid.hyphenated().to_string();
         let event = make_author_event(author_uuid);
@@ -388,7 +388,7 @@ mod tests {
             .with(always(), always())
             .returning(move |_, _| Ok(vec![event.clone()]));
 
-        let interactor = ListAuthorHistoryInteractor::new(repo);
+        let interactor = ListAuthorEventsInteractor::new(repo);
         let result = interactor.list("user1", &author_id_str).await;
 
         assert!(result.is_ok());

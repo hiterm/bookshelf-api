@@ -7,8 +7,8 @@ use uuid::Uuid;
 use crate::domain::{
     entity::{
         author::AuthorId,
-        event_set::EventSetId,
         event::{AuthorEvent, EventOperation},
+        event_set::EventSetId,
         user::UserId,
     },
     error::DomainError,
