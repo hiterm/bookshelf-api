@@ -202,7 +202,7 @@ impl AuthorRepository for PgAuthorRepository {
         let mut tx = self.pool.begin().await?;
 
         // Lock the author row to prevent concurrent inserts into book_author after the count check.
-        let exists: Option<(i64,)> =
+        let exists: Option<(i32,)> =
             sqlx::query_as("SELECT 1 FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
                 .bind(author_id.to_uuid())
                 .bind(user_id.as_str())

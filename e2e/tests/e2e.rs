@@ -993,7 +993,7 @@ async fn e2e_book_history_records_create_operation() -> Result<()> {
     let book_id = create_test_book("History Book Create", &author_id, &token).await?;
 
     let query = format!(
-        r#"{{ bookHistory(bookId: "{}") {{ historyId operation title }} }}"#,
+        r#"{{ bookHistory(bookId: "{}") {{ eventId operation title }} }}"#,
         book_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
@@ -1061,7 +1061,7 @@ async fn e2e_book_history_records_update_operation() -> Result<()> {
     );
 
     let query = format!(
-        r#"{{ bookHistory(bookId: "{}") {{ historyId operation title }} }}"#,
+        r#"{{ bookHistory(bookId: "{}") {{ eventId operation title }} }}"#,
         book_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
@@ -1075,7 +1075,7 @@ async fn e2e_book_history_records_update_operation() -> Result<()> {
     );
 
     // Entries are ordered by changed_at DESC, so the most recent (update) is first.
-    // Each entry is a snapshot of the state BEFORE the operation was applied.
+    // Each entry records the post-state after the operation was applied.
     assert_eq!(
         entries[0]["operation"].as_str(),
         Some("update"),
@@ -1083,8 +1083,8 @@ async fn e2e_book_history_records_update_operation() -> Result<()> {
     );
     assert_eq!(
         entries[0]["title"].as_str(),
-        Some("Original Title"),
-        "update entry captures pre-update state"
+        Some("Updated Title"),
+        "update entry records post-update title"
     );
     assert_eq!(
         entries[1]["operation"].as_str(),
@@ -1094,7 +1094,7 @@ async fn e2e_book_history_records_update_operation() -> Result<()> {
     assert_eq!(
         entries[1]["title"].as_str(),
         Some("Original Title"),
-        "create entry has original title"
+        "create entry records original title"
     );
 
     // Cleanup
@@ -1114,18 +1114,18 @@ async fn e2e_restore_book_reverts_to_snapshot() -> Result<()> {
         create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
     let book_id = create_test_book("Before Restore", &author_id, &token).await?;
 
-    // Update so history has 2 entries; record create snapshot's history_id
+    // Update so history has 2 entries; record create event's event_id
     let history_query = format!(
-        r#"{{ bookHistory(bookId: "{}") {{ historyId operation title }} }}"#,
+        r#"{{ bookHistory(bookId: "{}") {{ eventId operation title }} }}"#,
         book_id
     );
     let (_, response) = graphql_request(&history_query, Some(&token)).await?;
     let entries = response["data"]["bookHistory"]
         .as_array()
         .context("bookHistory should be an array")?;
-    let create_history_id = entries[0]["historyId"]
+    let create_event_id = entries[0]["eventId"]
         .as_str()
-        .context("historyId should be a string")?
+        .context("eventId should be a string")?
         .to_owned();
 
     // Update the book
@@ -1158,10 +1158,10 @@ async fn e2e_restore_book_reverts_to_snapshot() -> Result<()> {
         "title should be 'After Update' before restore"
     );
 
-    // Restore to the create snapshot
+    // Restore to the create event state
     let restore_query = format!(
-        r#"mutation {{ restoreBook(historyId: "{}") {{ id title read }} }}"#,
-        create_history_id
+        r#"mutation {{ restoreBook(eventId: "{}") {{ id title read }} }}"#,
+        create_event_id
     );
     let (_, response) = graphql_request(&restore_query, Some(&token)).await?;
     assert!(
@@ -1172,12 +1172,12 @@ async fn e2e_restore_book_reverts_to_snapshot() -> Result<()> {
     assert_eq!(
         response["data"]["restoreBook"]["title"].as_str(),
         Some("Before Restore"),
-        "restored book should have original title"
+        "restored book should have create-event title"
     );
     assert_eq!(
         response["data"]["restoreBook"]["read"].as_bool(),
         Some(false),
-        "restored book should have original read flag"
+        "restored book should have create-event read flag"
     );
 
     // Verify that the book in the DB reflects the restored state
@@ -1207,7 +1207,7 @@ async fn e2e_book_history_records_delete_operation() -> Result<()> {
 
     // Grab history before delete so we know the book_id for later query
     let history_query = format!(
-        r#"{{ bookHistory(bookId: "{}") {{ historyId operation title }} }}"#,
+        r#"{{ bookHistory(bookId: "{}") {{ eventId operation title }} }}"#,
         book_id
     );
     let (_, response) = graphql_request(&history_query, Some(&token)).await?;
@@ -1255,7 +1255,7 @@ async fn e2e_author_history_records_create_operation() -> Result<()> {
     let author_id = create_test_author(&author_name, &token).await?;
 
     let query = format!(
-        r#"{{ authorHistory(authorId: "{}") {{ historyId operation name }} }}"#,
+        r#"{{ authorHistory(authorId: "{}") {{ eventId operation name }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
@@ -1306,7 +1306,7 @@ async fn e2e_author_history_records_update_operation() -> Result<()> {
     );
 
     let query = format!(
-        r#"{{ authorHistory(authorId: "{}") {{ historyId operation name }} }}"#,
+        r#"{{ authorHistory(authorId: "{}") {{ eventId operation name }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
@@ -1318,7 +1318,7 @@ async fn e2e_author_history_records_update_operation() -> Result<()> {
         2,
         "should have 2 history entries (create + update)"
     );
-    // Each entry is a snapshot of the state BEFORE the operation was applied.
+    // Each entry records the post-state after the operation was applied.
     assert_eq!(
         entries[0]["operation"].as_str(),
         Some("update"),
@@ -1326,8 +1326,8 @@ async fn e2e_author_history_records_update_operation() -> Result<()> {
     );
     assert_eq!(
         entries[0]["name"].as_str(),
-        Some(original_name.as_str()),
-        "update entry captures pre-update name"
+        Some(updated_name.as_str()),
+        "update entry records post-update name"
     );
     assert_eq!(
         entries[1]["operation"].as_str(),
@@ -1337,7 +1337,7 @@ async fn e2e_author_history_records_update_operation() -> Result<()> {
     assert_eq!(
         entries[1]["name"].as_str(),
         Some(original_name.as_str()),
-        "create entry has original name"
+        "create entry records original name"
     );
 
     delete_test_author(&author_id, &token).await?;
@@ -1354,18 +1354,18 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
     let original_name = format!("Restore Author Original {}", uuid::Uuid::new_v4());
     let author_id = create_test_author(&original_name, &token).await?;
 
-    // Capture the create snapshot's history_id
+    // Capture the create event's event_id
     let history_query = format!(
-        r#"{{ authorHistory(authorId: "{}") {{ historyId operation name }} }}"#,
+        r#"{{ authorHistory(authorId: "{}") {{ eventId operation name }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&history_query, Some(&token)).await?;
     let entries = response["data"]["authorHistory"]
         .as_array()
         .context("authorHistory should be an array")?;
-    let create_history_id = entries[0]["historyId"]
+    let create_event_id = entries[0]["eventId"]
         .as_str()
-        .context("historyId should be a string")?
+        .context("eventId should be a string")?
         .to_owned();
 
     // Update the author
@@ -1385,10 +1385,10 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
         "updateAuthor should return updated name"
     );
 
-    // Restore to the create snapshot
+    // Restore to the create event state
     let restore_query = format!(
-        r#"mutation {{ restoreAuthor(historyId: "{}") {{ id name }} }}"#,
-        create_history_id
+        r#"mutation {{ restoreAuthor(eventId: "{}") {{ id name }} }}"#,
+        create_event_id
     );
     let (_, response) = graphql_request(&restore_query, Some(&token)).await?;
     assert!(
@@ -1399,7 +1399,7 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
     assert_eq!(
         response["data"]["restoreAuthor"]["name"].as_str(),
         Some(original_name.as_str()),
-        "restored author should have original name"
+        "restored author should have create-event name"
     );
 
     // Verify DB reflects the restored state
@@ -1427,7 +1427,7 @@ async fn e2e_author_history_records_delete_operation() -> Result<()> {
 
     // Confirm 1 history entry before delete
     let history_query = format!(
-        r#"{{ authorHistory(authorId: "{}") {{ historyId operation name }} }}"#,
+        r#"{{ authorHistory(authorId: "{}") {{ eventId operation name }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&history_query, Some(&token)).await?;
@@ -1454,10 +1454,9 @@ async fn e2e_author_history_records_delete_operation() -> Result<()> {
         Some("delete"),
         "most recent entry should be 'delete'"
     );
-    assert_eq!(
-        after[0]["name"].as_str(),
-        Some(author_name.as_str()),
-        "delete entry should capture the pre-delete name"
+    assert!(
+        after[0]["name"].is_null(),
+        "delete event records only author_id; name is null"
     );
     Ok(())
 }
