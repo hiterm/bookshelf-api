@@ -1702,3 +1702,201 @@ async fn e2e_restore_author_records_restore_event() -> Result<()> {
     delete_test_author(&author_id, &token).await?;
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn e2e_import_books() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    // Pre-create an author
+    let create_author_query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        "Existing Author"
+    );
+    let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
+    let existing_author_id = response["data"]["createAuthor"]["id"]
+        .as_str()
+        .context("author id should be string")?
+        .to_owned();
+
+    // Call importBooks
+    let import_query = r#"
+        mutation {
+            importBooks(books: [
+                {
+                    title: "Book One"
+                    authorNames: ["Existing Author"]
+                    isbn: ""
+                    read: false
+                    owned: false
+                    priority: 50
+                    format: E_BOOK
+                    store: KINDLE
+                },
+                {
+                    title: "Book Two"
+                    authorNames: ["New Author"]
+                    isbn: ""
+                    read: false
+                    owned: false
+                    priority: 50
+                    format: E_BOOK
+                    store: KINDLE
+                }
+            ]) {
+                id
+                title
+            }
+        }
+    "#;
+    let (_, response) = graphql_request(import_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "importBooks should not return errors: {:?}",
+        response.get("errors")
+    );
+
+    let imported_books = response["data"]["importBooks"]
+        .as_array()
+        .context("importBooks should return an array")?;
+    assert_eq!(imported_books.len(), 2, "should import exactly 2 books");
+
+    let book_one_id = imported_books[0]["id"]
+        .as_str()
+        .context("book id should be string")?;
+    let book_one_title = imported_books[0]["title"]
+        .as_str()
+        .context("book title should be string")?;
+    let book_two_id = imported_books[1]["id"]
+        .as_str()
+        .context("book id should be string")?;
+    let book_two_title = imported_books[1]["title"]
+        .as_str()
+        .context("book title should be string")?;
+
+    assert_eq!(book_one_title, "Book One");
+    assert_eq!(book_two_title, "Book Two");
+    assert!(
+        !book_one_id.is_empty(),
+        "book one should have a non-empty id"
+    );
+    assert!(
+        !book_two_id.is_empty(),
+        "book two should have a non-empty id"
+    );
+    assert_ne!(book_one_id, book_two_id, "book ids should be distinct");
+
+    // Query bookEvents for each book and verify shared eventSetId
+    let history_query_one = format!(
+        r#"{{ bookEvents(bookId: "{}") {{ eventSetId operation }} }}"#,
+        book_one_id
+    );
+    let (_, response) = graphql_request(&history_query_one, Some(&token)).await?;
+    let entries_one = response["data"]["bookEvents"]
+        .as_array()
+        .context("bookEvents should be an array")?;
+    assert!(
+        entries_one
+            .iter()
+            .any(|e| e["operation"].as_str() == Some("create")),
+        "book one should have a create event"
+    );
+    let event_set_id_one = entries_one[0]["eventSetId"]
+        .as_str()
+        .context("eventSetId should be string")?;
+
+    let history_query_two = format!(
+        r#"{{ bookEvents(bookId: "{}") {{ eventSetId operation }} }}"#,
+        book_two_id
+    );
+    let (_, response) = graphql_request(&history_query_two, Some(&token)).await?;
+    let entries_two = response["data"]["bookEvents"]
+        .as_array()
+        .context("bookEvents should be an array")?;
+    assert!(
+        entries_two
+            .iter()
+            .any(|e| e["operation"].as_str() == Some("create")),
+        "book two should have a create event"
+    );
+    let event_set_id_two = entries_two[0]["eventSetId"]
+        .as_str()
+        .context("eventSetId should be string")?;
+
+    assert_eq!(
+        event_set_id_one, event_set_id_two,
+        "both books should share the same eventSetId"
+    );
+
+    // Verify Book Two has "New Author"
+    let book_two_query = format!(
+        r#"{{ book(id: "{}") {{ authors {{ name }} }} }}"#,
+        book_two_id
+    );
+    let (_, response) = graphql_request(&book_two_query, Some(&token)).await?;
+    let authors = response["data"]["book"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    assert_eq!(authors.len(), 1, "book two should have 1 author");
+    assert_eq!(
+        authors[0]["name"].as_str(),
+        Some("New Author"),
+        "book two author should be New Author"
+    );
+
+    // Verify "Existing Author" was not duplicated
+    let authors_query = r#"{ authors { id name } }"#;
+    let (_, response) = graphql_request(authors_query, Some(&token)).await?;
+    let all_authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    let existing_count = all_authors
+        .iter()
+        .filter(|a| a["name"].as_str() == Some("Existing Author"))
+        .count();
+    assert_eq!(
+        existing_count, 1,
+        "Existing Author should appear exactly once"
+    );
+
+    // Cleanup
+    delete_test_book(book_one_id, &token).await?;
+    delete_test_book(book_two_id, &token).await?;
+    delete_test_author(&existing_author_id, &token).await?;
+
+    // Find and delete New Author
+    let new_author = all_authors
+        .iter()
+        .find(|a| a["name"].as_str() == Some("New Author"));
+    if let Some(author) = new_author {
+        let new_author_id = author["id"].as_str().context("id should be string")?;
+        delete_test_author(new_author_id, &token).await?;
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_import_books_empty() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+
+    let import_query = r#"mutation { importBooks(books: []) { id } }"#;
+    let (_, response) = graphql_request(import_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "importBooks with empty list should not return errors: {:?}",
+        response.get("errors")
+    );
+
+    let imported_books = response["data"]["importBooks"]
+        .as_array()
+        .context("importBooks should return an array")?;
+    assert!(imported_books.is_empty(), "imported books should be empty");
+
+    Ok(())
+}
