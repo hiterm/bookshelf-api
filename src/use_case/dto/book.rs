@@ -158,6 +158,18 @@ pub struct UpdateBookDto {
     pub store: BookStore,
 }
 
+#[derive(Debug, Clone)]
+pub struct ImportBookEntryDto {
+    pub title: String,
+    pub author_names: Vec<String>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+}
+
 impl UpdateBookDto {
     #[allow(clippy::too_many_arguments)]
     pub fn new(

@@ -3,20 +3,20 @@ use async_trait::async_trait;
 use crate::use_case::{
     dto::{
         author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
-        book::{BookDto, CreateBookDto, UpdateBookDto},
+        book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto},
         user::UserDto,
     },
     error::UseCaseError,
     traits::{
         author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
-        book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
+        book::{CreateBookUseCase, DeleteBookUseCase, ImportBooksUseCase, UpdateBookUseCase},
         event::{RestoreAuthorUseCase, RestoreBookUseCase},
         mutation::MutationUseCase,
         user::RegisterUserUseCase,
     },
 };
 
-pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC> {
+pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC> {
     register_user_use_case: RUUC,
     create_book_use_case: CBUC,
     update_book_use_case: UBUC,
@@ -26,10 +26,11 @@ pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RA
     delete_author_use_case: DAUC,
     restore_book_use_case: RBUC,
     restore_author_use_case: RAUC,
+    import_books_use_case: IBUC,
 }
 
-impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
-    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
+    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
 {
     // This constructor takes many arguments because MutationInteractor composes all
     // mutation use cases via dependency injection. Splitting it would reduce clarity
@@ -45,6 +46,7 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
         delete_author_use_case: DAUC,
         restore_book_use_case: RBUC,
         restore_author_use_case: RAUC,
+        import_books_use_case: IBUC,
     ) -> Self {
         Self {
             register_user_use_case,
@@ -56,13 +58,14 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
             delete_author_use_case,
             restore_book_use_case,
             restore_author_use_case,
+            import_books_use_case,
         }
     }
 }
 
 #[async_trait]
-impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC> MutationUseCase
-    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC> MutationUseCase
+    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
 where
     RUUC: RegisterUserUseCase,
     CBUC: CreateBookUseCase,
@@ -73,6 +76,7 @@ where
     DAUC: DeleteAuthorUseCase,
     RBUC: RestoreBookUseCase,
     RAUC: RestoreAuthorUseCase,
+    IBUC: ImportBooksUseCase,
 {
     async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError> {
         let user = self.register_user_use_case.register_user(user_id).await?;
@@ -150,6 +154,14 @@ where
             .restore(user_id, event_id)
             .await
     }
+
+    async fn import_books(
+        &self,
+        user_id: &str,
+        books: Vec<ImportBookEntryDto>,
+    ) -> Result<Vec<BookDto>, UseCaseError> {
+        self.import_books_use_case.import(user_id, books).await
+    }
 }
 
 #[cfg(test)]
@@ -161,13 +173,16 @@ mod tests {
     use crate::use_case::{
         dto::{
             author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
-            book::{BookDto, CreateBookDto, UpdateBookDto},
+            book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto},
             user::UserDto,
         },
         interactor::mutation::MutationInteractor,
         traits::{
             author::{MockCreateAuthorUseCase, MockDeleteAuthorUseCase, MockUpdateAuthorUseCase},
-            book::{MockCreateBookUseCase, MockDeleteBookUseCase, MockUpdateBookUseCase},
+            book::{
+                MockCreateBookUseCase, MockDeleteBookUseCase, MockImportBooksUseCase,
+                MockUpdateBookUseCase,
+            },
             event::{MockRestoreAuthorUseCase, MockRestoreBookUseCase},
             mutation::MutationUseCase,
             user::MockRegisterUserUseCase,
@@ -186,6 +201,7 @@ mod tests {
         MockDeleteAuthorUseCase,
         MockRestoreBookUseCase,
         MockRestoreAuthorUseCase,
+        MockImportBooksUseCase,
     >;
 
     struct InteractorBuilder {
@@ -198,6 +214,7 @@ mod tests {
         delete_author: MockDeleteAuthorUseCase,
         restore_book: MockRestoreBookUseCase,
         restore_author: MockRestoreAuthorUseCase,
+        import_books: MockImportBooksUseCase,
     }
 
     impl InteractorBuilder {
@@ -212,6 +229,7 @@ mod tests {
                 delete_author: MockDeleteAuthorUseCase::new(),
                 restore_book: MockRestoreBookUseCase::new(),
                 restore_author: MockRestoreAuthorUseCase::new(),
+                import_books: MockImportBooksUseCase::new(),
             }
         }
 
@@ -260,6 +278,11 @@ mod tests {
             self
         }
 
+        fn with_import_books(mut self, mock: MockImportBooksUseCase) -> Self {
+            self.import_books = mock;
+            self
+        }
+
         fn build(self) -> DefaultInteractor {
             MutationInteractor::new(
                 self.register_user,
@@ -271,6 +294,7 @@ mod tests {
                 self.delete_author,
                 self.restore_book,
                 self.restore_author,
+                self.import_books,
             )
         }
     }
@@ -669,5 +693,40 @@ mod tests {
 
         // Then
         assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn import_books_delegates_to_sub_use_case() {
+        // Given
+        let book_id = Uuid::new_v4().hyphenated().to_string();
+        let expected_dto = make_book_dto(&book_id);
+
+        let mut mock_import_books = MockImportBooksUseCase::new();
+        mock_import_books
+            .expect_import()
+            .with(eq("user1"), always())
+            .returning(move |_, _| Ok(vec![make_book_dto(&book_id)]));
+
+        let interactor = InteractorBuilder::new()
+            .with_import_books(mock_import_books)
+            .build();
+
+        let books = vec![ImportBookEntryDto {
+            title: "Imported Book".to_string(),
+            author_names: vec!["Author".to_string()],
+            isbn: "".to_string(),
+            read: false,
+            owned: false,
+            priority: 50,
+            format: BookFormat::Unknown,
+            store: BookStore::Unknown,
+        }];
+
+        // When
+        let result = interactor.import_books("user1", books).await;
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap()[0].id, expected_dto.id);
     }
 }
