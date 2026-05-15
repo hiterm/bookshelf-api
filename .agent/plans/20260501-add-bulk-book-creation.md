@@ -47,24 +47,26 @@ recorded as a single batch.
 
 ## Progress
 
-- [ ] Milestone 1: Database migrations — unique constraint + new event_set_operation value
-  - [ ] plan updated
-- [ ] Milestone 2: Domain layer — ImportBookInput struct + ImportBooksRepository trait
-  - [ ] plan updated
-- [ ] Milestone 3: Infrastructure layer — PgImportBooksRepository (find-or-create + single tx)
-  - [ ] plan updated
-- [ ] Milestone 4: Use case layer — ImportBookEntryDto, ImportBooksUseCase, ImportBooksInteractor,
+- [x] Milestone 1: Database migrations — unique constraint + new event_set_operation value
+  - [x] plan updated
+- [x] Milestone 2: Domain layer — ImportBookInput struct + ImportBooksRepository trait
+  - [x] plan updated
+- [x] Milestone 3: Infrastructure layer — PgImportBooksRepository (find-or-create + single tx)
+  - [x] plan updated
+- [x] Milestone 4: Use case layer — ImportBookEntryDto, ImportBooksUseCase, ImportBooksInteractor,
   update MutationInteractor
-  - [ ] plan updated
-- [ ] Milestone 5: Presentation layer and DI — GraphQL input/resolver, wire everything up
-  - [ ] plan updated
-- [ ] Milestone 6: Tests — unit tests and E2E tests
-  - [ ] plan updated
+  - [x] plan updated
+- [x] Milestone 5: Presentation layer and DI — GraphQL input/resolver, wire everything up
+  - [x] plan updated
+- [x] Milestone 6: Tests — unit tests and E2E tests
+  - [x] plan updated
 
 
 ## Surprises & Discoveries
 
-*(Record unexpected behaviors, bugs, or insights here as they occur.)*
+- The existing GraphQL query for book history is named `bookEvents`, not
+  `bookHistory`. The E2E tests use `bookEvents(bookId: ...)` as documented in
+  the query resolver (`src/presentation/graphql/query.rs`).
 
 
 ## Decision Log
