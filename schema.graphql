@@ -75,6 +75,17 @@ input CreateBookInput {
 	store: BookStore!
 }
 
+input ImportBookInput {
+	title: String!
+	authorNames: [String!]!
+	isbn: String!
+	read: Boolean!
+	owned: Boolean!
+	priority: Int!
+	format: BookFormat!
+	store: BookStore!
+}
+
 """
 A scalar that can represent any JSON value.
 """
@@ -90,6 +101,7 @@ type Mutation {
 	deleteAuthor(authorId: ID!): String!
 	restoreBook(eventId: ID!): Book
 	restoreAuthor(eventId: ID!): Author
+	importBooks(books: [ImportBookInput!]!): [Book!]!
 }
 
 type Query {

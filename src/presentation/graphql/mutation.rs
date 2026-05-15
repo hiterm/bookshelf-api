@@ -8,7 +8,8 @@ use crate::{
 };
 
 use super::object::{
-    Author, Book, CreateAuthorInput, CreateBookInput, UpdateAuthorInput, UpdateBookInput, User,
+    Author, Book, CreateAuthorInput, CreateBookInput, ImportBookInput, UpdateAuthorInput,
+    UpdateBookInput, User,
 };
 
 pub struct Mutation<MUC> {
@@ -145,6 +146,19 @@ where
             .restore_author(&claims.sub, eid)
             .await?;
         Ok(author.map(Author::from))
+    }
+
+    async fn import_books(
+        &self,
+        ctx: &Context<'_>,
+        books: Vec<ImportBookInput>,
+    ) -> Result<Vec<Book>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let books = self
+            .mutation_use_case
+            .import_books(&claims.sub, books.into_iter().map(Into::into).collect())
+            .await?;
+        Ok(books.into_iter().map(Book::from).collect())
     }
 }
 
