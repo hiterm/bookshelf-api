@@ -98,8 +98,8 @@ impl ImportBooksRepository for PgImportBooksRepository {
                             name, yomi, author_created_at, author_updated_at)
                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                     )
-                    .bind(EventOperation::Create.as_str())
                     .bind(es_id)
+                    .bind(EventOperation::Create.as_str())
                     .bind(author_id.to_uuid())
                     .bind(user_id.as_str())
                     .bind(&name)
@@ -185,8 +185,8 @@ impl ImportBooksRepository for PgImportBooksRepository {
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                  RETURNING event_id",
             )
-            .bind(EventOperation::Create.as_str())
             .bind(es_id)
+            .bind(EventOperation::Create.as_str())
             .bind(book_entity.id().to_uuid())
             .bind(user_id.as_str())
             .bind(book_entity.title().as_str())
