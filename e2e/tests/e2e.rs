@@ -1909,7 +1909,7 @@ async fn e2e_import_books() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-async fn e2e_import_books_empty() -> Result<()> {
+async fn e2e_import_books_empty_returns_error() -> Result<()> {
     let user_id = uuid::Uuid::new_v4().to_string();
     let token = generate_test_token(&user_id)?;
     ensure_user_registered(&token).await?;
@@ -1917,15 +1917,10 @@ async fn e2e_import_books_empty() -> Result<()> {
     let import_query = r#"mutation { importBooks(books: []) { id } }"#;
     let (_, response) = graphql_request(import_query, Some(&token)).await?;
     assert!(
-        response.get("errors").is_none(),
-        "importBooks with empty list should not return errors: {:?}",
+        response.get("errors").is_some(),
+        "importBooks with empty list should return errors: {:?}",
         response.get("errors")
     );
-
-    let imported_books = response["data"]["importBooks"]
-        .as_array()
-        .context("importBooks should return an array")?;
-    assert!(imported_books.is_empty(), "imported books should be empty");
 
     Ok(())
 }

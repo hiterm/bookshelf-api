@@ -166,6 +166,12 @@ where
         user_id: &str,
         books: Vec<ImportBookEntryDto>,
     ) -> Result<Vec<BookDto>, UseCaseError> {
+        if books.is_empty() {
+            return Err(UseCaseError::Validation(
+                "books cannot be empty".to_string(),
+            ));
+        }
+
         let user_id = UserId::new(user_id.to_string())?;
         let now = OffsetDateTime::now_utc();
 
@@ -412,21 +418,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn import_books_empty_list() {
+    async fn import_books_empty_list_returns_validation_error() {
         // Given
-        let mut mock = MockImportBooksRepository::new();
-        mock.expect_import()
-            .with(always(), always())
-            .returning(|_, _| Ok(vec![]));
-
+        let mock = MockImportBooksRepository::new();
         let interactor = ImportBooksInteractor::new(mock);
 
         // When
         let result = interactor.import("user1", vec![]).await;
 
         // Then
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 0);
+        assert!(
+            matches!(result, Err(UseCaseError::Validation(ref msg)) if msg == "books cannot be empty"),
+            "expected validation error for empty list, got {:?}",
+            result
+        );
     }
 
     #[tokio::test]
