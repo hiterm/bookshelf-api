@@ -5,7 +5,12 @@ use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::domain::entity::{author::AuthorId, book::Book, user::UserId};
+use crate::domain::entity::{
+    author::AuthorId,
+    book::Book,
+    event::{EventOperation, EventSetOperation},
+    user::UserId,
+};
 use crate::domain::error::DomainError;
 use crate::domain::repository::import_books_repository::{ImportBookInput, ImportBooksRepository};
 
@@ -17,6 +22,9 @@ struct AuthorSnapshotRow {
     updated_at: OffsetDateTime,
 }
 
+/// NOTE: Temporary infrastructure repository. See `ImportBooksRepository` trait
+/// documentation for rationale. Should be dissolved into aggregate
+/// repositories once Unit of Work pattern is introduced.
 #[derive(Debug, Clone)]
 pub struct PgImportBooksRepository {
     pool: PgPool,
@@ -39,13 +47,12 @@ impl ImportBooksRepository for PgImportBooksRepository {
 
         // Step 1 — generate the shared event_set ID.
         let es_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'import_books')",
-        )
-        .bind(es_id)
-        .bind(user_id.as_str())
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, $3)")
+            .bind(EventSetOperation::ImportBooks.as_str())
+            .bind(es_id)
+            .bind(user_id.as_str())
+            .execute(&mut *tx)
+            .await?;
 
         // Step 2 — collect unique author names and build the name-to-ID map.
         let mut name_to_id: HashMap<String, AuthorId> = HashMap::new();
@@ -89,8 +96,9 @@ impl ImportBooksRepository for PgImportBooksRepository {
                         "INSERT INTO author_event
                            (event_set_id, operation, author_id, user_id,
                             name, yomi, author_created_at, author_updated_at)
-                         VALUES ($1, 'create', $2, $3, $4, $5, $6, $7)",
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                     )
+                    .bind(EventOperation::Create.as_str())
                     .bind(es_id)
                     .bind(author_id.to_uuid())
                     .bind(user_id.as_str())
@@ -111,8 +119,15 @@ impl ImportBooksRepository for PgImportBooksRepository {
             let author_ids: Vec<AuthorId> = book
                 .author_names
                 .iter()
-                .map(|name| name_to_id[name.as_str()].clone())
-                .collect();
+                .map(|name| {
+                    name_to_id.get(name.as_str()).cloned().ok_or_else(|| {
+                        DomainError::Unexpected(format!(
+                            "author name '{}' not found in name_to_id map",
+                            name.as_str()
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
             let book_entity = Book::new(
                 book.book_id.clone(),
@@ -167,9 +182,10 @@ impl ImportBooksRepository for PgImportBooksRepository {
                    (event_set_id, operation, book_id, user_id,
                     title, isbn, read, owned, priority, format, store,
                     book_created_at, book_updated_at)
-                 VALUES ($1, 'create', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                  RETURNING event_id",
             )
+            .bind(EventOperation::Create.as_str())
             .bind(es_id)
             .bind(book_entity.id().to_uuid())
             .bind(user_id.as_str())
@@ -220,6 +236,7 @@ mod tests {
             entity::{
                 author::{Author, AuthorName},
                 book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                event::{EventOperation, EventSetOperation},
                 user::User,
             },
             error::DomainError,
@@ -253,8 +270,8 @@ mod tests {
 
         // Import two books: one with existing author, one with new author
         let inputs = vec![
-            make_import_input("Book One", vec!["Existing Author"]),
-            make_import_input("Book Two", vec!["New Author"]),
+            make_import_input("Book One", vec!["Existing Author"])?,
+            make_import_input("Book Two", vec!["New Author"])?,
         ];
 
         let result = import_repo.import(&user_id, inputs).await?;
@@ -271,14 +288,16 @@ mod tests {
         assert_eq!(author_rows[1].0, "New Author");
 
         // Verify exactly one author_event for the newly created author
-        let (new_author_event_count,): (i64,) = sqlx::query_as(
+        let query = format!(
             "SELECT COUNT(*) FROM author_event ae
              JOIN event_set es ON ae.event_set_id = es.id
-             WHERE ae.user_id = $1 AND es.operation = 'import_books'",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
+             WHERE ae.user_id = $1 AND es.operation = '{}'",
+            EventSetOperation::ImportBooks.as_str()
+        );
+        let (new_author_event_count,): (i64,) = sqlx::query_as(&query)
+            .bind(user_id.as_str())
+            .fetch_one(&pool)
+            .await?;
         assert_eq!(new_author_event_count, 1);
 
         Ok(())
@@ -293,8 +312,8 @@ mod tests {
 
         // Import two books that share the same author
         let inputs = vec![
-            make_import_input("Book One", vec!["Shared Author"]),
-            make_import_input("Book Two", vec!["Shared Author"]),
+            make_import_input("Book One", vec!["Shared Author"])?,
+            make_import_input("Book Two", vec!["Shared Author"])?,
         ];
 
         let result = import_repo.import(&user_id, inputs).await?;
@@ -326,18 +345,20 @@ mod tests {
 
         let user_id = prepare_user(&user_repo, "user1").await?;
 
-        let inputs = vec![make_import_input("Imported Book", vec!["Author A"])];
+        let inputs = vec![make_import_input("Imported Book", vec!["Author A"])?];
         let result = import_repo.import(&user_id, inputs).await?;
         assert_eq!(result.len(), 1);
 
         // Verify event_set
-        let (es_op,): (String,) = sqlx::query_as(
-            "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'import_books'",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(es_op, "import_books");
+        let query = format!(
+            "SELECT operation FROM event_set WHERE user_id = $1 AND operation = '{}'",
+            EventSetOperation::ImportBooks.as_str()
+        );
+        let (es_op,): (String,) = sqlx::query_as(&query)
+            .bind(user_id.as_str())
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(es_op, EventSetOperation::ImportBooks.as_str());
 
         // Verify book_event
         let (be_op, be_title): (String, String) =
@@ -345,7 +366,7 @@ mod tests {
                 .bind(user_id.as_str())
                 .fetch_one(&pool)
                 .await?;
-        assert_eq!(be_op, "create");
+        assert_eq!(be_op, EventOperation::Create.as_str());
         assert_eq!(be_title, "Imported Book");
 
         // Verify book_event_author
@@ -365,7 +386,7 @@ mod tests {
                 .bind(user_id.as_str())
                 .fetch_one(&pool)
                 .await?;
-        assert_eq!(ae_op, "create");
+        assert_eq!(ae_op, EventOperation::Create.as_str());
         assert_eq!(ae_name, "Author A");
 
         Ok(())
@@ -461,6 +482,53 @@ mod tests {
         Ok(())
     }
 
+    #[sqlx::test]
+    async fn import_empty_author_names(pool: PgPool) -> anyhow::Result<()> {
+        let user_repo = PgUserRepository::new(pool.clone());
+        let import_repo = PgImportBooksRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repo, "user1").await?;
+
+        let inputs = vec![make_import_input("Book With No Authors", vec![])?];
+
+        let result = import_repo.import(&user_id, inputs).await?;
+        assert_eq!(result.len(), 1);
+
+        // Verify book exists
+        let (book_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book WHERE user_id = $1")
+            .bind(user_id.as_str())
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(book_count, 1);
+
+        // Verify no book_author rows created
+        let (book_author_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM book_author WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            book_author_count, 0,
+            "book_author should be empty when no authors"
+        );
+
+        // Verify no book_event_author rows created
+        let (book_event_author_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_event_author bea
+             JOIN book_event be ON bea.event_id = be.event_id
+             WHERE be.user_id = $1",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(
+            book_event_author_count, 0,
+            "book_event_author should be empty when no authors"
+        );
+
+        Ok(())
+    }
+
     async fn prepare_user(repository: &PgUserRepository, id: &str) -> Result<UserId, DomainError> {
         let user_id = UserId::new(String::from(id))?;
         let user = User::new(user_id.clone());
@@ -468,23 +536,26 @@ mod tests {
         Ok(user_id)
     }
 
-    fn make_import_input(title: &str, author_names: Vec<&str>) -> ImportBookInput {
+    fn make_import_input(
+        title: &str,
+        author_names: Vec<&str>,
+    ) -> Result<ImportBookInput, DomainError> {
         let now = PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc();
-        ImportBookInput {
-            book_id: BookId::new(Uuid::new_v4()).unwrap(),
-            title: BookTitle::new(title.to_owned()).unwrap(),
+        Ok(ImportBookInput {
+            book_id: BookId::new(Uuid::new_v4())?,
+            title: BookTitle::new(title.to_owned())?,
             author_names: author_names
                 .into_iter()
-                .map(|n| AuthorName::new(n.to_owned()).unwrap())
-                .collect(),
-            isbn: Isbn::new("".to_owned()).unwrap(),
+                .map(|n| AuthorName::new(n.to_owned()))
+                .collect::<Result<Vec<_>, _>>()?,
+            isbn: Isbn::new("".to_owned())?,
             read: ReadFlag::new(false),
             owned: OwnedFlag::new(false),
-            priority: Priority::new(50).unwrap(),
+            priority: Priority::new(50)?,
             format: BookFormat::EBook,
             store: BookStore::Kindle,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 }

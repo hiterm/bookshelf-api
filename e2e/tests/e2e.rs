@@ -1748,6 +1748,9 @@ async fn e2e_import_books() -> Result<()> {
             ]) {
                 id
                 title
+                authors {
+                    name
+                }
             }
         }
     "#;
@@ -1769,15 +1772,28 @@ async fn e2e_import_books() -> Result<()> {
     let book_one_title = imported_books[0]["title"]
         .as_str()
         .context("book title should be string")?;
+    let book_one_authors = imported_books[0]["authors"]
+        .as_array()
+        .context("book one authors should be an array")?;
     let book_two_id = imported_books[1]["id"]
         .as_str()
         .context("book id should be string")?;
     let book_two_title = imported_books[1]["title"]
         .as_str()
         .context("book title should be string")?;
+    let book_two_authors = imported_books[1]["authors"]
+        .as_array()
+        .context("book two authors should be an array")?;
 
     assert_eq!(book_one_title, "Book One");
+    assert_eq!(book_one_authors.len(), 1);
+    assert_eq!(
+        book_one_authors[0]["name"].as_str(),
+        Some("Existing Author")
+    );
     assert_eq!(book_two_title, "Book Two");
+    assert_eq!(book_two_authors.len(), 1);
+    assert_eq!(book_two_authors[0]["name"].as_str(), Some("New Author"));
     assert!(
         !book_one_id.is_empty(),
         "book one should have a non-empty id"

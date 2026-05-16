@@ -25,6 +25,12 @@ pub struct ImportBookInput {
     pub updated_at: OffsetDateTime,
 }
 
+/// NOTE: This is a temporary repository introduced because existing
+/// PgBookRepository and PgAuthorRepository do not accept external
+/// transactions, preventing use-case layer from orchestrating multiple
+/// repositories within a single transaction.
+/// When Unit of Work pattern is introduced, this trait should be removed
+/// and its responsibilities merged back into the aggregate repositories.
 #[automock]
 #[async_trait]
 pub trait ImportBooksRepository: Send + Sync + 'static {

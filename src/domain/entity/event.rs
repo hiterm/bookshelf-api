@@ -19,6 +19,22 @@ pub enum EventOperation {
     Snapshot,
 }
 
+/// TODO: Migrate other event_set operations (create_book, update_book, etc.)
+/// from hard-coded strings in book_repository.rs and author_repository.rs.
+/// See: https://github.com/hiterm/bookshelf-api/pull/225#issuecomment-4466306766
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EventSetOperation {
+    ImportBooks,
+}
+
+impl EventSetOperation {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EventSetOperation::ImportBooks => "import_books",
+        }
+    }
+}
+
 impl EventOperation {
     pub fn as_str(&self) -> &'static str {
         match self {
