@@ -48,9 +48,9 @@ impl ImportBooksRepository for PgImportBooksRepository {
         // Step 1 — generate the shared event_set ID.
         let es_id = Uuid::new_v4();
         sqlx::query("INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, $3)")
-            .bind(EventSetOperation::ImportBooks.as_str())
             .bind(es_id)
             .bind(user_id.as_str())
+            .bind(EventSetOperation::ImportBooks.as_str())
             .execute(&mut *tx)
             .await?;
 
