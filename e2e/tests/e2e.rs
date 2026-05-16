@@ -1861,19 +1861,48 @@ async fn e2e_import_books() -> Result<()> {
         "Existing Author should appear exactly once"
     );
 
+    // Verify New Author has a create event in authorEvents
+    let new_author = all_authors
+        .iter()
+        .find(|a| a["name"].as_str() == Some("New Author"));
+    let new_author_id = new_author
+        .and_then(|a| a["id"].as_str())
+        .context("new author should have an id")?;
+    let author_events_query = format!(
+        r#"{{ authorEvents(authorId: "{}") {{ eventId eventSetId operation name }} }}"#,
+        new_author_id
+    );
+    let (_, response) = graphql_request(&author_events_query, Some(&token)).await?;
+    let author_events = response["data"]["authorEvents"]
+        .as_array()
+        .context("authorEvents should be an array")?;
+    assert_eq!(
+        author_events.len(),
+        1,
+        "new author should have exactly 1 event entry"
+    );
+    assert_eq!(
+        author_events[0]["operation"].as_str(),
+        Some("create"),
+        "new author event should be create"
+    );
+    assert_eq!(
+        author_events[0]["name"].as_str(),
+        Some("New Author"),
+        "new author event name should match"
+    );
+    assert!(
+        !author_events[0]["eventSetId"].is_null(),
+        "new author event should have eventSetId"
+    );
+
     // Cleanup
     delete_test_book(book_one_id, &token).await?;
     delete_test_book(book_two_id, &token).await?;
     delete_test_author(&existing_author_id, &token).await?;
 
-    // Find and delete New Author
-    let new_author = all_authors
-        .iter()
-        .find(|a| a["name"].as_str() == Some("New Author"));
-    if let Some(author) = new_author {
-        let new_author_id = author["id"].as_str().context("id should be string")?;
-        delete_test_author(new_author_id, &token).await?;
-    }
+    // Delete New Author
+    delete_test_author(new_author_id, &token).await?;
 
     Ok(())
 }

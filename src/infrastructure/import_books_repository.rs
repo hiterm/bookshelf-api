@@ -438,6 +438,26 @@ mod tests {
                 .await?;
         assert_eq!(event_set_count, 0, "no event_set rows should be persisted");
 
+        let (book_event_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM book_event WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            book_event_count, 0,
+            "no book_event rows should be persisted"
+        );
+
+        let (author_event_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM author_event WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            author_event_count, 0,
+            "no author_event rows should be persisted"
+        );
+
         Ok(())
     }
 
