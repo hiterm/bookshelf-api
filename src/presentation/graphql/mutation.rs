@@ -148,6 +148,7 @@ where
         Ok(author.map(Author::from))
     }
 
+    /// Imports multiple books. Creates authors if they do not exist.
     async fn import_books(
         &self,
         ctx: &Context<'_>,

@@ -283,13 +283,21 @@ impl From<UpdateAuthorInput> for UpdateAuthorDto {
 
 #[derive(InputObject)]
 pub struct ImportBookInput {
+    /// Title of the book.
     pub title: String,
+    /// Names of the authors. Authors will be created if they do not exist.
     pub author_names: Vec<String>,
+    /// ISBN of the book.
     pub isbn: String,
+    /// Whether the book has been read.
     pub read: bool,
+    /// Whether the book is owned.
     pub owned: bool,
+    /// Priority value ranging from 0 to 100.
     pub priority: i32,
+    /// Format of the book.
     pub format: BookFormat,
+    /// Store where the book was purchased or obtained.
     pub store: BookStore,
 }
 
