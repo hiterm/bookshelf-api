@@ -1911,6 +1911,13 @@ async fn e2e_import_books() -> Result<()> {
         !author_events[0]["eventSetId"].is_null(),
         "new author event should have eventSetId"
     );
+    let author_event_set_id = author_events[0]["eventSetId"]
+        .as_str()
+        .context("author eventSetId should be string")?;
+    assert_eq!(
+        author_event_set_id, event_set_id_one,
+        "author event should share the same eventSetId as the books"
+    );
 
     // Cleanup
     delete_test_book(book_one_id, &token).await?;
