@@ -35,6 +35,17 @@ impl EventSetOperation {
     }
 }
 
+impl TryFrom<&str> for EventSetOperation {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "import_books" => Ok(EventSetOperation::ImportBooks),
+            _ => Err(format!("Unknown event set operation: {}", value)),
+        }
+    }
+}
+
 impl EventOperation {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -64,7 +75,7 @@ impl TryFrom<&str> for EventOperation {
 
 #[cfg(test)]
 mod tests {
-    use super::EventOperation;
+    use super::{EventOperation, EventSetOperation};
 
     #[test]
     fn event_operation_round_trip() {
@@ -85,6 +96,23 @@ mod tests {
     #[test]
     fn event_operation_unknown_returns_err() {
         assert!(EventOperation::try_from("invalid").is_err());
+    }
+
+    #[test]
+    fn event_set_operation_as_str() {
+        assert_eq!(EventSetOperation::ImportBooks.as_str(), "import_books");
+    }
+
+    #[test]
+    fn event_set_operation_roundtrip() {
+        let s = EventSetOperation::ImportBooks.as_str();
+        let back = EventSetOperation::try_from(s).expect("round-trip failed");
+        assert_eq!(back, EventSetOperation::ImportBooks);
+    }
+
+    #[test]
+    fn event_set_operation_unknown_returns_err() {
+        assert!(EventSetOperation::try_from("invalid").is_err());
     }
 }
 

@@ -24,6 +24,8 @@ use crate::{
     },
 };
 
+const MAX_BOOK_BATCH: usize = 1000;
+
 pub struct CreateBookInteractor<BR> {
     book_repository: BR,
 }
@@ -170,6 +172,12 @@ where
             return Err(UseCaseError::Validation(
                 "books cannot be empty".to_string(),
             ));
+        }
+
+        if books.len() > MAX_BOOK_BATCH {
+            return Err(UseCaseError::Validation(format!(
+                "books cannot exceed {MAX_BOOK_BATCH}"
+            )));
         }
 
         let user_id = UserId::new(user_id.to_string())?;
@@ -430,6 +438,67 @@ mod tests {
         assert!(
             matches!(result, Err(UseCaseError::Validation(ref msg)) if msg == "books cannot be empty"),
             "expected validation error for empty list, got {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn import_books_at_max_batch_succeeds() {
+        // Given
+        let book = make_book(Uuid::new_v4());
+        let mut mock = MockImportBooksRepository::new();
+        mock.expect_import()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![book.clone()]));
+
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![
+            ImportBookEntryDto {
+                title: "Book".to_string(),
+                author_names: vec![],
+                isbn: "".to_string(),
+                read: false,
+                owned: false,
+                priority: 50,
+                format: BookFormat::Unknown,
+                store: BookStore::Unknown,
+            };
+            super::MAX_BOOK_BATCH
+        ];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn import_books_exceeds_max_batch_returns_validation_error() {
+        // Given
+        let mock = MockImportBooksRepository::new();
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![
+            ImportBookEntryDto {
+                title: "Book".to_string(),
+                author_names: vec![],
+                isbn: "".to_string(),
+                read: false,
+                owned: false,
+                priority: 50,
+                format: BookFormat::Unknown,
+                store: BookStore::Unknown,
+            };
+            super::MAX_BOOK_BATCH + 1
+        ];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(
+            matches!(result, Err(UseCaseError::Validation(ref msg)) if msg.contains("cannot exceed")),
+            "expected validation error for exceeding max batch, got {:?}",
             result
         );
     }
