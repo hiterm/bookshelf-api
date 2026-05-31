@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::QI;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
-use crate::use_case::dto::book::{BookDto, CreateBookDto, UpdateBookDto};
+use crate::use_case::dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto};
 use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
 
 use super::loader::AuthorLoader;
@@ -278,6 +278,41 @@ pub struct UpdateAuthorInput {
 impl From<UpdateAuthorInput> for UpdateAuthorDto {
     fn from(val: UpdateAuthorInput) -> Self {
         UpdateAuthorDto::new(val.id.to_string(), val.name)
+    }
+}
+
+#[derive(InputObject)]
+pub struct ImportBookInput {
+    /// Title of the book.
+    pub title: String,
+    /// Names of the authors. Authors will be created if they do not exist.
+    pub author_names: Vec<String>,
+    /// ISBN of the book.
+    pub isbn: String,
+    /// Whether the book has been read.
+    pub read: bool,
+    /// Whether the book is owned.
+    pub owned: bool,
+    /// Priority value ranging from 0 to 100.
+    pub priority: i32,
+    /// Format of the book.
+    pub format: BookFormat,
+    /// Store where the book was purchased or obtained.
+    pub store: BookStore,
+}
+
+impl From<ImportBookInput> for ImportBookEntryDto {
+    fn from(input: ImportBookInput) -> Self {
+        ImportBookEntryDto {
+            title: input.title,
+            author_names: input.author_names,
+            isbn: input.isbn,
+            read: input.read,
+            owned: input.owned,
+            priority: input.priority,
+            format: input.format.into(),
+            store: input.store.into(),
+        }
     }
 }
 

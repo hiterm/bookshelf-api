@@ -5,19 +5,26 @@ use uuid::Uuid;
 use crate::{
     domain::{
         entity::{
-            author::AuthorId,
+            author::{AuthorId, AuthorName},
             book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
             user::UserId,
         },
         error::DomainError,
-        repository::book_repository::BookRepository,
+        repository::{
+            book_repository::BookRepository,
+            import_books_repository::{ImportBookInput, ImportBooksRepository},
+        },
     },
     use_case::{
-        dto::book::{BookDto, CreateBookDto, TimeInfo, UpdateBookDto},
+        dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, TimeInfo, UpdateBookDto},
         error::UseCaseError,
-        traits::book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
+        traits::book::{
+            CreateBookUseCase, DeleteBookUseCase, ImportBooksUseCase, UpdateBookUseCase,
+        },
     },
 };
+
+const MAX_BOOK_BATCH: usize = 1000;
 
 pub struct CreateBookInteractor<BR> {
     book_repository: BR,
@@ -139,6 +146,79 @@ where
     }
 }
 
+pub struct ImportBooksInteractor<IBR> {
+    import_books_repository: IBR,
+}
+
+impl<IBR> ImportBooksInteractor<IBR> {
+    pub fn new(import_books_repository: IBR) -> Self {
+        Self {
+            import_books_repository,
+        }
+    }
+}
+
+#[async_trait]
+impl<IBR> ImportBooksUseCase for ImportBooksInteractor<IBR>
+where
+    IBR: ImportBooksRepository,
+{
+    async fn import(
+        &self,
+        user_id: &str,
+        books: Vec<ImportBookEntryDto>,
+    ) -> Result<Vec<BookDto>, UseCaseError> {
+        if books.is_empty() {
+            return Err(UseCaseError::Validation(
+                "books cannot be empty".to_string(),
+            ));
+        }
+
+        if books.len() > MAX_BOOK_BATCH {
+            return Err(UseCaseError::Validation(format!(
+                "books cannot exceed {MAX_BOOK_BATCH}"
+            )));
+        }
+
+        let user_id = UserId::new(user_id.to_string())?;
+        let now = OffsetDateTime::now_utc();
+
+        let inputs: Result<Vec<ImportBookInput>, UseCaseError> = books
+            .into_iter()
+            .map(|dto| {
+                let title = BookTitle::new(dto.title)?;
+                let author_names: Result<Vec<AuthorName>, DomainError> =
+                    dto.author_names.into_iter().map(AuthorName::new).collect();
+                let author_names = author_names?;
+                let isbn = Isbn::new(dto.isbn)?;
+                let priority = Priority::new(dto.priority)?;
+
+                Ok(ImportBookInput {
+                    book_id: BookId::new(Uuid::new_v4())?,
+                    title,
+                    author_names,
+                    isbn,
+                    read: ReadFlag::new(dto.read),
+                    owned: OwnedFlag::new(dto.owned),
+                    priority,
+                    format: dto.format,
+                    store: dto.store,
+                    created_at: now,
+                    updated_at: now,
+                })
+            })
+            .collect();
+        let inputs = inputs?;
+
+        let books = self
+            .import_books_repository
+            .import(&user_id, inputs)
+            .await?;
+
+        Ok(books.into_iter().map(BookDto::from).collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use mockall::predicate::always;
@@ -149,13 +229,22 @@ mod tests {
         common::types::{BookFormat, BookStore},
         domain::{
             entity::book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-            repository::book_repository::MockBookRepository,
+            error::DomainError,
+            repository::{
+                book_repository::MockBookRepository,
+                import_books_repository::MockImportBooksRepository,
+            },
         },
         use_case::{
-            dto::book::{CreateBookDto, UpdateBookDto},
+            dto::book::{CreateBookDto, ImportBookEntryDto, UpdateBookDto},
             error::UseCaseError,
-            interactor::book::{CreateBookInteractor, DeleteBookInteractor, UpdateBookInteractor},
-            traits::book::{CreateBookUseCase, DeleteBookUseCase, UpdateBookUseCase},
+            interactor::book::{
+                CreateBookInteractor, DeleteBookInteractor, ImportBooksInteractor,
+                UpdateBookInteractor,
+            },
+            traits::book::{
+                CreateBookUseCase, DeleteBookUseCase, ImportBooksUseCase, UpdateBookUseCase,
+            },
         },
     };
 
@@ -331,6 +420,224 @@ mod tests {
 
         // When
         let result = interactor.delete("user1", "not-a-valid-uuid").await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn import_books_empty_list_returns_validation_error() {
+        // Given
+        let mock = MockImportBooksRepository::new();
+        let interactor = ImportBooksInteractor::new(mock);
+
+        // When
+        let result = interactor.import("user1", vec![]).await;
+
+        // Then
+        assert!(
+            matches!(result, Err(UseCaseError::Validation(ref msg)) if msg == "books cannot be empty"),
+            "expected validation error for empty list, got {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn import_books_at_max_batch_succeeds() {
+        // Given
+        let book = make_book(Uuid::new_v4());
+        let mut mock = MockImportBooksRepository::new();
+        mock.expect_import()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![book.clone()]));
+
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![
+            ImportBookEntryDto {
+                title: "Book".to_string(),
+                author_names: vec![],
+                isbn: "".to_string(),
+                read: false,
+                owned: false,
+                priority: 50,
+                format: BookFormat::Unknown,
+                store: BookStore::Unknown,
+            };
+            super::MAX_BOOK_BATCH
+        ];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn import_books_exceeds_max_batch_returns_validation_error() {
+        // Given
+        let mock = MockImportBooksRepository::new();
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![
+            ImportBookEntryDto {
+                title: "Book".to_string(),
+                author_names: vec![],
+                isbn: "".to_string(),
+                read: false,
+                owned: false,
+                priority: 50,
+                format: BookFormat::Unknown,
+                store: BookStore::Unknown,
+            };
+            super::MAX_BOOK_BATCH + 1
+        ];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(
+            matches!(result, Err(UseCaseError::Validation(ref msg)) if msg.contains("cannot exceed")),
+            "expected validation error for exceeding max batch, got {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn import_books_with_author_names() {
+        // Given
+        let book1 = make_book(Uuid::new_v4());
+        let book2 = make_book(Uuid::new_v4());
+
+        let mut mock = MockImportBooksRepository::new();
+        mock.expect_import()
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![book1.clone(), book2.clone()]));
+
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![
+            ImportBookEntryDto {
+                title: "Book One".to_string(),
+                author_names: vec!["Author A".to_string()],
+                isbn: "".to_string(),
+                read: false,
+                owned: false,
+                priority: 50,
+                format: BookFormat::Unknown,
+                store: BookStore::Unknown,
+            },
+            ImportBookEntryDto {
+                title: "Book Two".to_string(),
+                author_names: vec!["Author B".to_string()],
+                isbn: "".to_string(),
+                read: false,
+                owned: false,
+                priority: 50,
+                format: BookFormat::Unknown,
+                store: BookStore::Unknown,
+            },
+        ];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(result.is_ok());
+        let dtos = result.unwrap();
+        assert_eq!(dtos.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn import_books_propagates_repository_error() {
+        // Given
+        let mut mock = MockImportBooksRepository::new();
+        mock.expect_import()
+            .with(always(), always())
+            .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
+
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![ImportBookEntryDto {
+            title: "Book".to_string(),
+            author_names: vec![],
+            isbn: "".to_string(),
+            read: false,
+            owned: false,
+            priority: 50,
+            format: BookFormat::Unknown,
+            store: BookStore::Unknown,
+        }];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
+    }
+
+    #[tokio::test]
+    async fn import_books_invalid_title_returns_error() {
+        // Given
+        let mock = MockImportBooksRepository::new();
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![ImportBookEntryDto {
+            title: "".to_string(),
+            author_names: vec![],
+            isbn: "".to_string(),
+            read: false,
+            owned: false,
+            priority: 50,
+            format: BookFormat::Unknown,
+            store: BookStore::Unknown,
+        }];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn import_books_invalid_isbn_returns_error() {
+        // Given
+        let mock = MockImportBooksRepository::new();
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![ImportBookEntryDto {
+            title: "Valid Title".to_string(),
+            author_names: vec![],
+            isbn: "1".to_string(),
+            read: false,
+            owned: false,
+            priority: 50,
+            format: BookFormat::Unknown,
+            store: BookStore::Unknown,
+        }];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn import_books_invalid_author_name_returns_error() {
+        // Given
+        let mock = MockImportBooksRepository::new();
+        let interactor = ImportBooksInteractor::new(mock);
+        let books = vec![ImportBookEntryDto {
+            title: "Valid Title".to_string(),
+            author_names: vec!["".to_string()],
+            isbn: "".to_string(),
+            read: false,
+            owned: false,
+            priority: 50,
+            format: BookFormat::Unknown,
+            store: BookStore::Unknown,
+        }];
+
+        // When
+        let result = interactor.import("user1", books).await;
 
         // Then
         assert!(matches!(result, Err(UseCaseError::Validation(_))));

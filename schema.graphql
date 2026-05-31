@@ -75,6 +75,41 @@ input CreateBookInput {
 	store: BookStore!
 }
 
+input ImportBookInput {
+	"""
+	Title of the book.
+	"""
+	title: String!
+	"""
+	Names of the authors. Authors will be created if they do not exist.
+	"""
+	authorNames: [String!]!
+	"""
+	ISBN of the book.
+	"""
+	isbn: String!
+	"""
+	Whether the book has been read.
+	"""
+	read: Boolean!
+	"""
+	Whether the book is owned.
+	"""
+	owned: Boolean!
+	"""
+	Priority value ranging from 0 to 100.
+	"""
+	priority: Int!
+	"""
+	Format of the book.
+	"""
+	format: BookFormat!
+	"""
+	Store where the book was purchased or obtained.
+	"""
+	store: BookStore!
+}
+
 """
 A scalar that can represent any JSON value.
 """
@@ -90,6 +125,10 @@ type Mutation {
 	deleteAuthor(authorId: ID!): String!
 	restoreBook(eventId: ID!): Book
 	restoreAuthor(eventId: ID!): Author
+	"""
+	Imports multiple books. Creates authors if they do not exist.
+	"""
+	importBooks(books: [ImportBookInput!]!): [Book!]!
 }
 
 type Query {
@@ -98,7 +137,15 @@ type Query {
 	books: [Book!]!
 	author(id: ID!): Author
 	authors: [Author!]!
+	"""
+	Returns the change history for a book.
+	Entries are sorted by `changedAt` in descending order (newest first).
+	"""
 	bookEvents(bookId: ID!): [BookEventEntry!]!
+	"""
+	Returns the change history for an author.
+	Entries are sorted by `changedAt` in descending order (newest first).
+	"""
 	authorEvents(authorId: ID!): [AuthorEventEntry!]!
 }
 

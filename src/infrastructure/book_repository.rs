@@ -978,7 +978,7 @@ mod tests {
     ) -> Result<Vec<AuthorId>, DomainError> {
         let author_id1 = AuthorId::try_from("93090e87-b7a1-403c-974c-d74d881e83b9")?;
         let author_ids = vec![author_id1.clone()];
-        let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
+        let author1 = Author::new(author_id1, AuthorName::new("author3".to_owned())?)?;
         repository.create(user_id, &author1).await?;
 
         Ok(author_ids)

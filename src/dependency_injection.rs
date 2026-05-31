@@ -5,12 +5,14 @@ use crate::{
     infrastructure::{
         author_event_repository::PgAuthorEventRepository, author_repository::PgAuthorRepository,
         book_event_repository::PgBookEventRepository, book_repository::PgBookRepository,
-        user_repository::PgUserRepository,
+        import_books_repository::PgImportBooksRepository, user_repository::PgUserRepository,
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
         author::{CreateAuthorInteractor, DeleteAuthorInteractor, UpdateAuthorInteractor},
-        book::{CreateBookInteractor, DeleteBookInteractor, UpdateBookInteractor},
+        book::{
+            CreateBookInteractor, DeleteBookInteractor, ImportBooksInteractor, UpdateBookInteractor,
+        },
         event::{RestoreAuthorInteractor, RestoreBookInteractor},
         mutation::MutationInteractor,
         query::QueryInteractor,
@@ -36,6 +38,7 @@ pub type MI = MutationInteractor<
     DeleteAuthorInteractor<PgAuthorRepository>,
     RestoreBookInteractor<PgBookRepository, PgBookEventRepository>,
     RestoreAuthorInteractor<PgAuthorRepository, PgAuthorEventRepository>,
+    ImportBooksInteractor<PgImportBooksRepository>,
 >;
 
 pub fn dependency_injection(
@@ -45,6 +48,7 @@ pub fn dependency_injection(
     let book_repository = PgBookRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
     let book_event_repository = PgBookEventRepository::new(pool.clone());
+    let import_books_repository = PgImportBooksRepository::new(pool.clone());
     let author_event_repository = PgAuthorEventRepository::new(pool);
 
     let query_use_case = QueryInteractor {
@@ -64,6 +68,7 @@ pub fn dependency_injection(
     let restore_book_use_case = RestoreBookInteractor::new(book_repository, book_event_repository);
     let restore_author_use_case =
         RestoreAuthorInteractor::new(author_repository, author_event_repository);
+    let import_books_use_case = ImportBooksInteractor::new(import_books_repository);
 
     let mutation_use_case = MutationInteractor::new(
         register_user_use_case,
@@ -75,6 +80,7 @@ pub fn dependency_injection(
         delete_author_use_case,
         restore_book_use_case,
         restore_author_use_case,
+        import_books_use_case,
     );
 
     let query = Query::new(query_use_case.clone());
