@@ -137,7 +137,15 @@ type Query {
 	books: [Book!]!
 	author(id: ID!): Author
 	authors: [Author!]!
+	"""
+	Returns the change history for a book.
+	Entries are sorted by `changedAt` in descending order (newest first).
+	"""
 	bookEvents(bookId: ID!): [BookEventEntry!]!
+	"""
+	Returns the change history for an author.
+	Entries are sorted by `changedAt` in descending order (newest first).
+	"""
 	authorEvents(authorId: ID!): [AuthorEventEntry!]!
 }
 

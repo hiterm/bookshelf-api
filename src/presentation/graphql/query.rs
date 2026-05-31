@@ -68,6 +68,8 @@ where
         Ok(authors)
     }
 
+    /// Returns the change history for a book.
+    /// Entries are sorted by `changedAt` in descending order (newest first).
     async fn book_events(
         &self,
         ctx: &Context<'_>,
@@ -81,6 +83,8 @@ where
         Ok(entries.into_iter().map(BookEventEntry::from).collect())
     }
 
+    /// Returns the change history for an author.
+    /// Entries are sorted by `changedAt` in descending order (newest first).
     async fn author_events(
         &self,
         ctx: &Context<'_>,
