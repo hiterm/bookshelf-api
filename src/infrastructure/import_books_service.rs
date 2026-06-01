@@ -121,6 +121,7 @@ impl ImportBooksService for PgImportBooksService {
 #[cfg(feature = "test-with-database")]
 #[cfg(test)]
 mod tests {
+    use sqlx::PgPool;
     use time::{
         PrimitiveDateTime,
         macros::{date, time},
