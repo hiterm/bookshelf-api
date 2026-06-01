@@ -10,10 +10,8 @@ use crate::{
             user::UserId,
         },
         error::DomainError,
-        repository::{
-            book_repository::BookRepository,
-            import_books_repository::{ImportBookInput, ImportBooksRepository},
-        },
+        repository::book_repository::BookRepository,
+        service::import_books_service::{ImportBookInput, ImportBooksService},
     },
     use_case::{
         dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, TimeInfo, UpdateBookDto},
@@ -146,22 +144,22 @@ where
     }
 }
 
-pub struct ImportBooksInteractor<IBR> {
-    import_books_repository: IBR,
+pub struct ImportBooksInteractor<IBS> {
+    import_books_service: IBS,
 }
 
-impl<IBR> ImportBooksInteractor<IBR> {
-    pub fn new(import_books_repository: IBR) -> Self {
+impl<IBS> ImportBooksInteractor<IBS> {
+    pub fn new(import_books_service: IBS) -> Self {
         Self {
-            import_books_repository,
+            import_books_service,
         }
     }
 }
 
 #[async_trait]
-impl<IBR> ImportBooksUseCase for ImportBooksInteractor<IBR>
+impl<IBS> ImportBooksUseCase for ImportBooksInteractor<IBS>
 where
-    IBR: ImportBooksRepository,
+    IBS: ImportBooksService,
 {
     async fn import(
         &self,
@@ -210,10 +208,7 @@ where
             .collect();
         let inputs = inputs?;
 
-        let books = self
-            .import_books_repository
-            .import(&user_id, inputs)
-            .await?;
+        let books = self.import_books_service.import(&user_id, inputs).await?;
 
         Ok(books.into_iter().map(BookDto::from).collect())
     }
@@ -230,10 +225,8 @@ mod tests {
         domain::{
             entity::book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
             error::DomainError,
-            repository::{
-                book_repository::MockBookRepository,
-                import_books_repository::MockImportBooksRepository,
-            },
+            repository::book_repository::MockBookRepository,
+            service::import_books_service::MockImportBooksService,
         },
         use_case::{
             dto::book::{CreateBookDto, ImportBookEntryDto, UpdateBookDto},
@@ -428,7 +421,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_empty_list_returns_validation_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
+        let mock = MockImportBooksService::new();
         let interactor = ImportBooksInteractor::new(mock);
 
         // When
@@ -446,7 +439,7 @@ mod tests {
     async fn import_books_at_max_batch_succeeds() {
         // Given
         let book = make_book(Uuid::new_v4());
-        let mut mock = MockImportBooksRepository::new();
+        let mut mock = MockImportBooksService::new();
         mock.expect_import()
             .with(always(), always())
             .returning(move |_, _| Ok(vec![book.clone()]));
@@ -476,7 +469,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_exceeds_max_batch_returns_validation_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
+        let mock = MockImportBooksService::new();
         let interactor = ImportBooksInteractor::new(mock);
         let books = vec![
             ImportBookEntryDto {
@@ -509,7 +502,7 @@ mod tests {
         let book1 = make_book(Uuid::new_v4());
         let book2 = make_book(Uuid::new_v4());
 
-        let mut mock = MockImportBooksRepository::new();
+        let mut mock = MockImportBooksService::new();
         mock.expect_import()
             .with(always(), always())
             .returning(move |_, _| Ok(vec![book1.clone(), book2.clone()]));
@@ -550,7 +543,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_propagates_repository_error() {
         // Given
-        let mut mock = MockImportBooksRepository::new();
+        let mut mock = MockImportBooksService::new();
         mock.expect_import()
             .with(always(), always())
             .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
@@ -577,7 +570,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_invalid_title_returns_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
+        let mock = MockImportBooksService::new();
         let interactor = ImportBooksInteractor::new(mock);
         let books = vec![ImportBookEntryDto {
             title: "".to_string(),
@@ -600,7 +593,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_invalid_isbn_returns_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
+        let mock = MockImportBooksService::new();
         let interactor = ImportBooksInteractor::new(mock);
         let books = vec![ImportBookEntryDto {
             title: "Valid Title".to_string(),
@@ -623,7 +616,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_invalid_author_name_returns_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
+        let mock = MockImportBooksService::new();
         let interactor = ImportBooksInteractor::new(mock);
         let books = vec![ImportBookEntryDto {
             title: "Valid Title".to_string(),

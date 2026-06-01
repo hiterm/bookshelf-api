@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -44,11 +44,14 @@ impl PgBookRepository {
     }
 }
 
-#[async_trait]
-impl BookRepository for PgBookRepository {
-    async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-
+impl PgBookRepository {
+    pub(in crate::infrastructure) async fn create_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        book: &Book,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -76,7 +79,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
         let author_ids: Vec<Uuid> = book
@@ -93,16 +96,7 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&mut *tx)
-        .await?;
-
-        let es_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_book')",
-        )
-        .bind(es_id)
-        .bind(user_id.as_str())
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
         let (event_id,): (i64,) = sqlx::query_as(
@@ -124,7 +118,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
 
         if !author_ids.is_empty() {
@@ -134,9 +128,326 @@ impl BookRepository for PgBookRepository {
             )
             .bind(event_id)
             .bind(&author_ids)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         }
+
+        Ok(())
+    }
+
+    pub(in crate::infrastructure) async fn update_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        book: &Book,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
+        let result = sqlx::query(
+            "UPDATE book SET
+               user_id = $1,
+               title = $2,
+               isbn = $3,
+               read = $4,
+               owned = $5,
+               priority = $6,
+               format = $7,
+               store = $8,
+               created_at = $9,
+               updated_at = $10
+            WHERE id = $11 AND user_id = $1",
+        )
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .bind(book.id().to_uuid())
+        .execute(&mut **tx)
+        .await?;
+
+        let rows_affected = result.rows_affected();
+        match rows_affected {
+            0 => {
+                return Err(DomainError::NotFound {
+                    entity_type: "book",
+                    entity_id: book.id().to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
+            }
+            1 => {}
+            _ => {
+                return Err(DomainError::Unexpected(String::from(
+                    "rows_affected is greater than 1.",
+                )));
+            }
+        }
+
+        let author_ids: Vec<Uuid> = book
+            .author_ids()
+            .iter()
+            .map(|author_id| author_id.to_uuid())
+            .collect();
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
+        sqlx::query(
+            "DELETE FROM book_author WHERE user_id = $1 AND book_id = $2 AND author_id != ALL($3)",
+        )
+        .bind(user_id.as_str())
+        .bind(book.id().to_uuid())
+        .bind(&author_ids)
+        .execute(&mut **tx)
+        .await?;
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+        sqlx::query(
+            "INSERT INTO book_author (user_id, book_id, author_id)
+                    SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
+            ON CONFLICT DO NOTHING",
+        )
+        .bind(user_id.as_str())
+        .bind(book.id().to_uuid())
+        .bind(&author_ids)
+        .execute(&mut **tx)
+        .await?;
+
+        let (event_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO book_event
+               (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                priority, format, store, book_created_at, book_updated_at)
+             VALUES ($1, 'update', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             RETURNING event_id",
+        )
+        .bind(es_id)
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .fetch_one(&mut **tx)
+        .await?;
+
+        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+        if !author_ids.is_empty() {
+            sqlx::query(
+                "INSERT INTO book_event_author (event_id, author_id)
+                        SELECT $1, * FROM UNNEST($2::uuid[])",
+            )
+            .bind(event_id)
+            .bind(&author_ids)
+            .execute(&mut **tx)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    pub(in crate::infrastructure) async fn delete_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        book_id: &BookId,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
+        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
+            .bind(user_id.as_str())
+            .bind(book_id.to_uuid())
+            .execute(&mut **tx)
+            .await?;
+
+        let result = sqlx::query("DELETE FROM book WHERE user_id = $1 AND id = $2")
+            .bind(user_id.as_str())
+            .bind(book_id.to_uuid())
+            .execute(&mut **tx)
+            .await?;
+
+        let rows_affected = result.rows_affected();
+        match rows_affected {
+            0 => {
+                return Err(DomainError::NotFound {
+                    entity_type: "book",
+                    entity_id: book_id.to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
+            }
+            1 => {}
+            _ => {
+                return Err(DomainError::Unexpected(String::from(
+                    "rows_affected is greater than 1.",
+                )));
+            }
+        }
+
+        sqlx::query(
+            "INSERT INTO book_event (event_set_id, operation, book_id, user_id)
+             VALUES ($1, 'delete', $2, $3)",
+        )
+        .bind(es_id)
+        .bind(book_id.to_uuid())
+        .bind(user_id.as_str())
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    pub(in crate::infrastructure) async fn restore_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        source_event_id: i64,
+        book: Option<Book>,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
+        let extra = json!({"version": 1, "source_event_id": source_event_id});
+
+        match book {
+            Some(book) => {
+                let author_ids: Vec<Uuid> =
+                    book.author_ids().iter().map(|id| id.to_uuid()).collect();
+
+                sqlx::query(
+                    "INSERT INTO book (id, user_id, title, isbn, read, owned, priority,
+                       format, store, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                     ON CONFLICT (id, user_id) DO UPDATE SET
+                       title=$3, isbn=$4, read=$5, owned=$6, priority=$7,
+                       format=$8, store=$9, created_at=$10, updated_at=$11",
+                )
+                .bind(book.id().to_uuid())
+                .bind(user_id.as_str())
+                .bind(book.title().as_str())
+                .bind(book.isbn().as_str())
+                .bind(book.read().to_bool())
+                .bind(book.owned().to_bool())
+                .bind(book.priority().to_i32())
+                .bind(book.format().to_string())
+                .bind(book.store().to_string())
+                .bind(book.created_at())
+                .bind(book.updated_at())
+                .execute(&mut **tx)
+                .await?;
+
+                sqlx::query(
+                    "DELETE FROM book_author WHERE user_id=$1 AND book_id=$2 AND author_id != ALL($3)",
+                )
+                .bind(user_id.as_str())
+                .bind(book.id().to_uuid())
+                .bind(&author_ids)
+                .execute(&mut **tx)
+                .await?;
+
+                sqlx::query(
+                    "INSERT INTO book_author (user_id, book_id, author_id)
+                            SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
+                     ON CONFLICT DO NOTHING",
+                )
+                .bind(user_id.as_str())
+                .bind(book.id().to_uuid())
+                .bind(&author_ids)
+                .execute(&mut **tx)
+                .await?;
+
+                let (event_id,): (i64,) = sqlx::query_as(
+                    "INSERT INTO book_event
+                       (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                        priority, format, store, book_created_at, book_updated_at, extra)
+                     VALUES ($1, 'restore', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                     RETURNING event_id",
+                )
+                .bind(es_id)
+                .bind(book.id().to_uuid())
+                .bind(user_id.as_str())
+                .bind(book.title().as_str())
+                .bind(book.isbn().as_str())
+                .bind(book.read().to_bool())
+                .bind(book.owned().to_bool())
+                .bind(book.priority().to_i32())
+                .bind(book.format().to_string())
+                .bind(book.store().to_string())
+                .bind(book.created_at())
+                .bind(book.updated_at())
+                .bind(sqlx::types::Json(&extra))
+                .fetch_one(&mut **tx)
+                .await?;
+
+                if !author_ids.is_empty() {
+                    sqlx::query(
+                        "INSERT INTO book_event_author (event_id, author_id)
+                                SELECT $1, * FROM UNNEST($2::uuid[])",
+                    )
+                    .bind(event_id)
+                    .bind(&author_ids)
+                    .execute(&mut **tx)
+                    .await?;
+                }
+            }
+            None => {
+                // book_id comes from the event; we need to identify which book to delete.
+                // The caller ensures source_event_id belongs to user_id so we look it up.
+                let (book_id,): (Uuid,) = sqlx::query_as(
+                    "SELECT book_id FROM book_event WHERE event_id = $1 AND user_id = $2",
+                )
+                .bind(source_event_id)
+                .bind(user_id.as_str())
+                .fetch_one(&mut **tx)
+                .await?;
+
+                sqlx::query("DELETE FROM book_author WHERE user_id=$1 AND book_id=$2")
+                    .bind(user_id.as_str())
+                    .bind(book_id)
+                    .execute(&mut **tx)
+                    .await?;
+
+                // 0 rows affected is acceptable (book already absent)
+                sqlx::query("DELETE FROM book WHERE user_id=$1 AND id=$2")
+                    .bind(user_id.as_str())
+                    .bind(book_id)
+                    .execute(&mut **tx)
+                    .await?;
+
+                sqlx::query(
+                    "INSERT INTO book_event (event_set_id, operation, book_id, user_id, extra)
+                     VALUES ($1, 'restore', $2, $3, $4)",
+                )
+                .bind(es_id)
+                .bind(book_id)
+                .bind(user_id.as_str())
+                .bind(sqlx::types::Json(&extra))
+                .execute(&mut **tx)
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl BookRepository for PgBookRepository {
+    async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_book')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        self.create_core(&mut tx, user_id, book, es_id).await?;
 
         tx.commit().await?;
 
@@ -282,82 +593,8 @@ impl BookRepository for PgBookRepository {
 
         books
     }
-
     async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
-
-        let result = sqlx::query(
-            "UPDATE book SET
-               user_id = $1,
-               title = $2,
-               isbn = $3,
-               read = $4,
-               owned = $5,
-               priority = $6,
-               format = $7,
-               store = $8,
-               created_at = $9,
-               updated_at = $10
-            WHERE id = $11 AND user_id = $1",
-        )
-        .bind(user_id.as_str())
-        .bind(book.title().as_str())
-        .bind(book.isbn().as_str())
-        .bind(book.read().to_bool())
-        .bind(book.owned().to_bool())
-        .bind(book.priority().to_i32())
-        .bind(book.format().to_string())
-        .bind(book.store().to_string())
-        .bind(book.created_at())
-        .bind(book.updated_at())
-        .bind(book.id().to_uuid())
-        .execute(&mut *tx)
-        .await?;
-
-        let rows_affected = result.rows_affected();
-        match rows_affected {
-            0 => {
-                return Err(DomainError::NotFound {
-                    entity_type: "book",
-                    entity_id: book.id().to_string(),
-                    user_id: user_id.to_owned().into_string(),
-                });
-            }
-            1 => {}
-            _ => {
-                return Err(DomainError::Unexpected(String::from(
-                    "rows_affected is greater than 1.",
-                )));
-            }
-        }
-
-        let author_ids: Vec<Uuid> = book
-            .author_ids()
-            .iter()
-            .map(|author_id| author_id.to_uuid())
-            .collect();
-
-        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-do-a-select--where-foo-in--query
-        sqlx::query(
-            "DELETE FROM book_author WHERE user_id = $1 AND book_id = $2 AND author_id != ALL($3)",
-        )
-        .bind(user_id.as_str())
-        .bind(book.id().to_uuid())
-        .bind(&author_ids)
-        .execute(&mut *tx)
-        .await?;
-
-        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
-        sqlx::query(
-            "INSERT INTO book_author (user_id, book_id, author_id)
-                    SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
-            ON CONFLICT DO NOTHING",
-        )
-        .bind(user_id.as_str())
-        .bind(book.id().to_uuid())
-        .bind(&author_ids)
-        .execute(&mut *tx)
-        .await?;
 
         let es_id = Uuid::new_v4();
         sqlx::query(
@@ -368,76 +605,14 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
-        let (event_id,): (i64,) = sqlx::query_as(
-            "INSERT INTO book_event
-               (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
-                priority, format, store, book_created_at, book_updated_at)
-             VALUES ($1, 'update', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-             RETURNING event_id",
-        )
-        .bind(es_id)
-        .bind(book.id().to_uuid())
-        .bind(user_id.as_str())
-        .bind(book.title().as_str())
-        .bind(book.isbn().as_str())
-        .bind(book.read().to_bool())
-        .bind(book.owned().to_bool())
-        .bind(book.priority().to_i32())
-        .bind(book.format().to_string())
-        .bind(book.store().to_string())
-        .bind(book.created_at())
-        .bind(book.updated_at())
-        .fetch_one(&mut *tx)
-        .await?;
-
-        // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
-        if !author_ids.is_empty() {
-            sqlx::query(
-                "INSERT INTO book_event_author (event_id, author_id)
-                        SELECT $1, * FROM UNNEST($2::uuid[])",
-            )
-            .bind(event_id)
-            .bind(&author_ids)
-            .execute(&mut *tx)
-            .await?;
-        }
+        self.update_core(&mut tx, user_id, book, es_id).await?;
 
         tx.commit().await?;
 
         Ok(())
     }
-
     async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
-
-        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
-            .bind(user_id.as_str())
-            .bind(book_id.to_uuid())
-            .execute(&mut *tx)
-            .await?;
-
-        let result = sqlx::query("DELETE FROM book WHERE user_id = $1 AND id = $2")
-            .bind(user_id.as_str())
-            .bind(book_id.to_uuid())
-            .execute(&mut *tx)
-            .await?;
-
-        let rows_affected = result.rows_affected();
-        match rows_affected {
-            0 => {
-                return Err(DomainError::NotFound {
-                    entity_type: "book",
-                    entity_id: book_id.to_string(),
-                    user_id: user_id.to_owned().into_string(),
-                });
-            }
-            1 => {}
-            _ => {
-                return Err(DomainError::Unexpected(String::from(
-                    "rows_affected is greater than 1.",
-                )));
-            }
-        }
 
         let es_id = Uuid::new_v4();
         sqlx::query(
@@ -448,21 +623,12 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
-        sqlx::query(
-            "INSERT INTO book_event (event_set_id, operation, book_id, user_id)
-             VALUES ($1, 'delete', $2, $3)",
-        )
-        .bind(es_id)
-        .bind(book_id.to_uuid())
-        .bind(user_id.as_str())
-        .execute(&mut *tx)
-        .await?;
+        self.delete_core(&mut tx, user_id, book_id, es_id).await?;
 
         tx.commit().await?;
 
         Ok(())
     }
-
     async fn restore(
         &self,
         user_id: &UserId,
@@ -480,125 +646,8 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *tx)
         .await?;
 
-        let extra = json!({"version": 1, "source_event_id": source_event_id});
-
-        match book {
-            Some(book) => {
-                let author_ids: Vec<Uuid> =
-                    book.author_ids().iter().map(|id| id.to_uuid()).collect();
-
-                sqlx::query(
-                    "INSERT INTO book (id, user_id, title, isbn, read, owned, priority,
-                       format, store, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                     ON CONFLICT (id, user_id) DO UPDATE SET
-                       title=$3, isbn=$4, read=$5, owned=$6, priority=$7,
-                       format=$8, store=$9, created_at=$10, updated_at=$11",
-                )
-                .bind(book.id().to_uuid())
-                .bind(user_id.as_str())
-                .bind(book.title().as_str())
-                .bind(book.isbn().as_str())
-                .bind(book.read().to_bool())
-                .bind(book.owned().to_bool())
-                .bind(book.priority().to_i32())
-                .bind(book.format().to_string())
-                .bind(book.store().to_string())
-                .bind(book.created_at())
-                .bind(book.updated_at())
-                .execute(&mut *tx)
-                .await?;
-
-                sqlx::query(
-                    "DELETE FROM book_author WHERE user_id=$1 AND book_id=$2 AND author_id != ALL($3)",
-                )
-                .bind(user_id.as_str())
-                .bind(book.id().to_uuid())
-                .bind(&author_ids)
-                .execute(&mut *tx)
-                .await?;
-
-                sqlx::query(
-                    "INSERT INTO book_author (user_id, book_id, author_id)
-                            SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
-                     ON CONFLICT DO NOTHING",
-                )
-                .bind(user_id.as_str())
-                .bind(book.id().to_uuid())
-                .bind(&author_ids)
-                .execute(&mut *tx)
-                .await?;
-
-                let (event_id,): (i64,) = sqlx::query_as(
-                    "INSERT INTO book_event
-                       (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
-                        priority, format, store, book_created_at, book_updated_at, extra)
-                     VALUES ($1, 'restore', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-                     RETURNING event_id",
-                )
-                .bind(es_id)
-                .bind(book.id().to_uuid())
-                .bind(user_id.as_str())
-                .bind(book.title().as_str())
-                .bind(book.isbn().as_str())
-                .bind(book.read().to_bool())
-                .bind(book.owned().to_bool())
-                .bind(book.priority().to_i32())
-                .bind(book.format().to_string())
-                .bind(book.store().to_string())
-                .bind(book.created_at())
-                .bind(book.updated_at())
-                .bind(sqlx::types::Json(&extra))
-                .fetch_one(&mut *tx)
-                .await?;
-
-                if !author_ids.is_empty() {
-                    sqlx::query(
-                        "INSERT INTO book_event_author (event_id, author_id)
-                                SELECT $1, * FROM UNNEST($2::uuid[])",
-                    )
-                    .bind(event_id)
-                    .bind(&author_ids)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-            }
-            None => {
-                // book_id comes from the event; we need to identify which book to delete.
-                // The caller ensures source_event_id belongs to user_id so we look it up.
-                let (book_id,): (Uuid,) = sqlx::query_as(
-                    "SELECT book_id FROM book_event WHERE event_id = $1 AND user_id = $2",
-                )
-                .bind(source_event_id)
-                .bind(user_id.as_str())
-                .fetch_one(&mut *tx)
-                .await?;
-
-                sqlx::query("DELETE FROM book_author WHERE user_id=$1 AND book_id=$2")
-                    .bind(user_id.as_str())
-                    .bind(book_id)
-                    .execute(&mut *tx)
-                    .await?;
-
-                // 0 rows affected is acceptable (book already absent)
-                sqlx::query("DELETE FROM book WHERE user_id=$1 AND id=$2")
-                    .bind(user_id.as_str())
-                    .bind(book_id)
-                    .execute(&mut *tx)
-                    .await?;
-
-                sqlx::query(
-                    "INSERT INTO book_event (event_set_id, operation, book_id, user_id, extra)
-                     VALUES ($1, 'restore', $2, $3, $4)",
-                )
-                .bind(es_id)
-                .bind(book_id)
-                .bind(user_id.as_str())
-                .bind(sqlx::types::Json(&extra))
-                .execute(&mut *tx)
-                .await?;
-            }
-        }
+        self.restore_core(&mut tx, user_id, source_event_id, book, es_id)
+            .await?;
 
         tx.commit().await?;
 

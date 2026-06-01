@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -24,6 +24,7 @@ struct AuthorRow {
 
 #[derive(sqlx::FromRow)]
 struct AuthorSnapshotRow {
+    id: Uuid,
     name: String,
     yomi: String,
     created_at: OffsetDateTime,
@@ -41,26 +42,20 @@ impl PgAuthorRepository {
     }
 }
 
-#[async_trait]
-impl AuthorRepository for PgAuthorRepository {
-    async fn create(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-
+impl PgAuthorRepository {
+    pub(in crate::infrastructure) async fn create_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        author: &Author,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
             .bind(author.id().to_uuid())
             .bind(user_id.as_str())
             .bind(author.name().as_str())
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
-
-        let es_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_author')",
-        )
-        .bind(es_id)
-        .bind(user_id.as_str())
-        .execute(&mut *tx)
-        .await?;
 
         // Fetch the just-inserted row to get the DB-generated timestamps
         let snap: AuthorSnapshotRow = sqlx::query_as(
@@ -68,7 +63,7 @@ impl AuthorRepository for PgAuthorRepository {
         )
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
 
         sqlx::query(
@@ -84,8 +79,316 @@ impl AuthorRepository for PgAuthorRepository {
         .bind(&snap.yomi)
         .bind(snap.created_at)
         .bind(snap.updated_at)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    pub(in crate::infrastructure) async fn update_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        author: &Author,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
+        let result = sqlx::query(
+            "UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
+        )
+        .bind(author.name().as_str())
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .execute(&mut **tx)
+        .await?;
+
+        match result.rows_affected() {
+            0 => {
+                return Err(DomainError::NotFound {
+                    entity_type: "author",
+                    entity_id: author.id().to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
+            }
+            1 => {}
+            _ => {
+                return Err(DomainError::Unexpected(String::from(
+                    "rows_affected is greater than 1.",
+                )));
+            }
+        }
+
+        // Fetch post-update state (yomi and timestamps are DB-managed)
+        let snap: AuthorSnapshotRow = sqlx::query_as(
+            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
+        )
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .fetch_one(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO author_event
+               (event_set_id, operation, author_id, user_id, name, yomi,
+                author_created_at, author_updated_at)
+             VALUES ($1, 'update', $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(es_id)
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(&snap.name)
+        .bind(&snap.yomi)
+        .bind(snap.created_at)
+        .bind(snap.updated_at)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    pub(in crate::infrastructure) async fn delete_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        author_id: &AuthorId,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
+        // Lock the author row to prevent concurrent inserts into book_author after the count check.
+        let exists: Option<(i32,)> =
+            sqlx::query_as("SELECT 1 FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
+                .bind(author_id.to_uuid())
+                .bind(user_id.as_str())
+                .fetch_optional(&mut **tx)
+                .await?;
+
+        if exists.is_none() {
+            return Err(DomainError::NotFound {
+                entity_type: "author",
+                entity_id: author_id.to_string(),
+                user_id: user_id.to_owned().into_string(),
+            });
+        }
+
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM book_author WHERE user_id = $1 AND author_id = $2",
+        )
+        .bind(user_id.as_str())
+        .bind(author_id.to_uuid())
+        .fetch_one(&mut **tx)
+        .await?;
+
+        if count > 0 {
+            return Err(DomainError::HasAssociatedBooks {
+                author_id: author_id.to_string(),
+                user_id: user_id.to_owned().into_string(),
+            });
+        }
+
+        let result = sqlx::query("DELETE FROM author WHERE id = $1 AND user_id = $2")
+            .bind(author_id.to_uuid())
+            .bind(user_id.as_str())
+            .execute(&mut **tx)
+            .await?;
+
+        match result.rows_affected() {
+            0 => {
+                return Err(DomainError::NotFound {
+                    entity_type: "author",
+                    entity_id: author_id.to_string(),
+                    user_id: user_id.to_owned().into_string(),
+                });
+            }
+            1 => {}
+            _ => {
+                return Err(DomainError::Unexpected(String::from(
+                    "rows_affected is greater than 1.",
+                )));
+            }
+        }
+
+        sqlx::query(
+            "INSERT INTO author_event (event_set_id, operation, author_id, user_id)
+             VALUES ($1, 'delete', $2, $3)",
+        )
+        .bind(es_id)
+        .bind(author_id.to_uuid())
+        .bind(user_id.as_str())
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    pub(in crate::infrastructure) async fn restore_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        source_event_id: i64,
+        author: Option<Author>,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
+        let extra = json!({"version": 1, "source_event_id": source_event_id});
+
+        match author {
+            Some(author) => {
+                let result = sqlx::query("UPDATE author SET name=$2 WHERE id=$1 AND user_id=$3")
+                    .bind(author.id().to_uuid())
+                    .bind(author.name().as_str())
+                    .bind(user_id.as_str())
+                    .execute(&mut **tx)
+                    .await?;
+
+                if result.rows_affected() == 0 {
+                    sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
+                        .bind(author.id().to_uuid())
+                        .bind(user_id.as_str())
+                        .bind(author.name().as_str())
+                        .execute(&mut **tx)
+                        .await?;
+                }
+
+                let snapshot: AuthorSnapshotRow = sqlx::query_as(
+                    "SELECT name, yomi, created_at, updated_at FROM author
+                     WHERE id = $1 AND user_id = $2",
+                )
+                .bind(author.id().to_uuid())
+                .bind(user_id.as_str())
+                .fetch_one(&mut **tx)
+                .await?;
+
+                sqlx::query(
+                    "INSERT INTO author_event
+                       (event_set_id, operation, author_id, user_id,
+                        name, yomi, author_created_at, author_updated_at, extra)
+                     VALUES ($1, 'restore', $2, $3, $4, $5, $6, $7, $8)",
+                )
+                .bind(es_id)
+                .bind(author.id().to_uuid())
+                .bind(user_id.as_str())
+                .bind(&snapshot.name)
+                .bind(&snapshot.yomi)
+                .bind(snapshot.created_at)
+                .bind(snapshot.updated_at)
+                .bind(sqlx::types::Json(&extra))
+                .execute(&mut **tx)
+                .await?;
+            }
+            None => {
+                let (author_id,): (Uuid,) = sqlx::query_as(
+                    "SELECT author_id FROM author_event WHERE event_id = $1 AND user_id = $2",
+                )
+                .bind(source_event_id)
+                .bind(user_id.as_str())
+                .fetch_one(&mut **tx)
+                .await?;
+
+                // 0 rows affected is acceptable (author already absent)
+                sqlx::query("DELETE FROM author WHERE id=$1 AND user_id=$2")
+                    .bind(author_id)
+                    .bind(user_id.as_str())
+                    .execute(&mut **tx)
+                    .await?;
+
+                sqlx::query(
+                    "INSERT INTO author_event (event_set_id, operation, author_id, user_id, extra)
+                     VALUES ($1, 'restore', $2, $3, $4)",
+                )
+                .bind(es_id)
+                .bind(author_id)
+                .bind(user_id.as_str())
+                .bind(sqlx::types::Json(&extra))
+                .execute(&mut **tx)
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(in crate::infrastructure) async fn upsert_author_by_name_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        name: &AuthorName,
+    ) -> Result<(AuthorId, bool), DomainError> {
+        let candidate_id = Uuid::new_v4();
+
+        let result = sqlx::query(
+            "INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, name) DO NOTHING",
+        )
+        .bind(candidate_id)
+        .bind(user_id.as_str())
+        .bind(name.as_str())
+        .execute(&mut **tx)
+        .await?;
+
+        let rows_affected = result.rows_affected();
+
+        let snap: AuthorSnapshotRow = sqlx::query_as(
+            "SELECT id, yomi, created_at, updated_at
+             FROM author
+             WHERE user_id = $1 AND name = $2",
+        )
+        .bind(user_id.as_str())
+        .bind(name.as_str())
+        .fetch_one(&mut **tx)
+        .await?;
+
+        let author_id = AuthorId::new(snap.id);
+
+        Ok((author_id, rows_affected == 1))
+    }
+
+    pub(in crate::infrastructure) async fn record_author_event_core(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        user_id: &UserId,
+        author_id: &AuthorId,
+        es_id: Uuid,
+    ) -> Result<(), DomainError> {
+        let snap: AuthorSnapshotRow = sqlx::query_as(
+            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
+        )
+        .bind(author_id.to_uuid())
+        .bind(user_id.as_str())
+        .fetch_one(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO author_event
+               (event_set_id, operation, author_id, user_id, name, yomi,
+                author_created_at, author_updated_at)
+             VALUES ($1, 'create', $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(es_id)
+        .bind(author_id.to_uuid())
+        .bind(user_id.as_str())
+        .bind(&snap.name)
+        .bind(&snap.yomi)
+        .bind(snap.created_at)
+        .bind(snap.updated_at)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl AuthorRepository for PgAuthorRepository {
+    async fn create(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await?;
+
+        let es_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_author')",
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
         .execute(&mut *tx)
         .await?;
+
+        self.create_core(&mut tx, user_id, author, es_id).await?;
 
         tx.commit().await?;
 
@@ -131,43 +434,8 @@ impl AuthorRepository for PgAuthorRepository {
 
         authors
     }
-
     async fn update(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
-
-        let result = sqlx::query(
-            "UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
-        )
-        .bind(author.name().as_str())
-        .bind(author.id().to_uuid())
-        .bind(user_id.as_str())
-        .execute(&mut *tx)
-        .await?;
-
-        match result.rows_affected() {
-            0 => {
-                return Err(DomainError::NotFound {
-                    entity_type: "author",
-                    entity_id: author.id().to_string(),
-                    user_id: user_id.to_owned().into_string(),
-                });
-            }
-            1 => {}
-            _ => {
-                return Err(DomainError::Unexpected(String::from(
-                    "rows_affected is greater than 1.",
-                )));
-            }
-        }
-
-        // Fetch post-update state (yomi and timestamps are DB-managed)
-        let snap: AuthorSnapshotRow = sqlx::query_as(
-            "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
-        )
-        .bind(author.id().to_uuid())
-        .bind(user_id.as_str())
-        .fetch_one(&mut *tx)
-        .await?;
 
         let es_id = Uuid::new_v4();
         sqlx::query(
@@ -178,82 +446,14 @@ impl AuthorRepository for PgAuthorRepository {
         .execute(&mut *tx)
         .await?;
 
-        sqlx::query(
-            "INSERT INTO author_event
-               (event_set_id, operation, author_id, user_id, name, yomi,
-                author_created_at, author_updated_at)
-             VALUES ($1, 'update', $2, $3, $4, $5, $6, $7)",
-        )
-        .bind(es_id)
-        .bind(author.id().to_uuid())
-        .bind(user_id.as_str())
-        .bind(&snap.name)
-        .bind(&snap.yomi)
-        .bind(snap.created_at)
-        .bind(snap.updated_at)
-        .execute(&mut *tx)
-        .await?;
+        self.update_core(&mut tx, user_id, author, es_id).await?;
 
         tx.commit().await?;
 
         Ok(())
     }
-
     async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
-
-        // Lock the author row to prevent concurrent inserts into book_author after the count check.
-        let exists: Option<(i32,)> =
-            sqlx::query_as("SELECT 1 FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
-                .bind(author_id.to_uuid())
-                .bind(user_id.as_str())
-                .fetch_optional(&mut *tx)
-                .await?;
-
-        if exists.is_none() {
-            return Err(DomainError::NotFound {
-                entity_type: "author",
-                entity_id: author_id.to_string(),
-                user_id: user_id.to_owned().into_string(),
-            });
-        }
-
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM book_author WHERE user_id = $1 AND author_id = $2",
-        )
-        .bind(user_id.as_str())
-        .bind(author_id.to_uuid())
-        .fetch_one(&mut *tx)
-        .await?;
-
-        if count > 0 {
-            return Err(DomainError::HasAssociatedBooks {
-                author_id: author_id.to_string(),
-                user_id: user_id.to_owned().into_string(),
-            });
-        }
-
-        let result = sqlx::query("DELETE FROM author WHERE id = $1 AND user_id = $2")
-            .bind(author_id.to_uuid())
-            .bind(user_id.as_str())
-            .execute(&mut *tx)
-            .await?;
-
-        match result.rows_affected() {
-            0 => {
-                return Err(DomainError::NotFound {
-                    entity_type: "author",
-                    entity_id: author_id.to_string(),
-                    user_id: user_id.to_owned().into_string(),
-                });
-            }
-            1 => {}
-            _ => {
-                return Err(DomainError::Unexpected(String::from(
-                    "rows_affected is greater than 1.",
-                )));
-            }
-        }
 
         let es_id = Uuid::new_v4();
         sqlx::query(
@@ -264,21 +464,12 @@ impl AuthorRepository for PgAuthorRepository {
         .execute(&mut *tx)
         .await?;
 
-        sqlx::query(
-            "INSERT INTO author_event (event_set_id, operation, author_id, user_id)
-             VALUES ($1, 'delete', $2, $3)",
-        )
-        .bind(es_id)
-        .bind(author_id.to_uuid())
-        .bind(user_id.as_str())
-        .execute(&mut *tx)
-        .await?;
+        self.delete_core(&mut tx, user_id, author_id, es_id).await?;
 
         tx.commit().await?;
 
         Ok(())
     }
-
     async fn restore(
         &self,
         user_id: &UserId,
@@ -296,86 +487,13 @@ impl AuthorRepository for PgAuthorRepository {
         .execute(&mut *tx)
         .await?;
 
-        let extra = json!({"version": 1, "source_event_id": source_event_id});
-
-        match author {
-            Some(author) => {
-                let result = sqlx::query("UPDATE author SET name=$2 WHERE id=$1 AND user_id=$3")
-                    .bind(author.id().to_uuid())
-                    .bind(author.name().as_str())
-                    .bind(user_id.as_str())
-                    .execute(&mut *tx)
-                    .await?;
-
-                if result.rows_affected() == 0 {
-                    sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
-                        .bind(author.id().to_uuid())
-                        .bind(user_id.as_str())
-                        .bind(author.name().as_str())
-                        .execute(&mut *tx)
-                        .await?;
-                }
-
-                let snapshot: AuthorSnapshotRow = sqlx::query_as(
-                    "SELECT name, yomi, created_at, updated_at FROM author
-                     WHERE id = $1 AND user_id = $2",
-                )
-                .bind(author.id().to_uuid())
-                .bind(user_id.as_str())
-                .fetch_one(&mut *tx)
-                .await?;
-
-                sqlx::query(
-                    "INSERT INTO author_event
-                       (event_set_id, operation, author_id, user_id,
-                        name, yomi, author_created_at, author_updated_at, extra)
-                     VALUES ($1, 'restore', $2, $3, $4, $5, $6, $7, $8)",
-                )
-                .bind(es_id)
-                .bind(author.id().to_uuid())
-                .bind(user_id.as_str())
-                .bind(&snapshot.name)
-                .bind(&snapshot.yomi)
-                .bind(snapshot.created_at)
-                .bind(snapshot.updated_at)
-                .bind(sqlx::types::Json(&extra))
-                .execute(&mut *tx)
-                .await?;
-            }
-            None => {
-                let (author_id,): (Uuid,) = sqlx::query_as(
-                    "SELECT author_id FROM author_event WHERE event_id = $1 AND user_id = $2",
-                )
-                .bind(source_event_id)
-                .bind(user_id.as_str())
-                .fetch_one(&mut *tx)
-                .await?;
-
-                // 0 rows affected is acceptable (author already absent)
-                sqlx::query("DELETE FROM author WHERE id=$1 AND user_id=$2")
-                    .bind(author_id)
-                    .bind(user_id.as_str())
-                    .execute(&mut *tx)
-                    .await?;
-
-                sqlx::query(
-                    "INSERT INTO author_event (event_set_id, operation, author_id, user_id, extra)
-                     VALUES ($1, 'restore', $2, $3, $4)",
-                )
-                .bind(es_id)
-                .bind(author_id)
-                .bind(user_id.as_str())
-                .bind(sqlx::types::Json(&extra))
-                .execute(&mut *tx)
-                .await?;
-            }
-        }
+        self.restore_core(&mut tx, user_id, source_event_id, author, es_id)
+            .await?;
 
         tx.commit().await?;
 
         Ok(())
     }
-
     async fn find_by_ids_as_hash_map(
         &self,
         user_id: &UserId,
