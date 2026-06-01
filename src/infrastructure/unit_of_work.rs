@@ -37,7 +37,7 @@ mod tests {
         let mut uow = PgUnitOfWork::begin(&pool).await?;
 
         // Verify the transaction handle is usable
-        let (count,): (i64,) = sqlx::query_as("SELECT 1")
+        let (count,): (i32,) = sqlx::query_as("SELECT 1")
             .fetch_one(&mut **uow.tx())
             .await?;
         assert_eq!(count, 1);
@@ -52,7 +52,7 @@ mod tests {
         let mut uow = PgUnitOfWork::begin(&pool).await?;
 
         // Verify the transaction handle is usable
-        let (count,): (i64,) = sqlx::query_as("SELECT 1")
+        let (count,): (i32,) = sqlx::query_as("SELECT 1")
             .fetch_one(&mut **uow.tx())
             .await?;
         assert_eq!(count, 1);
