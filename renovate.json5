@@ -3,6 +3,7 @@
   "extends": [
     "config:best-practices",
   ],
+  "minimumReleaseAge": "3 days",
   "customManagers": [
     {
       "customType": "regex",
