@@ -24,7 +24,6 @@ struct AuthorRow {
 
 #[derive(sqlx::FromRow)]
 struct AuthorSnapshotRow {
-    id: Uuid,
     name: String,
     yomi: String,
     created_at: OffsetDateTime,
@@ -324,17 +323,14 @@ impl PgAuthorRepository {
 
         let rows_affected = result.rows_affected();
 
-        let snap: AuthorSnapshotRow = sqlx::query_as(
-            "SELECT id, yomi, created_at, updated_at
-             FROM author
-             WHERE user_id = $1 AND name = $2",
-        )
-        .bind(user_id.as_str())
-        .bind(name.as_str())
-        .fetch_one(&mut **tx)
-        .await?;
+        let (author_id,): (Uuid,) =
+            sqlx::query_as("SELECT id FROM author WHERE user_id = $1 AND name = $2")
+                .bind(user_id.as_str())
+                .bind(name.as_str())
+                .fetch_one(&mut **tx)
+                .await?;
 
-        let author_id = AuthorId::new(snap.id);
+        let author_id = AuthorId::new(author_id);
 
         Ok((author_id, rows_affected == 1))
     }

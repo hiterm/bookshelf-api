@@ -36,7 +36,7 @@ mod tests {
     async fn test_begin_commit_persists_changes(pool: PgPool) -> anyhow::Result<()> {
         let mut uow = PgUnitOfWork::begin(&pool).await?;
 
-        sqlx::query("CREATE TEMP TABLE uow_test (id INT)")
+        sqlx::query("CREATE TABLE uow_test (id INT)")
             .execute(&mut **uow.tx())
             .await?;
 
@@ -58,7 +58,7 @@ mod tests {
     async fn test_begin_rollback_discards_changes(pool: PgPool) -> anyhow::Result<()> {
         let mut uow = PgUnitOfWork::begin(&pool).await?;
 
-        sqlx::query("CREATE TEMP TABLE uow_test (id INT)")
+        sqlx::query("CREATE TABLE uow_test (id INT)")
             .execute(&mut **uow.tx())
             .await?;
 
@@ -68,11 +68,10 @@ mod tests {
 
         uow.rollback().await?;
 
-        // After rollback, the temp table (and its data) should not be visible
-        let result = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM uow_test")
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM uow_test")
             .fetch_one(&pool)
-            .await;
-        assert!(result.is_err());
+            .await?;
+        assert_eq!(count, 0);
 
         Ok(())
     }
