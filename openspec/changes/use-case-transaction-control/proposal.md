@@ -6,13 +6,14 @@ Currently, every repository method (`create`, `update`, `delete`) starts and com
 
 This change is the first phase of a multi-phase migration. Only `BookRepository` and `AuthorRepository` are affected in this phase.
 
-- **BREAKING**: Add `&mut PgConnection` parameter to `BookRepository` and `AuthorRepository` trait methods.
-- **BREAKING**: Update `PgBookRepository` and `PgAuthorRepository` to accept injected `&mut PgConnection` instead of owning `PgPool` and starting internal transactions.
-- Move transaction boundaries (`pool.begin().await?` → `tx.commit().await?`) from these two infrastructure repositories into their respective use-case interactors.
-- Remove the temporary `ImportBooksRepository` trait and `PgImportBooksRepository`; fold its logic into `ImportBooksInteractor` using the standard `BookRepository` + `AuthorRepository` + a single `PgPool`.
-- Update event recording (`event_set` + `*_event` inserts) in `PgBookRepository` / `PgAuthorRepository` to occur inside the same transaction that the use-case layer manages.
-- Update `AGENTS.md` "Event Recording" rule to reflect that transaction control now lives in the use-case layer while event recording remains an infrastructure-layer concern.
-- Update all unit tests to continue using `mockall`-generated mocks; mocks simply ignore the `&mut PgConnection` argument.
+- **Strategy — Expand & Contract**: Add `*_conn(&mut PgConnection, …)` variants alongside existing methods, migrate interactors one by one, then remove old methods and rename. This keeps the codebase compilable and test-passing at every commit.
+- Add `*_conn` variants (`create_conn`, `find_by_id_conn`, `find_all_conn`, `update_conn`, `delete_conn`, `restore_conn`) to `BookRepository` and `AuthorRepository`.
+- Update `PgBookRepository` and `PgAuthorRepository` so new `*_conn` methods accept injected `&mut PgConnection`; old methods become thin wrappers that delegate to `*_conn` inside `pool.begin() … tx.commit()`.
+- Move transaction boundaries (`pool.begin().await?` → `tx.commit().await?`) from infrastructure repositories into use-case interactors one at a time.
+- Remove the temporary `ImportBooksRepository` trait and `PgImportBooksRepository`; fold its logic into `ImportBooksInteractor` using standard `BookRepository` + `AuthorRepository` + `PgPool`.
+- Keep event recording (`event_set` + `*_event` inserts) inside `PgBookRepository` / `PgAuthorRepository`, but execute on the injected connection so it shares the use-case transaction.
+- Update `AGENTS.md` "Event Recording" rule to clarify that transaction control lives in the use-case layer while event recording stays in the infrastructure layer.
+- Unit tests continue using `mockall` mocks; `*_conn` mock expectations use `always()` for the connection argument.
 
 ## Future Phases
 

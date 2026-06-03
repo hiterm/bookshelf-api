@@ -58,9 +58,15 @@ Event recording belongs exclusively in the infrastructure layer (inside the
 `Pg*` repository implementation) — domain traits and use-case interactors
 must not be aware of it.
 
+The **use-case layer** controls the transaction boundary (`BEGIN` / `COMMIT`)
+by starting a transaction and passing `&mut PgConnection` to repository methods.
+The **infrastructure layer** performs the event recording inserts on that same
+connection, but does not start or commit the transaction itself.
+
 When adding a new entity or mutation operation:
 
-- Wrap the entire operation in a single transaction.
+- Wrap the entire operation in a single transaction started by the use-case interactor.
+- Pass `&mut PgConnection` into repository methods.
 - Generate a new `event_set` UUID inside the transaction.
 - Create a dedicated `<entity>_event` table (and `<entity>_event_author`-style
   join tables if needed) following the `book_event` / `author_event` schema.

@@ -27,6 +27,16 @@ We will migrate to a use-case-controlled transaction model in three phases. **Th
 - **Rationale**: `BookRepository` and `AuthorRepository` are the most frequently used mutation repositories and are directly involved in the `ImportBooksRepository` workaround. Limiting Phase 1 to these two minimizes risk and validates the pattern before expanding.
 - **Phase 2** will apply the same pattern to `UserRepository`, `BookEventRepository`, and `AuthorEventRepository`.
 
+### Decision: Migrate via Expand & Contract (parallel method expansion) instead of a single breaking change
+- **Rationale**: Changing the trait signature and all callers at once creates a wide "everything-is-broken" window where `cargo check` fails across the entire codebase. This makes debugging, reverting, and parallel work difficult. Instead, we will add `*_conn(&mut PgConnection, …)` variants alongside existing methods, migrate callers one by one, and finally remove the old methods.
+- **Process**:
+  1. Add `*_conn` variants to `BookRepository` and `AuthorRepository` (e.g. `create_conn`, `update_conn`).
+  2. Implement `*_conn` in `PgBookRepository` / `PgAuthorRepository` using injected `&mut PgConnection`.
+  3. Make old methods delegate to `*_conn` (old = `pool.begin()` → `*_conn` → `tx.commit()`).
+  4. Migrate interactors one at a time to call `*_conn` inside their own `pool.begin()` transactions.
+  5. After all callers have migrated, remove old methods and rename `*_conn` → original names.
+- **Benefit**: Every commit compiles and passes tests. `git bisect` remains useful throughout.
+
 ### Decision: Repository methods accept `&mut PgConnection` for mutations
 - **Rationale**: `sqlx 0.8`'s `Executor<'c>` trait is not dyn-compatible and is effectively impossible to mock with `mockall`. `&mut PgConnection` is the concrete type that both `PoolConnection<<Postgres>` and `Transaction<'_, Postgres>` dereference to via `DerefMut`, so a single signature covers both pooled connections and transactions. It is also mockable.
 - **Alternatives considered**: `Executor<'c>` (rejected: not mockable), `&mut Transaction<'_, Postgres>` (rejected: lifetime parameter on trait method complicates mockall but is possible; however `&mut PgConnection` is simpler and more general).
@@ -48,7 +58,7 @@ We will migrate to a use-case-controlled transaction model in three phases. **Th
 ## Risks / Trade-offs
 
 - **[Risk]** Refactor surface area is still significant: all Book and Author repository methods, interactors, tests, and DI wiring change.
-  - **Mitigation**: Compile and run tests after each layer (domain → infrastructure → use-case → DI) rather than changing everything at once.
+  - **Mitigation**: Use Expand & Contract. Add parallel `*_conn` methods first so the codebase never enters a broken state. Migrate interactors one at a time, running `cargo test` after each. Only remove old methods at the very end.
 
 - **[Risk]** `PgConnection` is a concrete type from `sqlx`, creating a dependency leak from infrastructure into domain layer.
   - **Mitigation**: This is accepted for Phase 1. The domain layer already depends on `async-trait` and `mockall`; adding `sqlx` as a dev-facing dependency for the trait definition is a minor increase in coupling. Phase 3 may introduce a thin `Connection` newtype wrapper if portability becomes a concern.
