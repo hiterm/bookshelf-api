@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use sqlx::PgPool;
 
 use crate::{
     domain::{
@@ -31,6 +32,7 @@ pub struct QueryInteractor<UR, BR, AR, BER, AER> {
     pub author_repository: AR,
     pub book_event_repository: BER,
     pub author_event_repository: AER,
+    pub pool: PgPool,
 }
 
 #[async_trait]
@@ -56,14 +58,19 @@ where
     ) -> Result<Option<BookDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let book_id = BookId::try_from(book_id)?;
-        let book = self.book_repository.find_by_id(&user_id, &book_id).await?;
+        let mut conn = self.pool.acquire().await?;
+        let book = self
+            .book_repository
+            .find_by_id(&mut conn, &user_id, &book_id)
+            .await?;
         let book = book.map(BookDto::from);
         Ok(book)
     }
 
     async fn find_all_books(&self, user_id: &str) -> Result<Vec<BookDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
-        let books = self.book_repository.find_all(&user_id).await?;
+        let mut conn = self.pool.acquire().await?;
+        let books = self.book_repository.find_all(&mut conn, &user_id).await?;
         let books: Vec<BookDto> = books.into_iter().map(BookDto::from).collect();
         Ok(books)
     }
@@ -77,9 +84,10 @@ where
         let raw_author_id = author_id;
         let user_id = UserId::new(raw_user_id.to_string())?;
         let author_id = AuthorId::try_from(raw_author_id)?;
+        let mut conn = self.pool.acquire().await?;
         let author = self
             .author_repository
-            .find_by_id(&user_id, &author_id)
+            .find_by_id(&mut conn, &user_id, &author_id)
             .await?;
 
         Ok(author.map(AuthorDto::from))
@@ -87,7 +95,8 @@ where
 
     async fn find_all_authors(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
-        let authors = self.author_repository.find_all(&user_id).await?;
+        let mut conn = self.pool.acquire().await?;
+        let authors = self.author_repository.find_all(&mut conn, &user_id).await?;
         let authors: Vec<AuthorDto> = authors.into_iter().map(AuthorDto::from).collect();
         Ok(authors)
     }
@@ -102,9 +111,10 @@ where
             .iter()
             .map(|author_id| AuthorId::try_from(author_id.as_str()))
             .collect::<Result<Vec<AuthorId>, DomainError>>()?;
+        let mut conn = self.pool.acquire().await?;
         let authors_map = self
             .author_repository
-            .find_by_ids_as_hash_map(&user_id, &author_ids)
+            .find_by_ids_as_hash_map(&mut conn, &user_id, &author_ids)
             .await?;
         let authors_map = authors_map
             .into_iter()
@@ -182,6 +192,12 @@ mod tests {
         .unwrap()
     }
 
+    fn dummy_pool() -> sqlx::PgPool {
+        let url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+        sqlx::PgPool::connect_lazy(&url).unwrap()
+    }
+
     fn make_book(uuid_str: &str) -> Book {
         let uuid = Uuid::parse_str(uuid_str).unwrap();
         Book::new(
@@ -213,8 +229,8 @@ mod tests {
 
         book_repository
             .expect_find_by_id()
-            .withf(move |uid, _| uid.as_str() == expected_user_id)
-            .returning(move |_, _| Ok(Some(book.clone())));
+            .withf(move |_, uid, _| uid.as_str() == expected_user_id)
+            .returning(move |_, _, _| Ok(Some(book.clone())));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -222,6 +238,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -242,8 +259,8 @@ mod tests {
 
         book_repository
             .expect_find_all()
-            .withf(move |uid| uid.as_str() == expected_user_id)
-            .returning(|_| Ok(vec![]));
+            .withf(move |_, uid| uid.as_str() == expected_user_id)
+            .returning(|_, _| Ok(vec![]));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -251,6 +268,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -272,8 +290,8 @@ mod tests {
 
         author_repository
             .expect_find_by_id()
-            .withf(move |uid, _| uid.as_str() == expected_user_id)
-            .returning(|_, _| Ok(None));
+            .withf(move |_, uid, _| uid.as_str() == expected_user_id)
+            .returning(|_, _, _| Ok(None));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -281,6 +299,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -304,8 +323,8 @@ mod tests {
 
         author_repository
             .expect_find_all()
-            .withf(move |uid| uid.as_str() == expected_user_id)
-            .returning(|_| Ok(vec![]));
+            .withf(move |_, uid| uid.as_str() == expected_user_id)
+            .returning(|_, _| Ok(vec![]));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -313,6 +332,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -333,8 +353,8 @@ mod tests {
 
         author_repository
             .expect_find_by_ids_as_hash_map()
-            .withf(move |uid, _| uid.as_str() == expected_user_id)
-            .returning(|_, _| Ok(HashMap::new()));
+            .withf(move |_, uid, _| uid.as_str() == expected_user_id)
+            .returning(|_, _, _| Ok(HashMap::new()));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -342,6 +362,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -368,8 +389,8 @@ mod tests {
 
         author_repository
             .expect_find_by_id()
-            .with(always(), always())
-            .returning(move |_, _| {
+            .with(always(), always(), always())
+            .returning(move |_, _, _| {
                 Ok(Some(domain::entity::author::Author::new(
                     AuthorId::try_from(author_id).unwrap(),
                     AuthorName::new(author_name.to_string()).unwrap(),
@@ -382,6 +403,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         let actual = query_interactor
@@ -419,6 +441,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -447,6 +470,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -468,8 +492,8 @@ mod tests {
 
         book_repository
             .expect_find_by_id()
-            .with(always(), always())
-            .returning(move |_, _| Ok(Some(book.clone())));
+            .with(always(), always(), always())
+            .returning(move |_, _, _| Ok(Some(book.clone())));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -477,6 +501,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -499,8 +524,8 @@ mod tests {
 
         book_repository
             .expect_find_by_id()
-            .with(always(), always())
-            .returning(|_, _| Ok(None));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(None));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -508,6 +533,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -531,8 +557,8 @@ mod tests {
 
         book_repository
             .expect_find_all()
-            .with(always())
-            .returning(move |_| Ok(vec![book.clone()]));
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![book.clone()]));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -540,6 +566,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -561,8 +588,8 @@ mod tests {
 
         author_repository
             .expect_find_all()
-            .with(always())
-            .returning(move |_| Ok(vec![author.clone()]));
+            .with(always(), always())
+            .returning(move |_, _| Ok(vec![author.clone()]));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -570,6 +597,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -599,8 +627,8 @@ mod tests {
 
         author_repository
             .expect_find_by_ids_as_hash_map()
-            .with(always(), always())
-            .returning(move |_, _| {
+            .with(always(), always(), always())
+            .returning(move |_, _, _| {
                 let mut map = HashMap::new();
                 map.insert(author_id.clone(), author.clone());
                 Ok(map)
@@ -612,6 +640,7 @@ mod tests {
             author_repository,
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         // When
@@ -685,6 +714,7 @@ mod tests {
             author_repository: MockAuthorRepository::new(),
             book_event_repository,
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         let result = query_interactor
@@ -714,6 +744,7 @@ mod tests {
             author_repository: MockAuthorRepository::new(),
             book_event_repository,
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         let result = query_interactor
@@ -732,6 +763,7 @@ mod tests {
             author_repository: MockAuthorRepository::new(),
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         let result = query_interactor
@@ -759,6 +791,7 @@ mod tests {
             author_repository: MockAuthorRepository::new(),
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository,
+            pool: dummy_pool(),
         };
 
         let result = query_interactor
@@ -788,6 +821,7 @@ mod tests {
             author_repository: MockAuthorRepository::new(),
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository,
+            pool: dummy_pool(),
         };
 
         let result = query_interactor
@@ -806,6 +840,7 @@ mod tests {
             author_repository: MockAuthorRepository::new(),
             book_event_repository: MockBookEventRepository::new(),
             author_event_repository: MockAuthorEventRepository::new(),
+            pool: dummy_pool(),
         };
 
         let result = query_interactor

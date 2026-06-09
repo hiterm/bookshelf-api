@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -35,6 +35,9 @@ struct BookRow {
 
 #[derive(Debug, Clone)]
 pub struct PgBookRepository {
+    // Pool is retained for backward compatibility and future use;
+    // all trait methods now receive an external &mut PgConnection.
+    #[allow(dead_code)]
     pool: PgPool,
 }
 
@@ -46,9 +49,12 @@ impl PgBookRepository {
 
 #[async_trait]
 impl BookRepository for PgBookRepository {
-    async fn create(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-
+    async fn create(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        book: &Book,
+    ) -> Result<(), DomainError> {
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -76,7 +82,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         let author_ids: Vec<Uuid> = book
@@ -93,7 +99,7 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         let es_id = Uuid::new_v4();
@@ -102,7 +108,7 @@ impl BookRepository for PgBookRepository {
         )
         .bind(es_id)
         .bind(user_id.as_str())
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         let (event_id,): (i64,) = sqlx::query_as(
@@ -124,7 +130,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *conn)
         .await?;
 
         if !author_ids.is_empty() {
@@ -134,17 +140,16 @@ impl BookRepository for PgBookRepository {
             )
             .bind(event_id)
             .bind(&author_ids)
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await?;
         }
-
-        tx.commit().await?;
 
         Ok(())
     }
 
     async fn find_by_id(
         &self,
+        conn: &mut PgConnection,
         user_id: &UserId,
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError> {
@@ -179,7 +184,7 @@ impl BookRepository for PgBookRepository {
         )
         .bind(user_id.as_str())
         .bind(book_id.to_uuid())
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await?;
 
         let book = book_row.map(|row| {
@@ -215,7 +220,11 @@ impl BookRepository for PgBookRepository {
         Ok(book)
     }
 
-    async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
+    async fn find_all(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+    ) -> Result<Vec<Book>, DomainError> {
         let books: Result<Vec<Book>, DomainError> = sqlx::query_as(
             "WITH book_of_user AS(
                 SELECT
@@ -245,7 +254,7 @@ impl BookRepository for PgBookRepository {
                 ON  book_of_user.id = authors_of_book_and_user.book_id",
         )
         .bind(user_id.as_str())
-        .fetch(&self.pool)
+        .fetch(&mut *conn)
         .map(
             |row: Result<BookRow, sqlx::Error>| -> Result<Book, DomainError> {
                 let row = row?;
@@ -283,9 +292,12 @@ impl BookRepository for PgBookRepository {
         books
     }
 
-    async fn update(&self, user_id: &UserId, book: &Book) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-
+    async fn update(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        book: &Book,
+    ) -> Result<(), DomainError> {
         let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
@@ -311,7 +323,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.created_at())
         .bind(book.updated_at())
         .bind(book.id().to_uuid())
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         let rows_affected = result.rows_affected();
@@ -344,7 +356,7 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
@@ -356,7 +368,7 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .bind(book.id().to_uuid())
         .bind(&author_ids)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         let es_id = Uuid::new_v4();
@@ -365,7 +377,7 @@ impl BookRepository for PgBookRepository {
         )
         .bind(es_id)
         .bind(user_id.as_str())
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         let (event_id,): (i64,) = sqlx::query_as(
@@ -387,7 +399,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.store().to_string())
         .bind(book.created_at())
         .bind(book.updated_at())
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *conn)
         .await?;
 
         // https://github.com/launchbadge/sqlx/blob/fa5c436918664de112677519d73cf6939c938cb0/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
@@ -398,28 +410,29 @@ impl BookRepository for PgBookRepository {
             )
             .bind(event_id)
             .bind(&author_ids)
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await?;
         }
-
-        tx.commit().await?;
 
         Ok(())
     }
 
-    async fn delete(&self, user_id: &UserId, book_id: &BookId) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-
+    async fn delete(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        book_id: &BookId,
+    ) -> Result<(), DomainError> {
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await?;
 
         let result = sqlx::query("DELETE FROM book WHERE user_id = $1 AND id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await?;
 
         let rows_affected = result.rows_affected();
@@ -445,7 +458,7 @@ impl BookRepository for PgBookRepository {
         )
         .bind(es_id)
         .bind(user_id.as_str())
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         sqlx::query(
@@ -455,29 +468,26 @@ impl BookRepository for PgBookRepository {
         .bind(es_id)
         .bind(book_id.to_uuid())
         .bind(user_id.as_str())
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
-
-        tx.commit().await?;
 
         Ok(())
     }
 
     async fn restore(
         &self,
+        conn: &mut PgConnection,
         user_id: &UserId,
         source_event_id: i64,
         book: Option<Book>,
     ) -> Result<(), DomainError> {
-        let mut tx = self.pool.begin().await?;
-
         let es_id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'restore_book')",
         )
         .bind(es_id)
         .bind(user_id.as_str())
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         let extra = json!({"version": 1, "source_event_id": source_event_id});
@@ -506,7 +516,7 @@ impl BookRepository for PgBookRepository {
                 .bind(book.store().to_string())
                 .bind(book.created_at())
                 .bind(book.updated_at())
-                .execute(&mut *tx)
+                .execute(&mut *conn)
                 .await?;
 
                 sqlx::query(
@@ -515,7 +525,7 @@ impl BookRepository for PgBookRepository {
                 .bind(user_id.as_str())
                 .bind(book.id().to_uuid())
                 .bind(&author_ids)
-                .execute(&mut *tx)
+                .execute(&mut *conn)
                 .await?;
 
                 sqlx::query(
@@ -526,7 +536,7 @@ impl BookRepository for PgBookRepository {
                 .bind(user_id.as_str())
                 .bind(book.id().to_uuid())
                 .bind(&author_ids)
-                .execute(&mut *tx)
+                .execute(&mut *conn)
                 .await?;
 
                 let (event_id,): (i64,) = sqlx::query_as(
@@ -549,7 +559,7 @@ impl BookRepository for PgBookRepository {
                 .bind(book.created_at())
                 .bind(book.updated_at())
                 .bind(sqlx::types::Json(&extra))
-                .fetch_one(&mut *tx)
+                .fetch_one(&mut *conn)
                 .await?;
 
                 if !author_ids.is_empty() {
@@ -559,7 +569,7 @@ impl BookRepository for PgBookRepository {
                     )
                     .bind(event_id)
                     .bind(&author_ids)
-                    .execute(&mut *tx)
+                    .execute(&mut *conn)
                     .await?;
                 }
             }
@@ -571,20 +581,20 @@ impl BookRepository for PgBookRepository {
                 )
                 .bind(source_event_id)
                 .bind(user_id.as_str())
-                .fetch_one(&mut *tx)
+                .fetch_one(&mut *conn)
                 .await?;
 
                 sqlx::query("DELETE FROM book_author WHERE user_id=$1 AND book_id=$2")
                     .bind(user_id.as_str())
                     .bind(book_id)
-                    .execute(&mut *tx)
+                    .execute(&mut *conn)
                     .await?;
 
                 // 0 rows affected is acceptable (book already absent)
                 sqlx::query("DELETE FROM book WHERE user_id=$1 AND id=$2")
                     .bind(user_id.as_str())
                     .bind(book_id)
-                    .execute(&mut *tx)
+                    .execute(&mut *conn)
                     .await?;
 
                 sqlx::query(
@@ -595,12 +605,10 @@ impl BookRepository for PgBookRepository {
                 .bind(book_id)
                 .bind(user_id.as_str())
                 .bind(sqlx::types::Json(&extra))
-                .execute(&mut *tx)
+                .execute(&mut *conn)
                 .await?;
             }
         }
-
-        tx.commit().await?;
 
         Ok(())
     }
@@ -635,17 +643,20 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
 
-        let all_books = book_repository.find_all(&user_id).await?;
+        let all_books = book_repository.find_all(&mut conn, &user_id).await?;
         assert_eq!(all_books.len(), 0);
 
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user_id, &book).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
 
-        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
+        let actual = book_repository
+            .find_by_id(&mut conn, &user_id, book.id())
+            .await?;
         assert_eq!(actual, Some(book));
 
         Ok(())
@@ -656,21 +667,22 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
 
-        let author_ids1 = prepare_authors1(&user_id, &author_repository).await?;
-        let author_ids2 = prepare_authors2(&user_id, &author_repository).await?;
+        let author_ids1 = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
+        let author_ids2 = prepare_authors2(&mut conn, &user_id, &author_repository).await?;
 
-        let all_books = book_repository.find_all(&user_id).await?;
+        let all_books = book_repository.find_all(&mut conn, &user_id).await?;
         assert_eq!(all_books.len(), 0);
 
         let book1 = book_entity1(&author_ids1)?;
         let book2 = book_entity2(&author_ids2)?;
-        book_repository.create(&user_id, &book1).await?;
-        book_repository.create(&user_id, &book2).await?;
+        book_repository.create(&mut conn, &user_id, &book1).await?;
+        book_repository.create(&mut conn, &user_id, &book2).await?;
 
-        let all_books = book_repository.find_all(&user_id).await?;
+        let all_books = book_repository.find_all(&mut conn, &user_id).await?;
         assert_eq!(all_books.len(), 2);
         if all_books[0] == book1 {
             assert_eq!(all_books[0], book1);
@@ -689,12 +701,15 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let mut author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let mut author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
         let mut book = book_entity1(&author_ids)?;
-        book_repository.create(&user_id, &book).await?;
-        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
+        let actual = book_repository
+            .find_by_id(&mut conn, &user_id, book.id())
+            .await?;
         assert_eq!(actual, Some(book.clone()));
 
         // update
@@ -705,12 +720,16 @@ mod tests {
             another_author_id.clone(),
             AuthorName::new("another_author1".to_owned())?,
         )?;
-        author_repository.create(&user_id, &another_author).await?;
+        author_repository
+            .create(&mut conn, &user_id, &another_author)
+            .await?;
         author_ids.push(another_author_id);
         book.set_author_ids(author_ids);
-        book_repository.update(&user_id, &book).await?;
+        book_repository.update(&mut conn, &user_id, &book).await?;
 
-        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
+        let actual = book_repository
+            .find_by_id(&mut conn, &user_id, book.id())
+            .await?;
         assert_eq!(actual, Some(book.clone()));
 
         Ok(())
@@ -721,16 +740,23 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user_id, &book).await?;
-        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
+        let actual = book_repository
+            .find_by_id(&mut conn, &user_id, book.id())
+            .await?;
         assert_eq!(actual, Some(book.clone()));
 
-        book_repository.delete(&user_id, book.id()).await?;
-        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
+        book_repository
+            .delete(&mut conn, &user_id, book.id())
+            .await?;
+        let actual = book_repository
+            .find_by_id(&mut conn, &user_id, book.id())
+            .await?;
         assert_eq!(actual, None);
 
         Ok(())
@@ -741,6 +767,7 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
@@ -749,16 +776,18 @@ mod tests {
         // This exercises the book_author.user_id filter inside the
         // authors_of_book_and_user CTE in find_by_id: if that CTE ignored user_id,
         // one user's find_by_id would return the other user's author_ids.
-        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let user1_author_ids = prepare_authors1(&mut conn, &user1_id, &author_repository).await?;
         let book1 = book_entity1(&user1_author_ids)?;
-        book_repository.create(&user1_id, &book1).await?;
+        book_repository.create(&mut conn, &user1_id, &book1).await?;
 
-        let user2_author_ids = prepare_authors2(&user2_id, &author_repository).await?;
+        let user2_author_ids = prepare_authors2(&mut conn, &user2_id, &author_repository).await?;
         let book2 = book_entity1(&user2_author_ids)?;
-        book_repository.create(&user2_id, &book2).await?;
+        book_repository.create(&mut conn, &user2_id, &book2).await?;
 
         // user1's find_by_id must return only user1's authors
-        let user1_result = book_repository.find_by_id(&user1_id, book1.id()).await?;
+        let user1_result = book_repository
+            .find_by_id(&mut conn, &user1_id, book1.id())
+            .await?;
         let user1_book = user1_result.unwrap();
         assert!(
             user1_author_ids
@@ -773,7 +802,9 @@ mod tests {
         );
 
         // user2's find_by_id must return only user2's authors
-        let user2_result = book_repository.find_by_id(&user2_id, book2.id()).await?;
+        let user2_result = book_repository
+            .find_by_id(&mut conn, &user2_id, book2.id())
+            .await?;
         let user2_book = user2_result.unwrap();
         assert!(
             user2_author_ids
@@ -795,6 +826,7 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
@@ -803,16 +835,16 @@ mod tests {
         // This exercises the book_author.user_id filter inside the
         // authors_of_book_and_user CTE: if that CTE ignored user_id, one user's
         // find_all would return the other user's author_ids.
-        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let user1_author_ids = prepare_authors1(&mut conn, &user1_id, &author_repository).await?;
         let book1 = book_entity1(&user1_author_ids)?;
-        book_repository.create(&user1_id, &book1).await?;
+        book_repository.create(&mut conn, &user1_id, &book1).await?;
 
-        let user2_author_ids = prepare_authors2(&user2_id, &author_repository).await?;
+        let user2_author_ids = prepare_authors2(&mut conn, &user2_id, &author_repository).await?;
         let book2 = book_entity1(&user2_author_ids)?;
-        book_repository.create(&user2_id, &book2).await?;
+        book_repository.create(&mut conn, &user2_id, &book2).await?;
 
         // user1's find_all must contain only user1's authors
-        let user1_books = book_repository.find_all(&user1_id).await?;
+        let user1_books = book_repository.find_all(&mut conn, &user1_id).await?;
         assert_eq!(user1_books.len(), 1);
         assert!(
             user1_author_ids
@@ -827,7 +859,7 @@ mod tests {
         );
 
         // user2's find_all must contain only user2's authors
-        let user2_books = book_repository.find_all(&user2_id).await?;
+        let user2_books = book_repository.find_all(&mut conn, &user2_id).await?;
         assert_eq!(user2_books.len(), 1);
         assert!(
             user2_author_ids
@@ -849,31 +881,36 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
         // user1 owns book X with authors [A, B]
-        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let user1_author_ids = prepare_authors1(&mut conn, &user1_id, &author_repository).await?;
         let book = book_entity1(&user1_author_ids)?;
-        book_repository.create(&user1_id, &book).await?;
+        book_repository.create(&mut conn, &user1_id, &book).await?;
 
         // user2 also owns book X (same UUID; composite PK (id, user_id) allows this)
         // with their own author rows [A, B]
-        let user2_author_ids = prepare_authors1(&user2_id, &author_repository).await?;
+        let user2_author_ids = prepare_authors1(&mut conn, &user2_id, &author_repository).await?;
         let book_copy = book_entity1(&user2_author_ids)?;
-        book_repository.create(&user2_id, &book_copy).await?;
+        book_repository
+            .create(&mut conn, &user2_id, &book_copy)
+            .await?;
 
         // user2 updates their book keeping only author A (drops B).
         // The resulting DELETE FROM book_author must not touch user1's rows.
         // With the old buggy guard (no user_id check) this would delete user1's B row.
         let book_for_update = book_entity1(&user2_author_ids[..1])?;
-        let result = book_repository.update(&user2_id, &book_for_update).await;
+        let result = book_repository
+            .update(&mut conn, &user2_id, &book_for_update)
+            .await;
         assert!(result.is_ok()); // user2 owns this book, so update succeeds
 
         // user1's book must remain fully intact: title and both authors [A, B]
         let user1_book = book_repository
-            .find_by_id(&user1_id, book.id())
+            .find_by_id(&mut conn, &user1_id, book.id())
             .await?
             .unwrap();
         assert_eq!(user1_book.title().as_str(), "title1");
@@ -894,24 +931,27 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
         // Only user1 owns book X; user2 does not.
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user1_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user1_id, &book).await?;
+        book_repository.create(&mut conn, &user1_id, &book).await?;
 
         // user2 attempts to update user1's book.
         // The WHERE id = $11 AND user_id = $1 guard must return NotFound.
         // Without the AND user_id = $1 clause the UPDATE would silently mutate
         // user1's row and return Ok(()).
-        let result = book_repository.update(&user2_id, &book).await;
+        let result = book_repository.update(&mut conn, &user2_id, &book).await;
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
         // user1's book must be untouched
-        let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
+        let still_exists = book_repository
+            .find_by_id(&mut conn, &user1_id, book.id())
+            .await?;
         assert!(still_exists.is_some());
 
         Ok(())
@@ -922,20 +962,25 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user1_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user1_id, &book).await?;
+        book_repository.create(&mut conn, &user1_id, &book).await?;
 
-        let result = book_repository.delete(&user2_id, book.id()).await;
+        let result = book_repository
+            .delete(&mut conn, &user2_id, book.id())
+            .await;
         assert!(result.is_err());
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
         // user1's book row must still exist
-        let still_exists = book_repository.find_by_id(&user1_id, book.id()).await?;
+        let still_exists = book_repository
+            .find_by_id(&mut conn, &user1_id, book.id())
+            .await?;
         let existing_book = still_exists.unwrap();
 
         // user1's book_author rows must also be intact: a buggy delete that
@@ -958,6 +1003,7 @@ mod tests {
     }
 
     async fn prepare_authors1(
+        conn: &mut sqlx::PgConnection,
         user_id: &UserId,
         repository: &PgAuthorRepository,
     ) -> Result<Vec<AuthorId>, DomainError> {
@@ -966,20 +1012,21 @@ mod tests {
         let author_ids = vec![author_id1.clone(), author_id2.clone()];
         let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
         let author2 = Author::new(author_id2, AuthorName::new("author2".to_owned())?)?;
-        repository.create(user_id, &author1).await?;
-        repository.create(user_id, &author2).await?;
+        repository.create(conn, user_id, &author1).await?;
+        repository.create(conn, user_id, &author2).await?;
 
         Ok(author_ids)
     }
 
     async fn prepare_authors2(
+        conn: &mut sqlx::PgConnection,
         user_id: &UserId,
         repository: &PgAuthorRepository,
     ) -> Result<Vec<AuthorId>, DomainError> {
         let author_id1 = AuthorId::try_from("93090e87-b7a1-403c-974c-d74d881e83b9")?;
         let author_ids = vec![author_id1.clone()];
         let author1 = Author::new(author_id1, AuthorName::new("author3".to_owned())?)?;
-        repository.create(user_id, &author1).await?;
+        repository.create(conn, user_id, &author1).await?;
 
         Ok(author_ids)
     }
@@ -1049,12 +1096,13 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
 
-        book_repository.create(&user_id, &book).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
 
         let (cs_op,): (String,) = sqlx::query_as(
             "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'create_book'",
@@ -1090,11 +1138,12 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user_id, &book).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
 
         // Build an updated book with the same ID but a new title
         let updated = Book::new(
@@ -1110,7 +1159,9 @@ mod tests {
             PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
             PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
         )?;
-        book_repository.update(&user_id, &updated).await?;
+        book_repository
+            .update(&mut conn, &user_id, &updated)
+            .await?;
 
         let rows: Vec<(String, String)> = sqlx::query_as(
             "SELECT operation, title FROM book_event WHERE user_id = $1
@@ -1143,13 +1194,16 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user_id, &book).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
 
-        book_repository.delete(&user_id, book.id()).await?;
+        book_repository
+            .delete(&mut conn, &user_id, book.id())
+            .await?;
 
         let rows: Vec<(String, Option<String>)> = sqlx::query_as(
             "SELECT operation, title FROM book_event WHERE user_id = $1
@@ -1184,11 +1238,12 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user_id, &book).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
 
         let (source_event_id,): (i64,) = sqlx::query_as(
             "SELECT event_id FROM book_event WHERE user_id = $1 AND operation = 'create'",
@@ -1212,11 +1267,13 @@ mod tests {
         )?;
 
         book_repository
-            .restore(&user_id, source_event_id, Some(restored))
+            .restore(&mut conn, &user_id, source_event_id, Some(restored))
             .await?;
 
         // Book row must have the restored title
-        let found = book_repository.find_by_id(&user_id, book.id()).await?;
+        let found = book_repository
+            .find_by_id(&mut conn, &user_id, book.id())
+            .await?;
         assert_eq!(found.unwrap().title().as_str(), "restored_title");
 
         // restore event has correct operation and title
@@ -1267,27 +1324,32 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
 
         // Create then delete so the book is absent
-        book_repository.create(&user_id, &book).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
         let (source_event_id,): (i64,) = sqlx::query_as(
             "SELECT event_id FROM book_event WHERE user_id = $1 AND operation = 'create'",
         )
         .bind(user_id.as_str())
         .fetch_one(&pool)
         .await?;
-        book_repository.delete(&user_id, book.id()).await?;
+        book_repository
+            .delete(&mut conn, &user_id, book.id())
+            .await?;
 
         // restore(Some(book)) must INSERT the row since it no longer exists
         book_repository
-            .restore(&user_id, source_event_id, Some(book.clone()))
+            .restore(&mut conn, &user_id, source_event_id, Some(book.clone()))
             .await?;
 
-        let found = book_repository.find_by_id(&user_id, book.id()).await?;
+        let found = book_repository
+            .find_by_id(&mut conn, &user_id, book.id())
+            .await?;
         assert!(found.is_some());
         assert_eq!(found.unwrap().title().as_str(), "title1");
 
@@ -1299,11 +1361,12 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user_id, &book).await?;
+        book_repository.create(&mut conn, &user_id, &book).await?;
 
         let (source_event_id,): (i64,) = sqlx::query_as(
             "SELECT event_id FROM book_event WHERE user_id = $1 AND operation = 'create'",
@@ -1313,11 +1376,13 @@ mod tests {
         .await?;
 
         book_repository
-            .restore(&user_id, source_event_id, None)
+            .restore(&mut conn, &user_id, source_event_id, None)
             .await?;
 
         // Book must no longer exist
-        let found = book_repository.find_by_id(&user_id, book.id()).await?;
+        let found = book_repository
+            .find_by_id(&mut conn, &user_id, book.id())
+            .await?;
         assert!(found.is_none());
 
         // restore event has no data fields
@@ -1368,15 +1433,16 @@ mod tests {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
+        let mut conn = pool.acquire().await?;
 
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&mut conn, &user1_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
-        book_repository.create(&user1_id, &book).await?;
+        book_repository.create(&mut conn, &user1_id, &book).await?;
 
         // Attempt update as wrong user — must fail
-        let result = book_repository.update(&user2_id, &book).await;
+        let result = book_repository.update(&mut conn, &user2_id, &book).await;
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
         // Only user1's create entry should exist

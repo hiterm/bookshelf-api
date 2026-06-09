@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use sqlx::PgPool;
 
 use crate::{
     domain::{
@@ -90,13 +91,15 @@ where
 pub struct RestoreBookInteractor<BR, BER> {
     book_repository: BR,
     book_event_repository: BER,
+    pool: PgPool,
 }
 
 impl<BR, BER> RestoreBookInteractor<BR, BER> {
-    pub fn new(book_repository: BR, book_event_repository: BER) -> Self {
+    pub fn new(book_repository: BR, book_event_repository: BER, pool: PgPool) -> Self {
         Self {
             book_repository,
             book_event_repository,
+            pool,
         }
     }
 }
@@ -119,6 +122,7 @@ where
                 user_id: user_id.as_str().to_string(),
             })?;
 
+        let mut tx = self.pool.begin().await?;
         match event.operation {
             EventOperation::Create
             | EventOperation::Update
@@ -158,14 +162,16 @@ where
 
                 let dto = BookDto::from(book.clone());
                 self.book_repository
-                    .restore(&user_id, event_id, Some(book))
+                    .restore(&mut tx, &user_id, event_id, Some(book))
                     .await?;
+                tx.commit().await?;
                 Ok(Some(dto))
             }
             EventOperation::Delete => {
                 self.book_repository
-                    .restore(&user_id, event_id, None)
+                    .restore(&mut tx, &user_id, event_id, None)
                     .await?;
+                tx.commit().await?;
                 Ok(None)
             }
         }
@@ -175,13 +181,15 @@ where
 pub struct RestoreAuthorInteractor<AR, AER> {
     author_repository: AR,
     author_event_repository: AER,
+    pool: PgPool,
 }
 
 impl<AR, AER> RestoreAuthorInteractor<AR, AER> {
-    pub fn new(author_repository: AR, author_event_repository: AER) -> Self {
+    pub fn new(author_repository: AR, author_event_repository: AER, pool: PgPool) -> Self {
         Self {
             author_repository,
             author_event_repository,
+            pool,
         }
     }
 }
@@ -208,6 +216,7 @@ where
                 user_id: user_id.as_str().to_string(),
             })?;
 
+        let mut tx = self.pool.begin().await?;
         match event.operation {
             EventOperation::Create
             | EventOperation::Update
@@ -221,14 +230,16 @@ where
 
                 let dto = AuthorDto::from(author.clone());
                 self.author_repository
-                    .restore(&user_id, event_id, Some(author))
+                    .restore(&mut tx, &user_id, event_id, Some(author))
                     .await?;
+                tx.commit().await?;
                 Ok(Some(dto))
             }
             EventOperation::Delete => {
                 self.author_repository
-                    .restore(&user_id, event_id, None)
+                    .restore(&mut tx, &user_id, event_id, None)
                     .await?;
+                tx.commit().await?;
                 Ok(None)
             }
         }
@@ -325,6 +336,12 @@ mod tests {
         }
     }
 
+    fn dummy_pool() -> sqlx::PgPool {
+        let url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+        sqlx::PgPool::connect_lazy(&url).unwrap()
+    }
+
     fn make_author_delete_event(author_id: Uuid) -> AuthorEvent {
         AuthorEvent {
             event_id: 20,
@@ -405,7 +422,7 @@ mod tests {
             .returning(|_, _| Ok(None));
 
         let book_repo = MockBookRepository::new();
-        let interactor = RestoreBookInteractor::new(book_repo, repo);
+        let interactor = RestoreBookInteractor::new(book_repo, repo, dummy_pool());
         let result = interactor.restore("user1", 999).await;
 
         assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
@@ -425,10 +442,10 @@ mod tests {
         let mut book_repo = MockBookRepository::new();
         book_repo
             .expect_restore()
-            .with(always(), eq(1i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(1i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreBookInteractor::new(book_repo, history_repo);
+        let interactor = RestoreBookInteractor::new(book_repo, history_repo, dummy_pool());
         let result = interactor.restore("user1", 1).await;
 
         assert!(result.is_ok());
@@ -449,10 +466,10 @@ mod tests {
         let mut book_repo = MockBookRepository::new();
         book_repo
             .expect_restore()
-            .with(always(), eq(10i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(10i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreBookInteractor::new(book_repo, history_repo);
+        let interactor = RestoreBookInteractor::new(book_repo, history_repo, dummy_pool());
         let result = interactor.restore("user1", 10).await;
 
         assert!(result.is_ok());
@@ -474,10 +491,10 @@ mod tests {
         let mut book_repo = MockBookRepository::new();
         book_repo
             .expect_restore()
-            .with(always(), eq(1i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(1i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreBookInteractor::new(book_repo, history_repo);
+        let interactor = RestoreBookInteractor::new(book_repo, history_repo, dummy_pool());
         let result = interactor.restore("user1", 1).await;
 
         assert!(result.is_ok());
@@ -493,7 +510,7 @@ mod tests {
             .returning(|_, _| Ok(None));
 
         let author_repo = MockAuthorRepository::new();
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo, dummy_pool());
         let result = interactor.restore("user1", 999).await;
 
         assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
@@ -513,10 +530,10 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), eq(2i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(2i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo, dummy_pool());
         let result = interactor.restore("user1", 2).await;
 
         assert!(result.is_ok());
@@ -537,10 +554,10 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), eq(20i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(20i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo, dummy_pool());
         let result = interactor.restore("user1", 20).await;
 
         assert!(result.is_ok());
@@ -562,10 +579,10 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), eq(2i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(2i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo, dummy_pool());
         let result = interactor.restore("user1", 2).await;
 
         assert!(result.is_ok());

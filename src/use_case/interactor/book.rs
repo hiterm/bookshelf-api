@@ -1,19 +1,17 @@
 use async_trait::async_trait;
+use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
     domain::{
         entity::{
-            author::{AuthorId, AuthorName},
+            author::{Author, AuthorId, AuthorName},
             book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
             user::UserId,
         },
         error::DomainError,
-        repository::{
-            book_repository::BookRepository,
-            import_books_repository::{ImportBookInput, ImportBooksRepository},
-        },
+        repository::{author_repository::AuthorRepository, book_repository::BookRepository},
     },
     use_case::{
         dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, TimeInfo, UpdateBookDto},
@@ -28,11 +26,15 @@ const MAX_BOOK_BATCH: usize = 1000;
 
 pub struct CreateBookInteractor<BR> {
     book_repository: BR,
+    pool: PgPool,
 }
 
 impl<BR> CreateBookInteractor<BR> {
-    pub fn new(book_repository: BR) -> Self {
-        Self { book_repository }
+    pub fn new(book_repository: BR, pool: PgPool) -> Self {
+        Self {
+            book_repository,
+            pool,
+        }
     }
 }
 
@@ -51,7 +53,11 @@ where
         let time_info = TimeInfo::new(OffsetDateTime::now_utc(), OffsetDateTime::now_utc());
         let book = Book::try_from((uuid, book_data, time_info))?;
 
-        self.book_repository.create(&user_id, &book).await?;
+        let mut tx = self.pool.begin().await?;
+        self.book_repository
+            .create(&mut tx, &user_id, &book)
+            .await?;
+        tx.commit().await?;
 
         Ok(book.into())
     }
@@ -59,11 +65,15 @@ where
 
 pub struct UpdateBookInteractor<BR> {
     book_repository: BR,
+    pool: PgPool,
 }
 
 impl<BR> UpdateBookInteractor<BR> {
-    pub fn new(book_repository: BR) -> Self {
-        Self { book_repository }
+    pub fn new(book_repository: BR, pool: PgPool) -> Self {
+        Self {
+            book_repository,
+            pool,
+        }
     }
 }
 
@@ -79,7 +89,12 @@ where
     ) -> Result<BookDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let book_id = BookId::try_from(book_data.id.as_str())?;
-        let book = self.book_repository.find_by_id(&user_id, &book_id).await?;
+
+        let mut tx = self.pool.begin().await?;
+        let book = self
+            .book_repository
+            .find_by_id(&mut tx, &user_id, &book_id)
+            .await?;
         let mut book = match book {
             Some(book) => book,
             None => {
@@ -115,7 +130,10 @@ where
         book.set_store(store);
         book.set_updated_at(OffsetDateTime::now_utc());
 
-        self.book_repository.update(&user_id, &book).await?;
+        self.book_repository
+            .update(&mut tx, &user_id, &book)
+            .await?;
+        tx.commit().await?;
 
         Ok(book.into())
     }
@@ -123,11 +141,15 @@ where
 
 pub struct DeleteBookInteractor<BR> {
     book_repository: BR,
+    pool: PgPool,
 }
 
 impl<BR> DeleteBookInteractor<BR> {
-    pub fn new(book_repository: BR) -> Self {
-        Self { book_repository }
+    pub fn new(book_repository: BR, pool: PgPool) -> Self {
+        Self {
+            book_repository,
+            pool,
+        }
     }
 }
 
@@ -140,28 +162,37 @@ where
         let user_id = UserId::new(user_id.to_string())?;
         let book_id = BookId::try_from(book_id)?;
 
-        self.book_repository.delete(&user_id, &book_id).await?;
+        let mut tx = self.pool.begin().await?;
+        self.book_repository
+            .delete(&mut tx, &user_id, &book_id)
+            .await?;
+        tx.commit().await?;
 
         Ok(())
     }
 }
 
-pub struct ImportBooksInteractor<IBR> {
-    import_books_repository: IBR,
+pub struct ImportBooksInteractor<BR, AR> {
+    book_repository: BR,
+    author_repository: AR,
+    pool: PgPool,
 }
 
-impl<IBR> ImportBooksInteractor<IBR> {
-    pub fn new(import_books_repository: IBR) -> Self {
+impl<BR, AR> ImportBooksInteractor<BR, AR> {
+    pub fn new(book_repository: BR, author_repository: AR, pool: PgPool) -> Self {
         Self {
-            import_books_repository,
+            book_repository,
+            author_repository,
+            pool,
         }
     }
 }
 
 #[async_trait]
-impl<IBR> ImportBooksUseCase for ImportBooksInteractor<IBR>
+impl<BR, AR> ImportBooksUseCase for ImportBooksInteractor<BR, AR>
 where
-    IBR: ImportBooksRepository,
+    BR: BookRepository,
+    AR: AuthorRepository,
 {
     async fn import(
         &self,
@@ -183,39 +214,43 @@ where
         let user_id = UserId::new(user_id.to_string())?;
         let now = OffsetDateTime::now_utc();
 
-        let inputs: Result<Vec<ImportBookInput>, UseCaseError> = books
-            .into_iter()
-            .map(|dto| {
-                let title = BookTitle::new(dto.title)?;
-                let author_names: Result<Vec<AuthorName>, DomainError> =
-                    dto.author_names.into_iter().map(AuthorName::new).collect();
-                let author_names = author_names?;
-                let isbn = Isbn::new(dto.isbn)?;
-                let priority = Priority::new(dto.priority)?;
+        let mut tx = self.pool.begin().await?;
+        let mut result_books = Vec::with_capacity(books.len());
 
-                Ok(ImportBookInput {
-                    book_id: BookId::new(Uuid::new_v4())?,
-                    title,
-                    author_names,
-                    isbn,
-                    read: ReadFlag::new(dto.read),
-                    owned: OwnedFlag::new(dto.owned),
-                    priority,
-                    format: dto.format,
-                    store: dto.store,
-                    created_at: now,
-                    updated_at: now,
-                })
-            })
-            .collect();
-        let inputs = inputs?;
+        for dto in books {
+            let title = BookTitle::new(dto.title)?;
+            let isbn = Isbn::new(dto.isbn)?;
+            let priority = Priority::new(dto.priority)?;
+            let read = ReadFlag::new(dto.read);
+            let owned = OwnedFlag::new(dto.owned);
+            let book_id = BookId::new(Uuid::new_v4())?;
 
-        let books = self
-            .import_books_repository
-            .import(&user_id, inputs)
-            .await?;
+            let mut author_ids = Vec::with_capacity(dto.author_names.len());
+            for name in dto.author_names {
+                let author_name = AuthorName::new(name)?;
+                let author_id = AuthorId::new(Uuid::new_v4());
+                let author = Author::new(author_id.clone(), author_name)?;
+                self.author_repository
+                    .create(&mut tx, &user_id, &author)
+                    .await?;
+                author_ids.push(author_id);
+            }
 
-        Ok(books.into_iter().map(BookDto::from).collect())
+            let book = Book::new(
+                book_id, title, author_ids, isbn, read, owned, priority, dto.format, dto.store,
+                now, now,
+            )?;
+
+            self.book_repository
+                .create(&mut tx, &user_id, &book)
+                .await?;
+
+            result_books.push(book);
+        }
+
+        tx.commit().await?;
+
+        Ok(result_books.into_iter().map(BookDto::from).collect())
     }
 }
 
@@ -231,8 +266,7 @@ mod tests {
             entity::book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
             error::DomainError,
             repository::{
-                book_repository::MockBookRepository,
-                import_books_repository::MockImportBooksRepository,
+                author_repository::MockAuthorRepository, book_repository::MockBookRepository,
             },
         },
         use_case::{
@@ -247,6 +281,12 @@ mod tests {
             },
         },
     };
+
+    fn dummy_pool() -> sqlx::PgPool {
+        let url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+        sqlx::PgPool::connect_lazy(&url).unwrap()
+    }
 
     fn make_book(uuid: Uuid) -> Book {
         Book::new(
@@ -271,10 +311,10 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_create()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = CreateBookInteractor::new(book_repository);
+        let interactor = CreateBookInteractor::new(book_repository, dummy_pool());
         let book_data = CreateBookDto::new(
             "New Book".to_string(),
             vec![],
@@ -300,7 +340,7 @@ mod tests {
     async fn create_book_fails_with_empty_title() {
         // Given
         let book_repository = MockBookRepository::new();
-        let interactor = CreateBookInteractor::new(book_repository);
+        let interactor = CreateBookInteractor::new(book_repository, dummy_pool());
         let book_data = CreateBookDto::new(
             "".to_string(),
             vec![],
@@ -329,14 +369,14 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_find_by_id()
-            .with(always(), always())
-            .returning(move |_, _| Ok(Some(book.clone())));
+            .with(always(), always(), always())
+            .returning(move |_, _, _| Ok(Some(book.clone())));
         book_repository
             .expect_update()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = UpdateBookInteractor::new(book_repository);
+        let interactor = UpdateBookInteractor::new(book_repository, dummy_pool());
         let book_data = UpdateBookDto::new(
             book_id_str,
             "Updated Book".to_string(),
@@ -368,10 +408,10 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_find_by_id()
-            .with(always(), always())
-            .returning(|_, _| Ok(None));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(None));
 
-        let interactor = UpdateBookInteractor::new(book_repository);
+        let interactor = UpdateBookInteractor::new(book_repository, dummy_pool());
         let book_data = UpdateBookDto::new(
             book_id_str,
             "Updated Book".to_string(),
@@ -400,10 +440,10 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = DeleteBookInteractor::new(book_repository);
+        let interactor = DeleteBookInteractor::new(book_repository, dummy_pool());
 
         // When
         let result = interactor.delete("user1", &book_id_str).await;
@@ -416,7 +456,7 @@ mod tests {
     async fn delete_book_fails_with_invalid_book_id() {
         // Given
         let book_repository = MockBookRepository::new();
-        let interactor = DeleteBookInteractor::new(book_repository);
+        let interactor = DeleteBookInteractor::new(book_repository, dummy_pool());
 
         // When
         let result = interactor.delete("user1", "not-a-valid-uuid").await;
@@ -428,8 +468,9 @@ mod tests {
     #[tokio::test]
     async fn import_books_empty_list_returns_validation_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
-        let interactor = ImportBooksInteractor::new(mock);
+        let book_repo = MockBookRepository::new();
+        let author_repo = MockAuthorRepository::new();
+        let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
 
         // When
         let result = interactor.import("user1", vec![]).await;
@@ -445,13 +486,15 @@ mod tests {
     #[tokio::test]
     async fn import_books_at_max_batch_succeeds() {
         // Given
-        let book = make_book(Uuid::new_v4());
-        let mut mock = MockImportBooksRepository::new();
-        mock.expect_import()
-            .with(always(), always())
-            .returning(move |_, _| Ok(vec![book.clone()]));
+        let mut book_repo = MockBookRepository::new();
+        book_repo
+            .expect_create()
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = ImportBooksInteractor::new(mock);
+        let author_repo = MockAuthorRepository::new();
+
+        let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
         let books = vec![
             ImportBookEntryDto {
                 title: "Book".to_string(),
@@ -476,8 +519,9 @@ mod tests {
     #[tokio::test]
     async fn import_books_exceeds_max_batch_returns_validation_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
-        let interactor = ImportBooksInteractor::new(mock);
+        let book_repo = MockBookRepository::new();
+        let author_repo = MockAuthorRepository::new();
+        let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
         let books = vec![
             ImportBookEntryDto {
                 title: "Book".to_string(),
@@ -506,15 +550,19 @@ mod tests {
     #[tokio::test]
     async fn import_books_with_author_names() {
         // Given
-        let book1 = make_book(Uuid::new_v4());
-        let book2 = make_book(Uuid::new_v4());
+        let mut book_repo = MockBookRepository::new();
+        book_repo
+            .expect_create()
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let mut mock = MockImportBooksRepository::new();
-        mock.expect_import()
-            .with(always(), always())
-            .returning(move |_, _| Ok(vec![book1.clone(), book2.clone()]));
+        let mut author_repo = MockAuthorRepository::new();
+        author_repo
+            .expect_create()
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = ImportBooksInteractor::new(mock);
+        let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
         let books = vec![
             ImportBookEntryDto {
                 title: "Book One".to_string(),
@@ -550,12 +598,15 @@ mod tests {
     #[tokio::test]
     async fn import_books_propagates_repository_error() {
         // Given
-        let mut mock = MockImportBooksRepository::new();
-        mock.expect_import()
-            .with(always(), always())
-            .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
+        let mut book_repo = MockBookRepository::new();
+        book_repo
+            .expect_create()
+            .with(always(), always(), always())
+            .returning(|_, _, _| Err(DomainError::Unexpected(String::from("db error"))));
 
-        let interactor = ImportBooksInteractor::new(mock);
+        let author_repo = MockAuthorRepository::new();
+
+        let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
         let books = vec![ImportBookEntryDto {
             title: "Book".to_string(),
             author_names: vec![],
@@ -577,8 +628,9 @@ mod tests {
     #[tokio::test]
     async fn import_books_invalid_title_returns_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
-        let interactor = ImportBooksInteractor::new(mock);
+        let book_repo = MockBookRepository::new();
+        let author_repo = MockAuthorRepository::new();
+        let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
         let books = vec![ImportBookEntryDto {
             title: "".to_string(),
             author_names: vec![],
@@ -600,8 +652,9 @@ mod tests {
     #[tokio::test]
     async fn import_books_invalid_isbn_returns_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
-        let interactor = ImportBooksInteractor::new(mock);
+        let book_repo = MockBookRepository::new();
+        let author_repo = MockAuthorRepository::new();
+        let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
         let books = vec![ImportBookEntryDto {
             title: "Valid Title".to_string(),
             author_names: vec![],
@@ -623,8 +676,9 @@ mod tests {
     #[tokio::test]
     async fn import_books_invalid_author_name_returns_error() {
         // Given
-        let mock = MockImportBooksRepository::new();
-        let interactor = ImportBooksInteractor::new(mock);
+        let book_repo = MockBookRepository::new();
+        let author_repo = MockAuthorRepository::new();
+        let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
         let books = vec![ImportBookEntryDto {
             title: "Valid Title".to_string(),
             author_names: vec!["".to_string()],

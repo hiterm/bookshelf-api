@@ -20,6 +20,12 @@ pub enum UseCaseError {
     Unexpected(String),
 }
 
+impl From<sqlx::Error> for UseCaseError {
+    fn from(err: sqlx::Error) -> Self {
+        UseCaseError::Other(anyhow::Error::new(err))
+    }
+}
+
 impl From<DomainError> for UseCaseError {
     fn from(err: DomainError) -> Self {
         match err {

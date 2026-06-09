@@ -236,8 +236,10 @@ mod tests {
 
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
+        let mut conn = pool.acquire().await?;
         author_repo
             .create(
+                &mut conn,
                 &user_id,
                 &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
             )
@@ -246,16 +248,16 @@ mod tests {
         let book = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
             "original",
-            &[author_id.clone()],
+            std::slice::from_ref(&author_id),
         )?;
-        book_repo.create(&user_id, &book).await?;
+        book_repo.create(&mut conn, &user_id, &book).await?;
 
         let updated = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
             "updated",
             &[author_id],
         )?;
-        book_repo.update(&user_id, &updated).await?;
+        book_repo.update(&mut conn, &user_id, &updated).await?;
 
         let entries = event_repo.find_by_book(&user_id, book.id()).await?;
         assert_eq!(entries.len(), 2);
@@ -278,14 +280,17 @@ mod tests {
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
         let author_id2 = AuthorId::try_from("925aaf96-64c7-44be-85f8-767a20b2c20c")?;
+        let mut conn = pool.acquire().await?;
         author_repo
             .create(
+                &mut conn,
                 &user_id,
                 &Author::new(author_id1.clone(), AuthorName::new("a1".to_owned())?)?,
             )
             .await?;
         author_repo
             .create(
+                &mut conn,
                 &user_id,
                 &Author::new(author_id2.clone(), AuthorName::new("a2".to_owned())?)?,
             )
@@ -296,7 +301,7 @@ mod tests {
             "title1",
             &[author_id1.clone(), author_id2.clone()],
         )?;
-        book_repo.create(&user_id, &book).await?;
+        book_repo.create(&mut conn, &user_id, &book).await?;
 
         let entries = event_repo.find_by_book(&user_id, book.id()).await?;
         assert_eq!(entries.len(), 1);
@@ -330,8 +335,10 @@ mod tests {
 
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
+        let mut conn = pool.acquire().await?;
         author_repo
             .create(
+                &mut conn,
                 &user_id,
                 &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
             )
@@ -342,7 +349,7 @@ mod tests {
             "title1",
             &[author_id],
         )?;
-        book_repo.create(&user_id, &book).await?;
+        book_repo.create(&mut conn, &user_id, &book).await?;
 
         let (event_id,): (i64,) =
             sqlx::query_as("SELECT event_id FROM book_event WHERE user_id = $1")
@@ -370,8 +377,10 @@ mod tests {
         let user1_id = prepare_user(&user_repo, "user1").await?;
         let user2_id = prepare_user(&user_repo, "user2").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
+        let mut conn = pool.acquire().await?;
         author_repo
             .create(
+                &mut conn,
                 &user1_id,
                 &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
             )
@@ -382,7 +391,7 @@ mod tests {
             "title1",
             &[author_id],
         )?;
-        book_repo.create(&user1_id, &book).await?;
+        book_repo.create(&mut conn, &user1_id, &book).await?;
 
         let (event_id,): (i64,) =
             sqlx::query_as("SELECT event_id FROM book_event WHERE user_id = $1")

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
@@ -18,11 +19,15 @@ use crate::{
 
 pub struct CreateAuthorInteractor<AR> {
     author_repository: AR,
+    pool: PgPool,
 }
 
 impl<AR> CreateAuthorInteractor<AR> {
-    pub fn new(author_repository: AR) -> Self {
-        Self { author_repository }
+    pub fn new(author_repository: AR, pool: PgPool) -> Self {
+        Self {
+            author_repository,
+            pool,
+        }
     }
 }
 
@@ -41,7 +46,12 @@ where
         let author_id = AuthorId::new(uuid);
         let author_name = AuthorName::new(author_data.name)?;
         let author = Author::new(author_id, author_name)?;
-        self.author_repository.create(&user_id, &author).await?;
+
+        let mut tx = self.pool.begin().await?;
+        self.author_repository
+            .create(&mut tx, &user_id, &author)
+            .await?;
+        tx.commit().await?;
 
         Ok(author.into())
     }
@@ -49,11 +59,15 @@ where
 
 pub struct UpdateAuthorInteractor<AR> {
     author_repository: AR,
+    pool: PgPool,
 }
 
 impl<AR> UpdateAuthorInteractor<AR> {
-    pub fn new(author_repository: AR) -> Self {
-        Self { author_repository }
+    pub fn new(author_repository: AR, pool: PgPool) -> Self {
+        Self {
+            author_repository,
+            pool,
+        }
     }
 }
 
@@ -71,18 +85,28 @@ where
         let author_id = AuthorId::try_from(author_data.id.as_str())?;
         let author_name = AuthorName::new(author_data.name)?;
         let author = Author::new(author_id, author_name)?;
-        self.author_repository.update(&user_id, &author).await?;
+
+        let mut tx = self.pool.begin().await?;
+        self.author_repository
+            .update(&mut tx, &user_id, &author)
+            .await?;
+        tx.commit().await?;
+
         Ok(author.into())
     }
 }
 
 pub struct DeleteAuthorInteractor<AR> {
     author_repository: AR,
+    pool: PgPool,
 }
 
 impl<AR> DeleteAuthorInteractor<AR> {
-    pub fn new(author_repository: AR) -> Self {
-        Self { author_repository }
+    pub fn new(author_repository: AR, pool: PgPool) -> Self {
+        Self {
+            author_repository,
+            pool,
+        }
     }
 }
 
@@ -94,7 +118,13 @@ where
     async fn delete(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let author_id = AuthorId::try_from(author_id)?;
-        self.author_repository.delete(&user_id, &author_id).await?;
+
+        let mut tx = self.pool.begin().await?;
+        self.author_repository
+            .delete(&mut tx, &user_id, &author_id)
+            .await?;
+        tx.commit().await?;
+
         Ok(())
     }
 }
@@ -115,16 +145,22 @@ mod tests {
         },
     };
 
+    fn dummy_pool() -> sqlx::PgPool {
+        let url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+        sqlx::PgPool::connect_lazy(&url).unwrap()
+    }
+
     #[tokio::test]
     async fn create_author_success() {
         // Given
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_create()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = CreateAuthorInteractor::new(author_repository);
+        let interactor = CreateAuthorInteractor::new(author_repository, dummy_pool());
         let author_data = CreateAuthorDto::new("Test Author".to_string());
 
         // When
@@ -140,7 +176,7 @@ mod tests {
     async fn create_author_fails_with_empty_name() {
         // Given
         let author_repository = MockAuthorRepository::new();
-        let interactor = CreateAuthorInteractor::new(author_repository);
+        let interactor = CreateAuthorInteractor::new(author_repository, dummy_pool());
         let author_data = CreateAuthorDto::new("".to_string());
 
         // When
@@ -154,7 +190,7 @@ mod tests {
     async fn create_author_fails_with_invalid_user_id() {
         // Given
         let author_repository = MockAuthorRepository::new();
-        let interactor = CreateAuthorInteractor::new(author_repository);
+        let interactor = CreateAuthorInteractor::new(author_repository, dummy_pool());
         let author_data = CreateAuthorDto::new("Test Author".to_string());
 
         // When
@@ -172,10 +208,10 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_update()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor = UpdateAuthorInteractor::new(author_repository, dummy_pool());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
 
         // When
@@ -194,8 +230,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_update()
-            .with(always(), always())
-            .returning(|_, _| {
+            .with(always(), always(), always())
+            .returning(|_, _, _| {
                 Err(DomainError::NotFound {
                     entity_type: "author",
                     entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
@@ -203,7 +239,7 @@ mod tests {
                 })
             });
 
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor = UpdateAuthorInteractor::new(author_repository, dummy_pool());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
 
         // When
@@ -217,7 +253,7 @@ mod tests {
     async fn update_author_fails_with_invalid_author_id() {
         // Given
         let author_repository = MockAuthorRepository::new();
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor = UpdateAuthorInteractor::new(author_repository, dummy_pool());
         let author_data = UpdateAuthorDto::new("not-a-uuid".to_string(), "New Name".to_string());
 
         // When
@@ -232,7 +268,7 @@ mod tests {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
         let author_repository = MockAuthorRepository::new();
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor = UpdateAuthorInteractor::new(author_repository, dummy_pool());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "".to_string());
 
         // When
@@ -247,7 +283,7 @@ mod tests {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
         let author_repository = MockAuthorRepository::new();
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor = UpdateAuthorInteractor::new(author_repository, dummy_pool());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
 
         // When
@@ -265,10 +301,10 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor = DeleteAuthorInteractor::new(author_repository, dummy_pool());
 
         // When
         let result = interactor.delete("user1", author_id_str).await;
@@ -285,8 +321,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| {
+            .with(always(), always(), always())
+            .returning(|_, _, _| {
                 Err(DomainError::NotFound {
                     entity_type: "author",
                     entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
@@ -294,7 +330,7 @@ mod tests {
                 })
             });
 
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor = DeleteAuthorInteractor::new(author_repository, dummy_pool());
 
         // When
         let result = interactor.delete("user1", author_id_str).await;
@@ -311,15 +347,15 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| {
+            .with(always(), always(), always())
+            .returning(|_, _, _| {
                 Err(DomainError::HasAssociatedBooks {
                     author_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                     user_id: "user1".to_string(),
                 })
             });
 
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor = DeleteAuthorInteractor::new(author_repository, dummy_pool());
 
         // When
         let result = interactor.delete("user1", author_id_str).await;
@@ -332,7 +368,7 @@ mod tests {
     async fn delete_author_fails_with_invalid_author_id() {
         // Given
         let author_repository = MockAuthorRepository::new();
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor = DeleteAuthorInteractor::new(author_repository, dummy_pool());
 
         // When
         let result = interactor.delete("user1", "not-a-uuid").await;
@@ -346,7 +382,7 @@ mod tests {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
         let author_repository = MockAuthorRepository::new();
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor = DeleteAuthorInteractor::new(author_repository, dummy_pool());
 
         // When
         let result = interactor.delete("", author_id_str).await;
