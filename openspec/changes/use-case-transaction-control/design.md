@@ -71,3 +71,31 @@ We will migrate to a use-case-controlled transaction model in three phases. **Th
 1. *Resolved for Phase 1*: Only `BookRepository` and `AuthorRepository` will be changed. `UserRepository` and event repositories are deferred to Phase 2.
 
 2. *Resolved for Phase 1*: `QueryInteractor` will **not** receive `PgPool` in this change. Reads will continue using `&self` repository calls. This decision will be revisited in Phase 3.
+
+## Retrospective
+
+### What Worked
+- Expand & Contract pattern successfully kept the codebase compilable throughout the refactor.
+- All 167 tests passed after the final contract phase.
+- Moving transaction control to use-case interactors simplified repository logic and aligned with `AGENTS.md` Event Recording rules.
+
+### What Did Not Work (Commit Granularity)
+Despite using Expand & Contract, all changes were committed as a single monolithic commit instead of incremental commits. This defeated the primary benefit of the pattern: the ability to commit safely after each phase.
+
+**Why it happened:**
+- Implementation focused on completing all tasks first, then committing at the end.
+- No explicit decision points were made to pause and commit after each interactor migration.
+- Tests were updated en masse rather than per-interactor.
+
+**What should have been done:**
+- **Commit after Expand Phase 1**: Add `*_conn` methods to traits and `Pg*` implementations.
+- **Commit after each interactor migration**: `CreateBook`, `UpdateBook`, `DeleteBook`, `CreateAuthor`, `UpdateAuthor`, `DeleteAuthor`, `RestoreBook`, `RestoreAuthor`, `QueryInteractor`, `ImportBooksInteractor`.
+- **Commit after Contract phase**: Remove old methods and rename `*_conn` → original names.
+
+Each interactor migration was independently compilable and testable because old methods remained as delegating wrappers. This allowed per-interactor commits.
+
+### Lessons for Next Time
+- When using Expand & Contract, set explicit commit checkpoints before starting implementation.
+- After each interactor migration, run `cargo test` and commit immediately.
+- Do not batch test updates across multiple interactors; update tests alongside each interactor change.
+- Treat each interactor as a standalone unit of work that can be committed independently.
