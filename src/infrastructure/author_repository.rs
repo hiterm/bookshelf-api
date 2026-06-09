@@ -689,7 +689,10 @@ mod tests {
             .create(&mut conn, &user_id, &author)
             .await?;
 
-        let book = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", std::slice::from_ref(&author_id))?;
+        let book = make_book(
+            "675bc8d9-3155-42fb-87b0-0a82cb162848",
+            std::slice::from_ref(&author_id),
+        )?;
         book_repository.create(&mut conn, &user_id, &book).await?;
 
         let result = author_repository
@@ -777,9 +780,15 @@ mod tests {
             .create(&mut conn, &user2_id, &author2)
             .await?;
 
-        let book1 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", std::slice::from_ref(&author_id))?;
+        let book1 = make_book(
+            "675bc8d9-3155-42fb-87b0-0a82cb162848",
+            std::slice::from_ref(&author_id),
+        )?;
         book_repository.create(&mut conn, &user1_id, &book1).await?;
-        let book2 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", std::slice::from_ref(&author_id))?;
+        let book2 = make_book(
+            "675bc8d9-3155-42fb-87b0-0a82cb162848",
+            std::slice::from_ref(&author_id),
+        )?;
         book_repository.create(&mut conn, &user2_id, &book2).await?;
 
         // user2 has an associated book, so delete must fail
