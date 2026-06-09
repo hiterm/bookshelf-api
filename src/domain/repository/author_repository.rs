@@ -6,11 +6,12 @@ use sqlx::PgConnection;
 
 use crate::domain::{
     entity::{
-        author::{Author, AuthorId},
+        author::{Author, AuthorId, AuthorName},
         user::UserId,
     },
     error::DomainError,
 };
+use uuid::Uuid;
 
 #[automock]
 #[async_trait]
@@ -21,6 +22,19 @@ pub trait AuthorRepository: Send + Sync + 'static {
         user_id: &UserId,
         author: &Author,
     ) -> Result<(), DomainError>;
+    async fn create_with_event_set(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        author: &Author,
+        event_set_id: Uuid,
+    ) -> Result<(), DomainError>;
+    async fn find_by_name(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        name: &AuthorName,
+    ) -> Result<Option<Author>, DomainError>;
     async fn find_by_id(
         &self,
         conn: &mut PgConnection,

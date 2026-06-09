@@ -217,6 +217,8 @@ where
         let mut tx = self.pool.begin().await?;
         let mut result_books = Vec::with_capacity(books.len());
 
+        let es_id = Uuid::new_v4();
+
         for dto in books {
             let title = BookTitle::new(dto.title)?;
             let isbn = Isbn::new(dto.isbn)?;
@@ -228,12 +230,20 @@ where
             let mut author_ids = Vec::with_capacity(dto.author_names.len());
             for name in dto.author_names {
                 let author_name = AuthorName::new(name)?;
-                let author_id = AuthorId::new(Uuid::new_v4());
-                let author = Author::new(author_id.clone(), author_name)?;
-                self.author_repository
-                    .create(&mut tx, &user_id, &author)
-                    .await?;
-                author_ids.push(author_id);
+                if let Some(author) = self
+                    .author_repository
+                    .find_by_name(&mut tx, &user_id, &author_name)
+                    .await?
+                {
+                    author_ids.push(author.id().clone());
+                } else {
+                    let author_id = AuthorId::new(Uuid::new_v4());
+                    let author = Author::new(author_id.clone(), author_name)?;
+                    self.author_repository
+                        .create_with_event_set(&mut tx, &user_id, &author, es_id)
+                        .await?;
+                    author_ids.push(author_id);
+                }
             }
 
             let book = Book::new(
@@ -242,7 +252,7 @@ where
             )?;
 
             self.book_repository
-                .create(&mut tx, &user_id, &book)
+                .create_with_event_set(&mut tx, &user_id, &book, es_id)
                 .await?;
 
             result_books.push(book);
@@ -488,9 +498,9 @@ mod tests {
         // Given
         let mut book_repo = MockBookRepository::new();
         book_repo
-            .expect_create()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .expect_create_with_event_set()
+            .with(always(), always(), always(), always())
+            .returning(|_, _, _, _| Ok(()));
 
         let author_repo = MockAuthorRepository::new();
 
@@ -552,15 +562,19 @@ mod tests {
         // Given
         let mut book_repo = MockBookRepository::new();
         book_repo
-            .expect_create()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .expect_create_with_event_set()
+            .with(always(), always(), always(), always())
+            .returning(|_, _, _, _| Ok(()));
 
         let mut author_repo = MockAuthorRepository::new();
         author_repo
-            .expect_create()
+            .expect_find_by_name()
             .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _| Ok(None));
+        author_repo
+            .expect_create_with_event_set()
+            .with(always(), always(), always(), always())
+            .returning(|_, _, _, _| Ok(()));
 
         let interactor = ImportBooksInteractor::new(book_repo, author_repo, dummy_pool());
         let books = vec![
@@ -600,9 +614,9 @@ mod tests {
         // Given
         let mut book_repo = MockBookRepository::new();
         book_repo
-            .expect_create()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Err(DomainError::Unexpected(String::from("db error"))));
+            .expect_create_with_event_set()
+            .with(always(), always(), always(), always())
+            .returning(|_, _, _, _| Err(DomainError::Unexpected(String::from("db error"))));
 
         let author_repo = MockAuthorRepository::new();
 

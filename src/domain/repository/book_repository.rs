@@ -9,6 +9,7 @@ use crate::domain::{
     },
     error::DomainError,
 };
+use uuid::Uuid;
 
 #[automock]
 #[async_trait]
@@ -18,6 +19,13 @@ pub trait BookRepository: Send + Sync + 'static {
         conn: &mut PgConnection,
         user_id: &UserId,
         book: &Book,
+    ) -> Result<(), DomainError>;
+    async fn create_with_event_set(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        book: &Book,
+        event_set_id: Uuid,
     ) -> Result<(), DomainError>;
     async fn find_by_id(
         &self,

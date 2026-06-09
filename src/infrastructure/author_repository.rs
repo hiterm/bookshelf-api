@@ -52,6 +52,17 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author: &Author,
     ) -> Result<(), DomainError> {
+        self.create_with_event_set(conn, user_id, author, Uuid::new_v4())
+            .await
+    }
+
+    async fn create_with_event_set(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        author: &Author,
+        event_set_id: Uuid,
+    ) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
             .bind(author.id().to_uuid())
             .bind(user_id.as_str())
@@ -59,11 +70,11 @@ impl AuthorRepository for PgAuthorRepository {
             .execute(&mut *conn)
             .await?;
 
-        let es_id = Uuid::new_v4();
         sqlx::query(
-            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_author')",
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_author')
+             ON CONFLICT DO NOTHING",
         )
-        .bind(es_id)
+        .bind(event_set_id)
         .bind(user_id.as_str())
         .execute(&mut *conn)
         .await?;
@@ -83,7 +94,7 @@ impl AuthorRepository for PgAuthorRepository {
                 author_created_at, author_updated_at)
              VALUES ($1, 'create', $2, $3, $4, $5, $6, $7)",
         )
-        .bind(es_id)
+        .bind(event_set_id)
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
         .bind(&snap.name)
@@ -94,6 +105,27 @@ impl AuthorRepository for PgAuthorRepository {
         .await?;
 
         Ok(())
+    }
+
+    async fn find_by_name(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        name: &AuthorName,
+    ) -> Result<Option<Author>, DomainError> {
+        let row: Option<AuthorRow> =
+            sqlx::query_as("SELECT * FROM author WHERE user_id = $1 AND name = $2")
+                .bind(user_id.as_str())
+                .bind(name.as_str())
+                .fetch_optional(&mut *conn)
+                .await?;
+
+        row.map(|row| -> Result<Author, DomainError> {
+            let author_id: AuthorId = row.id.into();
+            let author_name = AuthorName::new(row.name)?;
+            Author::new(author_id, author_name)
+        })
+        .transpose()
     }
 
     async fn find_by_id(

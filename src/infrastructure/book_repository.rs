@@ -55,6 +55,17 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book: &Book,
     ) -> Result<(), DomainError> {
+        self.create_with_event_set(conn, user_id, book, Uuid::new_v4())
+            .await
+    }
+
+    async fn create_with_event_set(
+        &self,
+        conn: &mut PgConnection,
+        user_id: &UserId,
+        book: &Book,
+        event_set_id: Uuid,
+    ) -> Result<(), DomainError> {
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -102,11 +113,11 @@ impl BookRepository for PgBookRepository {
         .execute(&mut *conn)
         .await?;
 
-        let es_id = Uuid::new_v4();
         sqlx::query(
-            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_book')",
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_book')
+             ON CONFLICT DO NOTHING",
         )
-        .bind(es_id)
+        .bind(event_set_id)
         .bind(user_id.as_str())
         .execute(&mut *conn)
         .await?;
@@ -118,7 +129,7 @@ impl BookRepository for PgBookRepository {
              VALUES ($1, 'create', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING event_id",
         )
-        .bind(es_id)
+        .bind(event_set_id)
         .bind(book.id().to_uuid())
         .bind(user_id.as_str())
         .bind(book.title().as_str())
