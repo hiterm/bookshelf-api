@@ -11,10 +11,10 @@
 
 ## 2. Fix import_books event_set operation (TDD)
 
-- [ ] 2.1 Convert existing `ImportBooksInteractor` unit tests to `#[sqlx::test]` integration tests (test-first)
-- [ ] 2.2 Run `cargo test --features test-with-database` to confirm tests fail (event_set table missing or no import_books INSERT)
-- [ ] 2.3 Add `event_set` INSERT with `import_books` operation in `ImportBooksInteractor::import`
-- [ ] 2.4 Run `cargo test --features test-with-database` to verify all tests pass
+- [x] 2.1 Convert existing `ImportBooksInteractor` unit tests to `#[sqlx::test]` integration tests (test-first)
+- [x] 2.2 Run `cargo test --features test-with-database` to confirm tests fail (event_set table missing or no import_books INSERT)
+- [x] 2.3 Add `event_set` INSERT with `import_books` operation in `ImportBooksInteractor::import`
+- [x] 2.4 Run `cargo test --features test-with-database` to verify all tests pass
 
 ## 3. Update E2E tests
 

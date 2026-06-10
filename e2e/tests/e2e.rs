@@ -282,6 +282,25 @@ async fn delete_test_book(book_id: &str, token: &str) -> Result<()> {
     Ok(())
 }
 
+async fn assert_event_set_operation(event_set_id: &str, token: &str, expected: &str) -> Result<()> {
+    let query = format!(r#"{{ eventSet(id: "{}") {{ operation }} }}"#, event_set_id);
+    let (_, response) = graphql_request(&query, Some(token)).await?;
+    let data = response.get("data").context("data field must exist")?;
+    let event_set = data.get("eventSet").context("eventSet field must exist")?;
+    assert!(
+        !event_set.is_null(),
+        "eventSet should not be null for id {}",
+        event_set_id
+    );
+    assert_eq!(
+        event_set["operation"].as_str(),
+        Some(expected),
+        "event_set.operation should be {}",
+        expected
+    );
+    Ok(())
+}
+
 async fn ensure_user_registered(token: &str) -> Result<()> {
     let query = r#"mutation { registerUser { id } }"#;
     let (status, response) = graphql_request(query, Some(token)).await?;
@@ -1073,6 +1092,11 @@ async fn e2e_book_events_records_create_operation() -> Result<()> {
         "create event extra should be null"
     );
 
+    let event_set_id = entry["eventSetId"]
+        .as_str()
+        .context("eventSetId should be string")?;
+    assert_event_set_operation(event_set_id, &token, "create_book").await?;
+
     // Cleanup
     delete_test_book(&book_id, &token).await?;
     delete_test_author(&author_id, &token).await?;
@@ -1170,6 +1194,16 @@ async fn e2e_book_events_records_update_operation() -> Result<()> {
     let create_entry = &entries[1];
     assert_eq!(create_entry["operation"].as_str(), Some("create"));
     assert_eq!(create_entry["title"].as_str(), Some("Original Title"));
+
+    let update_event_set_id = update_entry["eventSetId"]
+        .as_str()
+        .context("update eventSetId should be string")?;
+    assert_event_set_operation(update_event_set_id, &token, "update_book").await?;
+
+    let create_event_set_id = create_entry["eventSetId"]
+        .as_str()
+        .context("create eventSetId should be string")?;
+    assert_event_set_operation(create_event_set_id, &token, "create_book").await?;
 
     // Cleanup
     delete_test_book(&book_id, &token).await?;
@@ -1382,6 +1416,11 @@ async fn e2e_author_events_records_create_operation() -> Result<()> {
         "create event extra should be null"
     );
 
+    let event_set_id = entry["eventSetId"]
+        .as_str()
+        .context("eventSetId should be string")?;
+    assert_event_set_operation(event_set_id, &token, "create_author").await?;
+
     delete_test_author(&author_id, &token).await?;
     Ok(())
 }
@@ -1447,6 +1486,16 @@ async fn e2e_author_events_records_update_operation() -> Result<()> {
     let create_entry = &entries[1];
     assert_eq!(create_entry["operation"].as_str(), Some("create"));
     assert_eq!(create_entry["name"].as_str(), Some(original_name.as_str()));
+
+    let update_event_set_id = update_entry["eventSetId"]
+        .as_str()
+        .context("update eventSetId should be string")?;
+    assert_event_set_operation(update_event_set_id, &token, "update_author").await?;
+
+    let create_event_set_id = create_entry["eventSetId"]
+        .as_str()
+        .context("create eventSetId should be string")?;
+    assert_event_set_operation(create_event_set_id, &token, "create_author").await?;
 
     delete_test_author(&author_id, &token).await?;
     Ok(())
@@ -1845,6 +1894,9 @@ async fn e2e_import_books() -> Result<()> {
         event_set_id_one, event_set_id_two,
         "both books should share the same eventSetId"
     );
+
+    // Verify event_set.operation is import_books
+    assert_event_set_operation(event_set_id_one, &token, "import_books").await?;
 
     // Verify Book Two has "New Author"
     let book_two_query = format!(
