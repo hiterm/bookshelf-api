@@ -2,12 +2,12 @@
 
 - [ ] 1.1 Add unit tests for `QueryInteractor::find_event_set_by_id` (test-first)
 - [ ] 1.2 Run `cargo test` to confirm tests fail (missing `EventSetDto`, resolver, etc.)
-- [ ] 1.3 Add `EventSetDto` to `src/use_case/dto/event.rs`
-- [ ] 1.4 Add `find_event_set_by_id` method to `QueryUseCase` trait in `src/use_case/traits/query.rs`
-- [ ] 1.5 Implement `find_event_set_by_id` in `QueryInteractor` in `src/use_case/interactor/query.rs`
-- [ ] 1.6 Add `EventSet` GraphQL object to `src/presentation/graphql/object.rs`
-- [ ] 1.7 Add `eventSet` resolver to `src/presentation/graphql/query.rs`
-- [ ] 1.8 Run `cargo test` to verify all tests pass
+- [x] 1.3 Add `EventSetDto` to `src/use_case/dto/event.rs`
+- [x] 1.4 Add `find_event_set_by_id` method to `QueryUseCase` trait in `src/use_case/traits/query.rs`
+- [x] 1.5 Implement `find_event_set_by_id` in `QueryInteractor` in `src/use_case/interactor/query.rs`
+- [x] 1.6 Add `EventSet` GraphQL object to `src/presentation/graphql/object.rs`
+- [x] 1.7 Add `eventSet` resolver to `src/presentation/graphql/query.rs`
+- [x] 1.8 Run `cargo test` to verify all tests pass
 
 ## 2. Fix import_books event_set operation (TDD)
 

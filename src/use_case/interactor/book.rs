@@ -219,6 +219,15 @@ where
 
         let es_id = Uuid::new_v4();
 
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING"
+        )
+        .bind(es_id)
+        .bind(user_id.as_str())
+        .bind("import_books")
+        .execute(&mut *tx)
+        .await?;
+
         for dto in books {
             let title = BookTitle::new(dto.title)?;
             let isbn = Isbn::new(dto.isbn)?;
@@ -709,5 +718,73 @@ mod tests {
 
         // Then
         assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+}
+
+#[cfg(feature = "test-with-database")]
+#[cfg(test)]
+mod database_tests {
+    use sqlx::{PgPool, Row};
+
+    use crate::{
+        common::types::{BookFormat, BookStore},
+        domain::{
+            entity::user::UserId,
+            repository::user_repository::UserRepository,
+        },
+        infrastructure::{
+            author_repository::PgAuthorRepository, book_repository::PgBookRepository,
+            user_repository::PgUserRepository,
+        },
+        use_case::{
+            dto::book::ImportBookEntryDto,
+            interactor::book::ImportBooksInteractor,
+            traits::book::ImportBooksUseCase,
+        },
+    };
+
+    #[sqlx::test]
+    async fn import_books_records_event_set_with_import_books_operation(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user_id = UserId::new("test_user".to_string())?;
+        user_repository.create(&crate::domain::entity::user::User::new(user_id.clone())).await?;
+
+        let interactor = ImportBooksInteractor::new(book_repository, author_repository, pool.clone());
+        let books = vec![
+            ImportBookEntryDto {
+                title: "Book One".to_string(),
+                author_names: vec!["Author A".to_string()],
+                isbn: "".to_string(),
+                read: false,
+                owned: false,
+                priority: 50,
+                format: BookFormat::Unknown,
+                store: BookStore::Unknown,
+            },
+        ];
+
+        let result = interactor.import(user_id.as_str(), books).await?;
+        assert_eq!(result.len(), 1);
+
+        let book_id = uuid::Uuid::parse_str(&result[0].id)?;
+        let row = sqlx::query(
+            "SELECT es.operation FROM event_set es \
+             JOIN book_event be ON be.event_set_id = es.id \
+             WHERE be.book_id = $1 AND es.user_id = $2"
+        )
+        .bind(book_id)
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+
+        let operation: String = row.try_get("operation")?;
+        assert_eq!(operation, "import_books");
+
+        Ok(())
     }
 }
