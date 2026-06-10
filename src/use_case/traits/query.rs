@@ -7,7 +7,7 @@ use crate::use_case::{
     dto::{
         author::AuthorDto,
         book::BookDto,
-        event::{AuthorEventDto, BookEventDto},
+        event::{AuthorEventDto, BookEventDto, EventSetDto},
         user::UserDto,
     },
     error::UseCaseError,
@@ -44,4 +44,9 @@ pub trait QueryUseCase: Send + Sync + 'static {
         user_id: &str,
         author_id: &str,
     ) -> Result<Vec<AuthorEventDto>, UseCaseError>;
+    async fn find_event_set_by_id(
+        &self,
+        user_id: &str,
+        event_set_id: &str,
+    ) -> Result<Option<EventSetDto>, UseCaseError>;
 }

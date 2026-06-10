@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
+use time::OffsetDateTime;
 
 use crate::{
     domain::{
-        entity::{author::AuthorId, book::BookId, user::UserId},
+        entity::{author::AuthorId, book::BookId, event_set::EventSetId, user::UserId},
         error::DomainError,
         repository::{
             author_event_repository::AuthorEventRepository, author_repository::AuthorRepository,
@@ -17,7 +18,7 @@ use crate::{
         dto::{
             author::AuthorDto,
             book::BookDto,
-            event::{AuthorEventDto, BookEventDto},
+            event::{AuthorEventDto, BookEventDto, EventSetDto},
             user::UserDto,
         },
         error::UseCaseError,
@@ -150,6 +151,33 @@ where
             .find_by_author(&user_id, &author_id)
             .await?;
         Ok(entries.into_iter().map(AuthorEventDto::from).collect())
+    }
+
+    async fn find_event_set_by_id(
+        &self,
+        user_id: &str,
+        event_set_id: &str,
+    ) -> Result<Option<EventSetDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let event_set_id = EventSetId::try_from(event_set_id)
+            .map_err(|e| UseCaseError::Validation(e.to_string()))?;
+
+        let row = sqlx::query(
+            r#"SELECT id, user_id, operation, created_at FROM event_set WHERE id = $1 AND user_id = $2"#,
+        )
+        .bind(event_set_id.to_uuid())
+        .bind(user_id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let dto = row.map(|r| EventSetDto {
+            id: r.try_get("id").unwrap_or_default(),
+            user_id: r.try_get("user_id").unwrap_or_default(),
+            operation: r.try_get("operation").unwrap_or_default(),
+            created_at: r.try_get("created_at").unwrap_or_else(|_| OffsetDateTime::now_utc()),
+        });
+
+        Ok(dto)
     }
 }
 

@@ -7,7 +7,7 @@ use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBo
 use crate::dependency_injection::QI;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto};
-use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
+use crate::use_case::dto::event::{AuthorEventDto, BookEventDto, EventSetDto};
 
 use super::loader::AuthorLoader;
 
@@ -386,6 +386,25 @@ impl From<AuthorEventDto> for AuthorEventEntry {
             author_updated_at: dto.author_updated_at.map(|t| t.unix_timestamp()),
             changed_at: dto.changed_at.unix_timestamp(),
             extra: dto.extra.map(Json),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct EventSet {
+    pub id: ID,
+    pub user_id: ID,
+    pub operation: String,
+    pub created_at: i64,
+}
+
+impl From<EventSetDto> for EventSet {
+    fn from(dto: EventSetDto) -> Self {
+        Self {
+            id: ID(dto.id),
+            user_id: ID(dto.user_id),
+            operation: dto.operation,
+            created_at: dto.created_at.unix_timestamp(),
         }
     }
 }

@@ -7,6 +7,14 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+pub struct EventSetDto {
+    pub id: String,
+    pub user_id: String,
+    pub operation: String,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
 pub struct BookEventDto {
     pub event_id: i64,
     pub event_set_id: String,

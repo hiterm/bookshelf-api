@@ -7,7 +7,7 @@ use crate::{
     use_case::traits::query::QueryUseCase,
 };
 
-use super::object::{Author, AuthorEventEntry, Book, BookEventEntry, User};
+use super::object::{Author, AuthorEventEntry, Book, BookEventEntry, EventSet, User};
 
 pub struct Query<QUC> {
     query_use_case: QUC,
@@ -96,6 +96,19 @@ where
             .list_author_events(&claims.sub, author_id.as_str())
             .await?;
         Ok(entries.into_iter().map(AuthorEventEntry::from).collect())
+    }
+
+    async fn event_set(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+    ) -> Result<Option<EventSet>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let event_set = self
+            .query_use_case
+            .find_event_set_by_id(&claims.sub, id.as_str())
+            .await?;
+        Ok(event_set.map(EventSet::from))
     }
 }
 
