@@ -5,7 +5,8 @@ use crate::{
     infrastructure::{
         author_event_repository::PgAuthorEventRepository, author_repository::PgAuthorRepository,
         book_event_repository::PgBookEventRepository, book_repository::PgBookRepository,
-        transaction::PgTransactionManager, user_repository::PgUserRepository,
+        event_set_repository::PgEventSetRepository, transaction::PgTransactionManager,
+        user_repository::PgUserRepository,
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
@@ -26,6 +27,7 @@ pub type QI = QueryInteractor<
     PgAuthorRepository,
     PgBookEventRepository,
     PgAuthorEventRepository,
+    PgEventSetRepository,
 >;
 
 pub type MI = MutationInteractor<
@@ -49,6 +51,7 @@ pub fn dependency_injection(
     let author_repository = PgAuthorRepository::new(pool.clone());
     let book_event_repository = PgBookEventRepository::new(pool.clone());
     let author_event_repository = PgAuthorEventRepository::new(pool.clone());
+    let event_set_repository = PgEventSetRepository::new(pool.clone());
     let transaction_manager = PgTransactionManager::new(pool);
 
     let query_use_case = QueryInteractor {
@@ -57,6 +60,7 @@ pub fn dependency_injection(
         author_repository: author_repository.clone(),
         book_event_repository: book_event_repository.clone(),
         author_event_repository: author_event_repository.clone(),
+        event_set_repository,
     };
     let register_user_use_case = RegisterUserInteractor::new(user_repository);
     let create_book_use_case =

@@ -8,6 +8,7 @@ use crate::dependency_injection::QI;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto};
 use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
+use crate::use_case::dto::event_set::{EventSetDetailDto, EventSetDto};
 
 use super::loader::AuthorLoader;
 
@@ -386,6 +387,52 @@ impl From<AuthorEventDto> for AuthorEventEntry {
             author_updated_at: dto.author_updated_at.map(|t| t.unix_timestamp()),
             changed_at: dto.changed_at.unix_timestamp(),
             extra: dto.extra.map(Json),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct EventSetEntry {
+    pub id: ID,
+    pub operation: String,
+    pub created_at: i64,
+}
+
+impl From<EventSetDto> for EventSetEntry {
+    fn from(dto: EventSetDto) -> Self {
+        Self {
+            id: ID(dto.id),
+            operation: dto.operation,
+            created_at: dto.created_at.unix_timestamp(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct EventSetDetail {
+    pub id: ID,
+    pub operation: String,
+    pub created_at: i64,
+    pub book_events: Vec<BookEventEntry>,
+    pub author_events: Vec<AuthorEventEntry>,
+}
+
+impl From<EventSetDetailDto> for EventSetDetail {
+    fn from(dto: EventSetDetailDto) -> Self {
+        Self {
+            id: ID(dto.id),
+            operation: dto.operation,
+            created_at: dto.created_at.unix_timestamp(),
+            book_events: dto
+                .book_events
+                .into_iter()
+                .map(BookEventEntry::from)
+                .collect(),
+            author_events: dto
+                .author_events
+                .into_iter()
+                .map(AuthorEventEntry::from)
+                .collect(),
         }
     }
 }

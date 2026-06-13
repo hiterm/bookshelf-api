@@ -75,6 +75,20 @@ input CreateBookInput {
 	store: BookStore!
 }
 
+type EventSetDetail {
+	id: ID!
+	operation: String!
+	createdAt: Int!
+	bookEvents: [BookEventEntry!]!
+	authorEvents: [AuthorEventEntry!]!
+}
+
+type EventSetEntry {
+	id: ID!
+	operation: String!
+	createdAt: Int!
+}
+
 input ImportBookInput {
 	"""
 	Title of the book.
@@ -147,6 +161,14 @@ type Query {
 	Entries are sorted by `changedAt` in descending order (newest first).
 	"""
 	authorEvents(authorId: ID!): [AuthorEventEntry!]!
+	"""
+	Returns the logged-in user's event sets, newest first.
+	"""
+	eventSets: [EventSetEntry!]!
+	"""
+	Returns a single event set with nested events, or null if not found.
+	"""
+	eventSet(id: ID!): EventSetDetail
 }
 
 input UpdateAuthorInput {

@@ -16,16 +16,15 @@ This enables building a full audit trail UI: the user sees a chronological feed 
   breaks the existing Pg impls until they are implemented (the tree cannot compile, and so
   cannot pass `cargo test`, with domain-only changes).
   - [x] plan updated
-- [ ] Milestone 3: Use-case DTO and trait — EventSetDto, EventSetDetailDto, and two new QueryUseCase methods.
-  - [ ] plan updated
-- [ ] Milestone 4: Use-case interactor — QueryInteractor gains ESR generic param and implements the two new methods.
-  - [ ] plan updated
-- [ ] Milestone 5: Presentation — EventSetEntry and EventSetDetail GraphQL objects; eventSets and eventSet resolvers; schema regenerated.
-  - [ ] plan updated
-- [ ] Milestone 6: DI — PgEventSetRepository wired into dependency_injection.
-  - [ ] plan updated
-- [ ] Milestone 7: E2E tests — e2e_event_sets test and eventSet assertion added to e2e_import_books.
-  - [ ] plan updated
+- [x] Milestone 3+4+5+6: Use-case (EventSetDto/EventSetDetailDto, two QueryUseCase methods,
+  QueryInteractor ESR generic + impl + unit tests), Presentation (EventSetEntry/EventSetDetail
+  objects, eventSets/eventSet resolvers), DI (PgEventSetRepository wired), and regenerated
+  schema.graphql. Committed together because the trait method additions, interactor impl, DI
+  arity change, and resolvers are interdependent and only compile as a unit.
+  - [x] plan updated
+- [x] Milestone 7: E2E tests — new e2e_event_sets test and an eventSet(id) grouping assertion
+  added to e2e_import_books.
+  - [x] plan updated
 
 ## Surprises & Discoveries
 
@@ -33,6 +32,12 @@ This enables building a full audit trail UI: the user sees a chronological feed 
   breaks compilation of the existing `Pg*` impls until those impls are added. A domain-only
   milestone therefore cannot pass `cargo test`, so Milestones 1 and 2 were combined into a
   single commit that keeps the tree green.
+- `cargo clippy --all-targets` (matching CI) flagged pre-existing `cloned_ref_to_slice_refs`
+  warnings in existing test code (`author_repository.rs`, `book_event_repository.rs`) that
+  CI's clippy was not previously catching. These were fixed (`&[x.clone()]` ->
+  `std::slice::from_ref(&x)`) in a dedicated commit so the mandatory clippy gate passes.
+- `EventSetId::try_from` returns `Result<_, String>` (not `DomainError` like `BookId::try_from`),
+  so the interactor maps its error via `DomainError::Unexpected` before surfacing it.
 
 ## Decision Log
 
