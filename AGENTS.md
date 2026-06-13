@@ -49,49 +49,16 @@ When adding or modifying features, always include tests:
   explaining why it is safe to ignore. Place the comment on the line immediately
   before the ignore directive.
 
-## Event Recording
+## Architecture Reference
 
-Every `create`, `update`, `delete`, and `restore` operation on any entity
-must record an event inside the same database transaction. This applies to
-existing entities (`Book`, `Author`) and any new entity added in the future.
+The following documents describe the *current* architecture, not hard rules —
+they change as the code evolves. Consult them before adding or changing a
+mutation:
 
-The transaction boundary is owned by the use-case layer via the
-`TransactionManager` domain trait: an interactor calls
-`transaction_manager.begin(user_id, operation)` to open a transaction,
-passes the resulting transaction by `&mut` into each repository method, and
-calls `transaction_manager.commit(tx)` at the end. This lets a single
-interactor compose multiple repositories (e.g. the bulk import composes
-`BookRepository` and `AuthorRepository`) inside one transaction.
-
-The only event concept that crosses into the use-case layer is the choice of
-`EventSetOperation` passed to `begin`. Everything else about event recording
-remains exclusively in the infrastructure layer:
-
-- `PgTransactionManager::begin` generates the `event_set` UUID and inserts the
-  single `event_set` row (the one place `event_set` rows are created).
-- Each `Pg*` repository method reads `tx.event_set_id()` and inserts the
-  per-event `<entity>_event` rows. Domain repository traits expose only an
-  associated `Transaction` type; they carry no other event knowledge.
-
-When adding a new entity or mutation operation:
-
-- Drive the operation inside a single transaction opened via
-  `TransactionManager::begin` with the appropriate `EventSetOperation`.
-- Repository methods accept `tx: &mut Self::Transaction` and read
-  `tx.event_set_id()`; they must not open their own transaction or create
-  `event_set` rows.
-- Create a dedicated `<entity>_event` table (and `<entity>_event_author`-style
-  join tables if needed) following the `book_event` / `author_event` schema.
-- The `event_set` row is inserted once in `PgTransactionManager::begin`; each
-  operation inserts one row into the entity's event table.
-- Add a new `EventSetOperation` variant (with its `as_str` round-trip) and the
-  matching `event_set_operation` value via migration (e.g. `create_foo`,
-  `update_foo`).
-
-See `.agent/plans/20260429-add-change-history.md` for the full design and
-the Decision Log for rationale, and
-`.agent/plans/20260612-remove-import-books-repository.md` for the move of the
-transaction boundary into the use-case layer.
+- Event recording (the invariant that mutations record events, the
+  `TransactionManager` boundary, `event_set`, and per-entity event tables):
+  `docs/architecture/event-recording.md`
+- Event-log database schema: `docs/database.md`
 
 ## Pre-commit Checks
 
