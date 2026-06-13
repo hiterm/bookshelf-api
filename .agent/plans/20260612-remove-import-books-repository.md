@@ -47,8 +47,8 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   - [x] plan updated
 - [x] M2: Add domain `TransactionManager` trait.
   - [x] plan updated
-- [ ] M3: Add infra `PgTransaction` + `PgTransactionManager`.
-  - [ ] plan updated
+- [x] M3: Add infra `PgTransaction` + `PgTransactionManager`.
+  - [x] plan updated
 - [ ] M4: Migrate `BookRepository` + `PgBookRepository` + book interactors +
   `RestoreBookInteractor` + tests + DI.
   - [ ] plan updated
@@ -87,6 +87,13 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   symlink); both must be amended in M8.
   Evidence: `diff AGENTS.md CLAUDE.md` reports identical; `readlink AGENTS.md`
   is empty.
+
+- Observation: Naming the accessor `PgTransaction::as_mut` trips
+  `clippy::should_implement_trait` under `-D warnings`. Kept the name (the
+  plan and repositories call `tx.as_mut()`) and suppressed the lint with an
+  explanatory comment per CLAUDE.md, rather than implementing `std::AsMut`.
+  Evidence: clippy emitted `methods called as_mut usually implement
+  std::convert::AsMut`.
 
 ## Decision Log
 
