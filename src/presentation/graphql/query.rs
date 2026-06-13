@@ -7,7 +7,9 @@ use crate::{
     use_case::traits::query::QueryUseCase,
 };
 
-use super::object::{Author, AuthorEventEntry, Book, BookEventEntry, User};
+use super::object::{
+    Author, AuthorEventEntry, Book, BookEventEntry, EventSetDetail, EventSetEntry, User,
+};
 
 pub struct Query<QUC> {
     query_use_case: QUC,
@@ -96,6 +98,30 @@ where
             .list_author_events(&claims.sub, author_id.as_str())
             .await?;
         Ok(entries.into_iter().map(AuthorEventEntry::from).collect())
+    }
+
+    /// Returns the logged-in user's event sets, newest first.
+    async fn event_sets(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<EventSetEntry>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let sets = self.query_use_case.list_event_sets(&claims.sub).await?;
+        Ok(sets.into_iter().map(EventSetEntry::from).collect())
+    }
+
+    /// Returns a single event set with nested events, or null if not found.
+    async fn event_set(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+    ) -> Result<Option<EventSetDetail>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let detail = self
+            .query_use_case
+            .find_event_set(&claims.sub, id.as_str())
+            .await?;
+        Ok(detail.map(EventSetDetail::from))
     }
 }
 

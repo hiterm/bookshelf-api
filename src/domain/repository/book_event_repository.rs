@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use mockall::automock;
 
 use crate::domain::{
-    entity::{book::BookId, event::BookEvent, user::UserId},
+    entity::{book::BookId, event::BookEvent, event_set::EventSetId, user::UserId},
     error::DomainError,
 };
 
@@ -20,4 +20,10 @@ pub trait BookEventRepository: Send + Sync + 'static {
         user_id: &UserId,
         event_id: i64,
     ) -> Result<Option<BookEvent>, DomainError>;
+
+    async fn find_by_event_set(
+        &self,
+        user_id: &UserId,
+        event_set_id: &EventSetId,
+    ) -> Result<Vec<BookEvent>, DomainError>;
 }
