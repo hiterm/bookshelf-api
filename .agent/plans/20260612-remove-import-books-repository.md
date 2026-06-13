@@ -60,8 +60,8 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   - [x] plan updated
 - [x] M7: Delete `import_books_repository.rs` (domain + infra) + module decls.
   - [x] plan updated
-- [ ] M8: Docs — amend CLAUDE.md/AGENTS.md, append Decision Log, finalize plan.
-  - [ ] plan updated
+- [x] M8: Docs — amend CLAUDE.md/AGENTS.md, append Decision Log, finalize plan.
+  - [x] plan updated
 
 ## Surprises & Discoveries
 
@@ -83,10 +83,12 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   `PgTransactionManager` works without extra mapping.
   Evidence: `src/infrastructure/error.rs`.
 
-- Observation: AGENTS.md and CLAUDE.md are byte-identical regular files (not a
-  symlink); both must be amended in M8.
-  Evidence: `diff AGENTS.md CLAUDE.md` reports identical; `readlink AGENTS.md`
-  is empty.
+- Observation: `CLAUDE.md` is a symlink to `AGENTS.md` (an earlier combined
+  shell command misreported this). Editing the real target `AGENTS.md` updates
+  both, so the M8 amendment was written once to `AGENTS.md`. The Write/Edit
+  tooling also refuses to write through the symlink, which confirmed it.
+  Evidence: `ls -la CLAUDE.md` shows `CLAUDE.md -> AGENTS.md`;
+  `readlink CLAUDE.md` prints `AGENTS.md`.
 
 - Observation: Naming the accessor `PgTransaction::as_mut` trips
   `clippy::should_implement_trait` under `-D warnings`. Kept the name (the
@@ -189,7 +191,35 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
 
 ## Outcomes & Retrospective
 
-To be written at completion (M8).
+All milestones M0-M8 are complete. `ImportBooksRepository` and
+`PgImportBooksRepository` are deleted. Transaction control now lives in the
+use-case layer via the domain `TransactionManager` trait and its
+infrastructure implementation `PgTransactionManager`/`PgTransaction`. Every
+mutating repository method accepts `&mut Self::Transaction` and reads
+`tx.event_set_id()`; the `event_set` INSERT was lifted out of each repository
+method into the single eager insert in `PgTransactionManager::begin`. The bulk
+import is composed from `BookRepository` + `AuthorRepository` +
+`TransactionManager` and preserves the single shared `import_books` event_set,
+matching the original DB-level behavior. `EventSetOperation` now has all nine
+variants, resolving the prior TODO. CLAUDE.md/AGENTS.md and the change-history
+Decision Log were amended to describe the new boundary.
+
+Verification in this environment: `cargo fmt --check` clean,
+`cargo clippy --all-targets -- -D warnings` clean, `cargo test` = 129 passed,
+and `cargo check --features test-with-database --all-targets` compiles.
+
+What remains for the user to run locally (no PostgreSQL here):
+`cargo test --features test-with-database` (infra DB tests, the new
+`find_or_create_by_name` tests, and the re-homed import integration tests) and
+the `e2e_import_books` end-to-end test (docker compose + JWKS server per the
+README), which must still observe a single shared `eventSetId`.
+
+Lessons: a trait-signature change ripples into every cross-module test that
+used the repository as a fixture; bundling those callers into the same
+milestone commit was necessary to keep both the default and
+`test-with-database` builds green. The clippy `should_implement_trait` lint on
+`PgTransaction::as_mut` and the `CLAUDE.md -> AGENTS.md` symlink were the two
+small surprises; both are recorded above.
 
 ## Context and Orientation
 
@@ -349,3 +379,7 @@ tests, and DI are bundled in one commit.
 - 2026-06-12: Initial authoring (M0). Adapted from the approved design
   (D1-D7, M0-M8) into ExecPlan format. Reason: CLAUDE.md requires complex
   refactors to use an ExecPlan stored in `.agent/plans/`.
+- 2026-06-12: Finalized at M8. Marked all milestones complete, wrote Outcomes &
+  Retrospective, corrected the `CLAUDE.md`/`AGENTS.md` symlink observation, and
+  recorded the import rollback-test deviation. Reason: the implementation is
+  finished and the living-document sections must reflect the final state.
