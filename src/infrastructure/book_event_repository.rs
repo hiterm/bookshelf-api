@@ -324,7 +324,7 @@ mod tests {
         let book = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
             "original",
-            &[author_id.clone()],
+            std::slice::from_ref(&author_id),
         )?;
         create_book(&pool, &book_repo, &user_id, &book).await?;
 
@@ -499,7 +499,7 @@ mod tests {
         let book = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
             "title1",
-            &[author_id.clone()],
+            std::slice::from_ref(&author_id),
         )?;
         create_book(&pool, &book_repo, &user_id, &book).await?;
 

@@ -733,7 +733,10 @@ mod tests {
         let author = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
-        let book = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
+        let book = make_book(
+            "675bc8d9-3155-42fb-87b0-0a82cb162848",
+            std::slice::from_ref(&author_id),
+        )?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
 
         let result = delete_author(&pool, &author_repository, &user_id, &author_id).await;
@@ -802,9 +805,15 @@ mod tests {
         create_author(&pool, &author_repository, &user1_id, &author1).await?;
         create_author(&pool, &author_repository, &user2_id, &author2).await?;
 
-        let book1 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
+        let book1 = make_book(
+            "675bc8d9-3155-42fb-87b0-0a82cb162848",
+            std::slice::from_ref(&author_id),
+        )?;
         create_book(&pool, &book_repository, &user1_id, &book1).await?;
-        let book2 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
+        let book2 = make_book(
+            "675bc8d9-3155-42fb-87b0-0a82cb162848",
+            std::slice::from_ref(&author_id),
+        )?;
         create_book(&pool, &book_repository, &user2_id, &book2).await?;
 
         // user2 has an associated book, so delete must fail
