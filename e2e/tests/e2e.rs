@@ -746,15 +746,7 @@ async fn e2e_graphql_delete_author_without_books_succeeds() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     let random_name = format!("Author To Delete {}", uuid::Uuid::new_v4());
-    let create_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
-        random_name
-    );
-    let (_, response) = graphql_request(&create_query, Some(&token)).await?;
-    let author_id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let author_id = create_test_author(&random_name, &token).await?;
 
     delete_test_author(&author_id, &token).await?;
 
@@ -775,39 +767,10 @@ async fn e2e_graphql_delete_author_with_associated_books_fails() -> Result<()> {
 
     // Create author
     let random_name = format!("Author With Book {}", uuid::Uuid::new_v4());
-    let create_author_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
-        random_name
-    );
-    let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
-    let author_id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let author_id = create_test_author(&random_name, &token).await?;
 
     // Create book associated with the author
-    let create_book_query = format!(
-        r#"
-        mutation {{
-            createBook(bookData: {{
-                title: "Book Blocking Author Delete"
-                authorIds: ["{}"]
-                isbn: ""
-                read: false
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ id }}
-        }}
-        "#,
-        author_id
-    );
-    let (_, response) = graphql_request(&create_book_query, Some(&token)).await?;
-    let book_id = response["data"]["createBook"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let book_id = create_test_book("Book Blocking Author Delete", &author_id, &token).await?;
 
     // Attempt to delete the author — must fail
     let delete_author_query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
@@ -838,39 +801,10 @@ async fn e2e_graphql_update_author() -> Result<()> {
 
     // Create author
     let original_name = format!("Author Before Update {}", uuid::Uuid::new_v4());
-    let create_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id name }} }}"#,
-        original_name
-    );
-    let (_, response) = graphql_request(&create_query, Some(&token)).await?;
-    let author_id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let author_id = create_test_author(&original_name, &token).await?;
 
     // Create book associated with the author
-    let create_book_query = format!(
-        r#"
-        mutation {{
-            createBook(bookData: {{
-                title: "Book For Author Update Test"
-                authorIds: ["{}"]
-                isbn: ""
-                read: false
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ id }}
-        }}
-        "#,
-        author_id
-    );
-    let (_, response) = graphql_request(&create_book_query, Some(&token)).await?;
-    let book_id = response["data"]["createBook"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let book_id = create_test_book("Book For Author Update Test", &author_id, &token).await?;
 
     // Update author name while the author has an associated book
     let updated_name = format!("Author After Update {}", uuid::Uuid::new_v4());
@@ -1682,15 +1616,7 @@ async fn e2e_import_books() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     // Pre-create an author
-    let create_author_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
-        "Existing Author"
-    );
-    let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
-    let existing_author_id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("author id should be string")?
-        .to_owned();
+    let existing_author_id = create_test_author("Existing Author", &token).await?;
 
     // Call importBooks
     let import_query = r#"
