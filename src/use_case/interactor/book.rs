@@ -7,12 +7,14 @@ use crate::{
         entity::{
             author::{AuthorId, AuthorName},
             book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+            event::EventSetOperation,
             user::UserId,
         },
         error::DomainError,
         repository::{
             book_repository::BookRepository,
             import_books_repository::{ImportBookInput, ImportBooksRepository},
+            transaction::TransactionManager,
         },
     },
     use_case::{
@@ -26,20 +28,25 @@ use crate::{
 
 const MAX_BOOK_BATCH: usize = 1000;
 
-pub struct CreateBookInteractor<BR> {
+pub struct CreateBookInteractor<BR, TM> {
     book_repository: BR,
+    transaction_manager: TM,
 }
 
-impl<BR> CreateBookInteractor<BR> {
-    pub fn new(book_repository: BR) -> Self {
-        Self { book_repository }
+impl<BR, TM> CreateBookInteractor<BR, TM> {
+    pub fn new(book_repository: BR, transaction_manager: TM) -> Self {
+        Self {
+            book_repository,
+            transaction_manager,
+        }
     }
 }
 
 #[async_trait]
-impl<BR> CreateBookUseCase for CreateBookInteractor<BR>
+impl<BR, TM> CreateBookUseCase for CreateBookInteractor<BR, TM>
 where
-    BR: BookRepository,
+    TM: TransactionManager,
+    BR: BookRepository<Transaction = TM::Transaction>,
 {
     async fn create(
         &self,
@@ -51,26 +58,38 @@ where
         let time_info = TimeInfo::new(OffsetDateTime::now_utc(), OffsetDateTime::now_utc());
         let book = Book::try_from((uuid, book_data, time_info))?;
 
-        self.book_repository.create(&user_id, &book).await?;
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::CreateBook)
+            .await?;
+        self.book_repository
+            .create(&mut tx, &user_id, &book)
+            .await?;
+        self.transaction_manager.commit(tx).await?;
 
         Ok(book.into())
     }
 }
 
-pub struct UpdateBookInteractor<BR> {
+pub struct UpdateBookInteractor<BR, TM> {
     book_repository: BR,
+    transaction_manager: TM,
 }
 
-impl<BR> UpdateBookInteractor<BR> {
-    pub fn new(book_repository: BR) -> Self {
-        Self { book_repository }
+impl<BR, TM> UpdateBookInteractor<BR, TM> {
+    pub fn new(book_repository: BR, transaction_manager: TM) -> Self {
+        Self {
+            book_repository,
+            transaction_manager,
+        }
     }
 }
 
 #[async_trait]
-impl<BR> UpdateBookUseCase for UpdateBookInteractor<BR>
+impl<BR, TM> UpdateBookUseCase for UpdateBookInteractor<BR, TM>
 where
-    BR: BookRepository,
+    TM: TransactionManager,
+    BR: BookRepository<Transaction = TM::Transaction>,
 {
     async fn update(
         &self,
@@ -115,32 +134,51 @@ where
         book.set_store(store);
         book.set_updated_at(OffsetDateTime::now_utc());
 
-        self.book_repository.update(&user_id, &book).await?;
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::UpdateBook)
+            .await?;
+        self.book_repository
+            .update(&mut tx, &user_id, &book)
+            .await?;
+        self.transaction_manager.commit(tx).await?;
 
         Ok(book.into())
     }
 }
 
-pub struct DeleteBookInteractor<BR> {
+pub struct DeleteBookInteractor<BR, TM> {
     book_repository: BR,
+    transaction_manager: TM,
 }
 
-impl<BR> DeleteBookInteractor<BR> {
-    pub fn new(book_repository: BR) -> Self {
-        Self { book_repository }
+impl<BR, TM> DeleteBookInteractor<BR, TM> {
+    pub fn new(book_repository: BR, transaction_manager: TM) -> Self {
+        Self {
+            book_repository,
+            transaction_manager,
+        }
     }
 }
 
 #[async_trait]
-impl<BR> DeleteBookUseCase for DeleteBookInteractor<BR>
+impl<BR, TM> DeleteBookUseCase for DeleteBookInteractor<BR, TM>
 where
-    BR: BookRepository,
+    TM: TransactionManager,
+    BR: BookRepository<Transaction = TM::Transaction>,
 {
     async fn delete(&self, user_id: &str, book_id: &str) -> Result<(), UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let book_id = BookId::try_from(book_id)?;
 
-        self.book_repository.delete(&user_id, &book_id).await?;
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::DeleteBook)
+            .await?;
+        self.book_repository
+            .delete(&mut tx, &user_id, &book_id)
+            .await?;
+        self.transaction_manager.commit(tx).await?;
 
         Ok(())
     }
@@ -233,6 +271,7 @@ mod tests {
             repository::{
                 book_repository::MockBookRepository,
                 import_books_repository::MockImportBooksRepository,
+                transaction::MockTransactionManager,
             },
         },
         use_case::{
@@ -247,6 +286,15 @@ mod tests {
             },
         },
     };
+
+    // A MockTransactionManager whose Transaction associated type is () and
+    // whose begin/commit succeed, for interactors that reach the repository.
+    fn make_transaction_manager() -> MockTransactionManager {
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit().returning(|_| Ok(()));
+        tm
+    }
 
     fn make_book(uuid: Uuid) -> Book {
         Book::new(
@@ -271,10 +319,10 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_create()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = CreateBookInteractor::new(book_repository);
+        let interactor = CreateBookInteractor::new(book_repository, make_transaction_manager());
         let book_data = CreateBookDto::new(
             "New Book".to_string(),
             vec![],
@@ -300,7 +348,7 @@ mod tests {
     async fn create_book_fails_with_empty_title() {
         // Given
         let book_repository = MockBookRepository::new();
-        let interactor = CreateBookInteractor::new(book_repository);
+        let interactor = CreateBookInteractor::new(book_repository, MockTransactionManager::new());
         let book_data = CreateBookDto::new(
             "".to_string(),
             vec![],
@@ -333,10 +381,10 @@ mod tests {
             .returning(move |_, _| Ok(Some(book.clone())));
         book_repository
             .expect_update()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = UpdateBookInteractor::new(book_repository);
+        let interactor = UpdateBookInteractor::new(book_repository, make_transaction_manager());
         let book_data = UpdateBookDto::new(
             book_id_str,
             "Updated Book".to_string(),
@@ -371,7 +419,7 @@ mod tests {
             .with(always(), always())
             .returning(|_, _| Ok(None));
 
-        let interactor = UpdateBookInteractor::new(book_repository);
+        let interactor = UpdateBookInteractor::new(book_repository, MockTransactionManager::new());
         let book_data = UpdateBookDto::new(
             book_id_str,
             "Updated Book".to_string(),
@@ -400,10 +448,10 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = DeleteBookInteractor::new(book_repository);
+        let interactor = DeleteBookInteractor::new(book_repository, make_transaction_manager());
 
         // When
         let result = interactor.delete("user1", &book_id_str).await;
@@ -416,7 +464,7 @@ mod tests {
     async fn delete_book_fails_with_invalid_book_id() {
         // Given
         let book_repository = MockBookRepository::new();
-        let interactor = DeleteBookInteractor::new(book_repository);
+        let interactor = DeleteBookInteractor::new(book_repository, MockTransactionManager::new());
 
         // When
         let result = interactor.delete("user1", "not-a-valid-uuid").await;

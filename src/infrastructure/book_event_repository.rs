@@ -178,18 +178,19 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                event::EventOperation,
+                event::{EventOperation, EventSetOperation},
                 user::User,
             },
             error::DomainError,
             repository::{
                 author_repository::AuthorRepository, book_event_repository::BookEventRepository,
-                book_repository::BookRepository, user_repository::UserRepository,
+                book_repository::BookRepository, transaction::TransactionManager,
+                user_repository::UserRepository,
             },
         },
         infrastructure::{
             author_repository::PgAuthorRepository, book_repository::PgBookRepository,
-            user_repository::PgUserRepository,
+            transaction::PgTransactionManager, user_repository::PgUserRepository,
         },
     };
     use time::{
@@ -204,6 +205,32 @@ mod tests {
         let user = User::new(user_id.clone());
         repository.create(&user).await?;
         Ok(user_id)
+    }
+
+    // Wrap a BookRepository mutation in a single transaction opened via
+    // PgTransactionManager, mirroring how the use-case layer drives it.
+    async fn create_book(
+        pool: &PgPool,
+        book_repo: &PgBookRepository,
+        user_id: &UserId,
+        book: &Book,
+    ) -> Result<(), DomainError> {
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
+        book_repo.create(&mut tx, user_id, book).await?;
+        tm.commit(tx).await
+    }
+
+    async fn update_book(
+        pool: &PgPool,
+        book_repo: &PgBookRepository,
+        user_id: &UserId,
+        book: &Book,
+    ) -> Result<(), DomainError> {
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(user_id, EventSetOperation::UpdateBook).await?;
+        book_repo.update(&mut tx, user_id, book).await?;
+        tm.commit(tx).await
     }
 
     fn make_book(
@@ -248,14 +275,14 @@ mod tests {
             "original",
             &[author_id.clone()],
         )?;
-        book_repo.create(&user_id, &book).await?;
+        create_book(&pool, &book_repo, &user_id, &book).await?;
 
         let updated = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
             "updated",
             &[author_id],
         )?;
-        book_repo.update(&user_id, &updated).await?;
+        update_book(&pool, &book_repo, &user_id, &updated).await?;
 
         let entries = event_repo.find_by_book(&user_id, book.id()).await?;
         assert_eq!(entries.len(), 2);
@@ -296,7 +323,7 @@ mod tests {
             "title1",
             &[author_id1.clone(), author_id2.clone()],
         )?;
-        book_repo.create(&user_id, &book).await?;
+        create_book(&pool, &book_repo, &user_id, &book).await?;
 
         let entries = event_repo.find_by_book(&user_id, book.id()).await?;
         assert_eq!(entries.len(), 1);
@@ -342,7 +369,7 @@ mod tests {
             "title1",
             &[author_id],
         )?;
-        book_repo.create(&user_id, &book).await?;
+        create_book(&pool, &book_repo, &user_id, &book).await?;
 
         let (event_id,): (i64,) =
             sqlx::query_as("SELECT event_id FROM book_event WHERE user_id = $1")
@@ -382,7 +409,7 @@ mod tests {
             "title1",
             &[author_id],
         )?;
-        book_repo.create(&user1_id, &book).await?;
+        create_book(&pool, &book_repo, &user1_id, &book).await?;
 
         let (event_id,): (i64,) =
             sqlx::query_as("SELECT event_id FROM book_event WHERE user_id = $1")

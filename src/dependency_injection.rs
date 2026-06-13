@@ -5,7 +5,8 @@ use crate::{
     infrastructure::{
         author_event_repository::PgAuthorEventRepository, author_repository::PgAuthorRepository,
         book_event_repository::PgBookEventRepository, book_repository::PgBookRepository,
-        import_books_repository::PgImportBooksRepository, user_repository::PgUserRepository,
+        import_books_repository::PgImportBooksRepository, transaction::PgTransactionManager,
+        user_repository::PgUserRepository,
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
@@ -30,13 +31,13 @@ pub type QI = QueryInteractor<
 
 pub type MI = MutationInteractor<
     RegisterUserInteractor<PgUserRepository>,
-    CreateBookInteractor<PgBookRepository>,
-    UpdateBookInteractor<PgBookRepository>,
-    DeleteBookInteractor<PgBookRepository>,
+    CreateBookInteractor<PgBookRepository, PgTransactionManager>,
+    UpdateBookInteractor<PgBookRepository, PgTransactionManager>,
+    DeleteBookInteractor<PgBookRepository, PgTransactionManager>,
     CreateAuthorInteractor<PgAuthorRepository>,
     UpdateAuthorInteractor<PgAuthorRepository>,
     DeleteAuthorInteractor<PgAuthorRepository>,
-    RestoreBookInteractor<PgBookRepository, PgBookEventRepository>,
+    RestoreBookInteractor<PgBookRepository, PgBookEventRepository, PgTransactionManager>,
     RestoreAuthorInteractor<PgAuthorRepository, PgAuthorEventRepository>,
     ImportBooksInteractor<PgImportBooksRepository>,
 >;
@@ -49,7 +50,8 @@ pub fn dependency_injection(
     let author_repository = PgAuthorRepository::new(pool.clone());
     let book_event_repository = PgBookEventRepository::new(pool.clone());
     let import_books_repository = PgImportBooksRepository::new(pool.clone());
-    let author_event_repository = PgAuthorEventRepository::new(pool);
+    let author_event_repository = PgAuthorEventRepository::new(pool.clone());
+    let transaction_manager = PgTransactionManager::new(pool);
 
     let query_use_case = QueryInteractor {
         user_repository: user_repository.clone(),
@@ -59,13 +61,17 @@ pub fn dependency_injection(
         author_event_repository: author_event_repository.clone(),
     };
     let register_user_use_case = RegisterUserInteractor::new(user_repository);
-    let create_book_use_case = CreateBookInteractor::new(book_repository.clone());
-    let update_book_use_case = UpdateBookInteractor::new(book_repository.clone());
-    let delete_book_use_case = DeleteBookInteractor::new(book_repository.clone());
+    let create_book_use_case =
+        CreateBookInteractor::new(book_repository.clone(), transaction_manager.clone());
+    let update_book_use_case =
+        UpdateBookInteractor::new(book_repository.clone(), transaction_manager.clone());
+    let delete_book_use_case =
+        DeleteBookInteractor::new(book_repository.clone(), transaction_manager.clone());
     let create_author_use_case = CreateAuthorInteractor::new(author_repository.clone());
     let update_author_use_case = UpdateAuthorInteractor::new(author_repository.clone());
     let delete_author_use_case = DeleteAuthorInteractor::new(author_repository.clone());
-    let restore_book_use_case = RestoreBookInteractor::new(book_repository, book_event_repository);
+    let restore_book_use_case =
+        RestoreBookInteractor::new(book_repository, book_event_repository, transaction_manager);
     let restore_author_use_case =
         RestoreAuthorInteractor::new(author_repository, author_event_repository);
     let import_books_use_case = ImportBooksInteractor::new(import_books_repository);

@@ -49,9 +49,9 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   - [x] plan updated
 - [x] M3: Add infra `PgTransaction` + `PgTransactionManager`.
   - [x] plan updated
-- [ ] M4: Migrate `BookRepository` + `PgBookRepository` + book interactors +
+- [x] M4: Migrate `BookRepository` + `PgBookRepository` + book interactors +
   `RestoreBookInteractor` + tests + DI.
-  - [ ] plan updated
+  - [x] plan updated
 - [ ] M5: Migrate `AuthorRepository` (incl. `find_or_create_by_name`) + author
   interactors + `RestoreAuthorInteractor` + tests + DI.
   - [ ] plan updated
@@ -94,6 +94,14 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   explanatory comment per CLAUDE.md, rather than implementing `std::AsMut`.
   Evidence: clippy emitted `methods called as_mut usually implement
   std::convert::AsMut`.
+
+- Observation: Migrating `BookRepository` in M4 broke not only the book infra
+  DB tests but also `book_event_repository.rs` and `author_repository.rs` DB
+  test modules, which call `book_repository.create` to set up fixtures. They
+  had to be migrated to a local begin/commit helper in the same commit so the
+  `test-with-database` build stays green.
+  Evidence: `cargo check --features test-with-database --all-targets` reported
+  8 `E0061` errors across those two files before the helpers were added.
 
 ## Decision Log
 

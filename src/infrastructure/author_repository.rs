@@ -417,12 +417,19 @@ mod tests {
         domain::{
             entity::{
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                event::EventSetOperation,
                 user::User,
             },
             error::DomainError,
-            repository::{book_repository::BookRepository, user_repository::UserRepository},
+            repository::{
+                book_repository::BookRepository, transaction::TransactionManager,
+                user_repository::UserRepository,
+            },
         },
-        infrastructure::{book_repository::PgBookRepository, user_repository::PgUserRepository},
+        infrastructure::{
+            book_repository::PgBookRepository, transaction::PgTransactionManager,
+            user_repository::PgUserRepository,
+        },
     };
     use time::{
         PrimitiveDateTime,
@@ -430,6 +437,20 @@ mod tests {
     };
 
     use super::*;
+
+    // Wrap a BookRepository::create in a single transaction opened via
+    // PgTransactionManager, used to set up books in author tests.
+    async fn create_book(
+        pool: &PgPool,
+        book_repository: &PgBookRepository,
+        user_id: &UserId,
+        book: &Book,
+    ) -> Result<(), DomainError> {
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
+        book_repository.create(&mut tx, user_id, book).await?;
+        tm.commit(tx).await
+    }
 
     #[sqlx::test]
     async fn create_and_find_by_id(pool: PgPool) -> anyhow::Result<()> {
@@ -635,7 +656,7 @@ mod tests {
         author_repository.create(&user_id, &author).await?;
 
         let book = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
-        book_repository.create(&user_id, &book).await?;
+        create_book(&pool, &book_repository, &user_id, &book).await?;
 
         let result = author_repository.delete(&user_id, &author_id).await;
         assert!(matches!(
@@ -704,9 +725,9 @@ mod tests {
         author_repository.create(&user2_id, &author2).await?;
 
         let book1 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
-        book_repository.create(&user1_id, &book1).await?;
+        create_book(&pool, &book_repository, &user1_id, &book1).await?;
         let book2 = make_book("675bc8d9-3155-42fb-87b0-0a82cb162848", &[author_id.clone()])?;
-        book_repository.create(&user2_id, &book2).await?;
+        create_book(&pool, &book_repository, &user2_id, &book2).await?;
 
         // user2 has an associated book, so delete must fail
         let result = author_repository.delete(&user2_id, &author_id).await;
