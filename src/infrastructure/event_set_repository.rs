@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::domain::{
     entity::{
+        event::EventSetOperation,
         event_set::{EventSet, EventSetId},
         user::UserId,
     },
@@ -24,7 +25,8 @@ fn row_to_event_set(row: EventSetRow) -> Result<EventSet, DomainError> {
     Ok(EventSet {
         id: EventSetId::from(row.id),
         user_id: UserId::new(row.user_id)?,
-        operation: row.operation,
+        operation: EventSetOperation::try_from(row.operation.as_str())
+            .map_err(DomainError::Unexpected)?,
         created_at: row.created_at,
     })
 }
@@ -185,8 +187,8 @@ mod tests {
         let event_sets = event_set_repo.find_all(&user_id).await?;
         assert_eq!(event_sets.len(), 2);
         // Newest first: the book creation event set precedes the author one.
-        assert_eq!(event_sets[0].operation, "create_book");
-        assert_eq!(event_sets[1].operation, "create_author");
+        assert_eq!(event_sets[0].operation, EventSetOperation::CreateBook);
+        assert_eq!(event_sets[1].operation, EventSetOperation::CreateAuthor);
         assert!(event_sets[0].created_at >= event_sets[1].created_at);
 
         Ok(())
@@ -231,7 +233,7 @@ mod tests {
         assert!(event_set.is_some());
         let event_set = event_set.unwrap();
         assert_eq!(event_set.id, event_set_id);
-        assert_eq!(event_set.operation, "create_author");
+        assert_eq!(event_set.operation, EventSetOperation::CreateAuthor);
 
         Ok(())
     }

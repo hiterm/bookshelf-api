@@ -16,7 +16,7 @@ impl From<EventSet> for EventSetDto {
     fn from(e: EventSet) -> Self {
         Self {
             id: e.id.to_string(),
-            operation: e.operation,
+            operation: e.operation.as_str().to_string(),
             created_at: e.created_at,
         }
     }
@@ -39,7 +39,7 @@ impl EventSetDetailDto {
     ) -> Self {
         Self {
             id: event_set.id.to_string(),
-            operation: event_set.operation,
+            operation: event_set.operation.as_str().to_string(),
             created_at: event_set.created_at,
             book_events,
             author_events,
