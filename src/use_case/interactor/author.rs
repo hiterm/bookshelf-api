@@ -5,9 +5,10 @@ use crate::{
     domain::{
         entity::{
             author::{Author, AuthorId, AuthorName},
+            event::EventSetOperation,
             user::UserId,
         },
-        repository::author_repository::AuthorRepository,
+        repository::{author_repository::AuthorRepository, transaction::TransactionManager},
     },
     use_case::{
         dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
@@ -16,20 +17,25 @@ use crate::{
     },
 };
 
-pub struct CreateAuthorInteractor<AR> {
+pub struct CreateAuthorInteractor<AR, TM> {
     author_repository: AR,
+    transaction_manager: TM,
 }
 
-impl<AR> CreateAuthorInteractor<AR> {
-    pub fn new(author_repository: AR) -> Self {
-        Self { author_repository }
+impl<AR, TM> CreateAuthorInteractor<AR, TM> {
+    pub fn new(author_repository: AR, transaction_manager: TM) -> Self {
+        Self {
+            author_repository,
+            transaction_manager,
+        }
     }
 }
 
 #[async_trait]
-impl<AR> CreateAuthorUseCase for CreateAuthorInteractor<AR>
+impl<AR, TM> CreateAuthorUseCase for CreateAuthorInteractor<AR, TM>
 where
-    AR: AuthorRepository,
+    TM: TransactionManager,
+    AR: AuthorRepository<Transaction = TM::Transaction>,
 {
     async fn create(
         &self,
@@ -41,26 +47,39 @@ where
         let author_id = AuthorId::new(uuid);
         let author_name = AuthorName::new(author_data.name)?;
         let author = Author::new(author_id, author_name)?;
-        self.author_repository.create(&user_id, &author).await?;
+
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::CreateAuthor)
+            .await?;
+        self.author_repository
+            .create(&mut tx, &user_id, &author)
+            .await?;
+        self.transaction_manager.commit(tx).await?;
 
         Ok(author.into())
     }
 }
 
-pub struct UpdateAuthorInteractor<AR> {
+pub struct UpdateAuthorInteractor<AR, TM> {
     author_repository: AR,
+    transaction_manager: TM,
 }
 
-impl<AR> UpdateAuthorInteractor<AR> {
-    pub fn new(author_repository: AR) -> Self {
-        Self { author_repository }
+impl<AR, TM> UpdateAuthorInteractor<AR, TM> {
+    pub fn new(author_repository: AR, transaction_manager: TM) -> Self {
+        Self {
+            author_repository,
+            transaction_manager,
+        }
     }
 }
 
 #[async_trait]
-impl<AR> UpdateAuthorUseCase for UpdateAuthorInteractor<AR>
+impl<AR, TM> UpdateAuthorUseCase for UpdateAuthorInteractor<AR, TM>
 where
-    AR: AuthorRepository,
+    TM: TransactionManager,
+    AR: AuthorRepository<Transaction = TM::Transaction>,
 {
     async fn update(
         &self,
@@ -71,30 +90,53 @@ where
         let author_id = AuthorId::try_from(author_data.id.as_str())?;
         let author_name = AuthorName::new(author_data.name)?;
         let author = Author::new(author_id, author_name)?;
-        self.author_repository.update(&user_id, &author).await?;
+
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::UpdateAuthor)
+            .await?;
+        self.author_repository
+            .update(&mut tx, &user_id, &author)
+            .await?;
+        self.transaction_manager.commit(tx).await?;
+
         Ok(author.into())
     }
 }
 
-pub struct DeleteAuthorInteractor<AR> {
+pub struct DeleteAuthorInteractor<AR, TM> {
     author_repository: AR,
+    transaction_manager: TM,
 }
 
-impl<AR> DeleteAuthorInteractor<AR> {
-    pub fn new(author_repository: AR) -> Self {
-        Self { author_repository }
+impl<AR, TM> DeleteAuthorInteractor<AR, TM> {
+    pub fn new(author_repository: AR, transaction_manager: TM) -> Self {
+        Self {
+            author_repository,
+            transaction_manager,
+        }
     }
 }
 
 #[async_trait]
-impl<AR> DeleteAuthorUseCase for DeleteAuthorInteractor<AR>
+impl<AR, TM> DeleteAuthorUseCase for DeleteAuthorInteractor<AR, TM>
 where
-    AR: AuthorRepository,
+    TM: TransactionManager,
+    AR: AuthorRepository<Transaction = TM::Transaction>,
 {
     async fn delete(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let author_id = AuthorId::try_from(author_id)?;
-        self.author_repository.delete(&user_id, &author_id).await?;
+
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::DeleteAuthor)
+            .await?;
+        self.author_repository
+            .delete(&mut tx, &user_id, &author_id)
+            .await?;
+        self.transaction_manager.commit(tx).await?;
+
         Ok(())
     }
 }
@@ -104,7 +146,12 @@ mod tests {
     use mockall::predicate::always;
 
     use crate::{
-        domain::{error::DomainError, repository::author_repository::MockAuthorRepository},
+        domain::{
+            error::DomainError,
+            repository::{
+                author_repository::MockAuthorRepository, transaction::MockTransactionManager,
+            },
+        },
         use_case::{
             dto::author::{CreateAuthorDto, UpdateAuthorDto},
             error::UseCaseError,
@@ -115,16 +162,25 @@ mod tests {
         },
     };
 
+    // A MockTransactionManager whose Transaction associated type is () and
+    // whose begin/commit succeed, for interactors that reach the repository.
+    fn make_transaction_manager() -> MockTransactionManager {
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit().returning(|_| Ok(()));
+        tm
+    }
+
     #[tokio::test]
     async fn create_author_success() {
         // Given
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_create()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = CreateAuthorInteractor::new(author_repository);
+        let interactor = CreateAuthorInteractor::new(author_repository, make_transaction_manager());
         let author_data = CreateAuthorDto::new("Test Author".to_string());
 
         // When
@@ -140,7 +196,8 @@ mod tests {
     async fn create_author_fails_with_empty_name() {
         // Given
         let author_repository = MockAuthorRepository::new();
-        let interactor = CreateAuthorInteractor::new(author_repository);
+        let interactor =
+            CreateAuthorInteractor::new(author_repository, MockTransactionManager::new());
         let author_data = CreateAuthorDto::new("".to_string());
 
         // When
@@ -154,7 +211,8 @@ mod tests {
     async fn create_author_fails_with_invalid_user_id() {
         // Given
         let author_repository = MockAuthorRepository::new();
-        let interactor = CreateAuthorInteractor::new(author_repository);
+        let interactor =
+            CreateAuthorInteractor::new(author_repository, MockTransactionManager::new());
         let author_data = CreateAuthorDto::new("Test Author".to_string());
 
         // When
@@ -172,10 +230,10 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_update()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor = UpdateAuthorInteractor::new(author_repository, make_transaction_manager());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
 
         // When
@@ -194,8 +252,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_update()
-            .with(always(), always())
-            .returning(|_, _| {
+            .with(always(), always(), always())
+            .returning(|_, _, _| {
                 Err(DomainError::NotFound {
                     entity_type: "author",
                     entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
@@ -203,7 +261,7 @@ mod tests {
                 })
             });
 
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor = UpdateAuthorInteractor::new(author_repository, make_transaction_manager());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
 
         // When
@@ -217,7 +275,8 @@ mod tests {
     async fn update_author_fails_with_invalid_author_id() {
         // Given
         let author_repository = MockAuthorRepository::new();
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor =
+            UpdateAuthorInteractor::new(author_repository, MockTransactionManager::new());
         let author_data = UpdateAuthorDto::new("not-a-uuid".to_string(), "New Name".to_string());
 
         // When
@@ -232,7 +291,8 @@ mod tests {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
         let author_repository = MockAuthorRepository::new();
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor =
+            UpdateAuthorInteractor::new(author_repository, MockTransactionManager::new());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "".to_string());
 
         // When
@@ -247,7 +307,8 @@ mod tests {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
         let author_repository = MockAuthorRepository::new();
-        let interactor = UpdateAuthorInteractor::new(author_repository);
+        let interactor =
+            UpdateAuthorInteractor::new(author_repository, MockTransactionManager::new());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
 
         // When
@@ -265,10 +326,10 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor = DeleteAuthorInteractor::new(author_repository, make_transaction_manager());
 
         // When
         let result = interactor.delete("user1", author_id_str).await;
@@ -285,8 +346,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| {
+            .with(always(), always(), always())
+            .returning(|_, _, _| {
                 Err(DomainError::NotFound {
                     entity_type: "author",
                     entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
@@ -294,7 +355,7 @@ mod tests {
                 })
             });
 
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor = DeleteAuthorInteractor::new(author_repository, make_transaction_manager());
 
         // When
         let result = interactor.delete("user1", author_id_str).await;
@@ -311,15 +372,15 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| {
+            .with(always(), always(), always())
+            .returning(|_, _, _| {
                 Err(DomainError::HasAssociatedBooks {
                     author_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                     user_id: "user1".to_string(),
                 })
             });
 
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor = DeleteAuthorInteractor::new(author_repository, make_transaction_manager());
 
         // When
         let result = interactor.delete("user1", author_id_str).await;
@@ -332,7 +393,8 @@ mod tests {
     async fn delete_author_fails_with_invalid_author_id() {
         // Given
         let author_repository = MockAuthorRepository::new();
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor =
+            DeleteAuthorInteractor::new(author_repository, MockTransactionManager::new());
 
         // When
         let result = interactor.delete("user1", "not-a-uuid").await;
@@ -346,7 +408,8 @@ mod tests {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
         let author_repository = MockAuthorRepository::new();
-        let interactor = DeleteAuthorInteractor::new(author_repository);
+        let interactor =
+            DeleteAuthorInteractor::new(author_repository, MockTransactionManager::new());
 
         // When
         let result = interactor.delete("", author_id_str).await;

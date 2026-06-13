@@ -5,16 +5,23 @@ use mockall::automock;
 
 use crate::domain::{
     entity::{
-        author::{Author, AuthorId},
+        author::{Author, AuthorId, AuthorName},
         user::UserId,
     },
     error::DomainError,
 };
 
-#[automock]
+#[automock(type Transaction = ();)]
 #[async_trait]
 pub trait AuthorRepository: Send + Sync + 'static {
-    async fn create(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError>;
+    type Transaction: Send;
+
+    async fn create(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        author: &Author,
+    ) -> Result<(), DomainError>;
     async fn find_by_id(
         &self,
         user_id: &UserId,
@@ -26,12 +33,31 @@ pub trait AuthorRepository: Send + Sync + 'static {
         user_id: &UserId,
         author_ids: &[AuthorId],
     ) -> Result<HashMap<AuthorId, Author>, DomainError>;
-    async fn update(&self, user_id: &UserId, author: &Author) -> Result<(), DomainError>;
-    async fn delete(&self, user_id: &UserId, author_id: &AuthorId) -> Result<(), DomainError>;
+    // Resolves an author by name within the transaction, creating it if absent.
+    // A newly inserted author records one author_event; an existing one records none.
+    async fn find_or_create_by_name(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        name: &AuthorName,
+    ) -> Result<AuthorId, DomainError>;
+    async fn update(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        author: &Author,
+    ) -> Result<(), DomainError>;
+    async fn delete(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        author_id: &AuthorId,
+    ) -> Result<(), DomainError>;
     // Upserts or deletes the entity and records a restore event in one transaction.
     // author=Some means upsert; author=None means delete (only author_id is used).
     async fn restore(
         &self,
+        tx: &mut Self::Transaction,
         user_id: &UserId,
         source_event_id: i64,
         author: Option<Author>,

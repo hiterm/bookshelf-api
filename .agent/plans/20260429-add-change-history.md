@@ -1700,6 +1700,32 @@ test coverage gaps identified during review.
   snapshot rows, plus the empty-DB edge case.
   Date/Author: 2026-04-30 / hiterm
 
+## Decision Log (Phase 5) — Use-case-controlled transactions
+
+- Decision: Move the transaction boundary out of the `Pg*` repositories and
+  into the use-case layer via a new `TransactionManager` domain trait. Each
+  mutating repository method now accepts `tx: &mut Self::Transaction` as its
+  first argument; `PgTransactionManager::begin` generates the `event_set` UUID
+  and inserts the single `event_set` row (the one place those rows are created
+  now), and repositories read `tx.event_set_id()` instead of generating their
+  own. The temporary `ImportBooksRepository` / `PgImportBooksRepository` were
+  deleted; the bulk import is composed from `BookRepository` +
+  `AuthorRepository` + `TransactionManager` inside one transaction, preserving
+  the single shared `import_books` `event_set`.
+  Rationale: The Phase 2 decision deliberately kept event-set creation inside
+  the repositories so trait signatures stayed unchanged, at the cost of a
+  documented temporary `ImportBooksRepository` workaround (repositories could
+  not share a transaction across aggregates). The user chose to remove that
+  workaround by giving the use-case layer explicit transaction control for ALL
+  mutating methods. The only event concept that now crosses into the use-case
+  layer is the choice of `EventSetOperation` passed to `begin`; per-event
+  mechanics remain infrastructure-only. This supersedes the Phase 2 decisions
+  "The changeset UUID is generated inside the infrastructure repository" and
+  "Do NOT add `change_set_id` to `BookRepository`/`AuthorRepository`" for the
+  transaction boundary, while keeping per-event recording in infrastructure.
+  See `.agent/plans/20260612-remove-import-books-repository.md`.
+  Date/Author: 2026-06-12 / Claude
+
 ---
 
 ## Concrete Steps
