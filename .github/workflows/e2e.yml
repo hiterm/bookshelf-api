@@ -32,14 +32,6 @@ jobs:
         run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - name: Create DB
         run: sudo -u postgres createdb --owner=bookshelf bookshelf
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --locked --no-default-features --features postgres,rustls
-      - name: Prepare database
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: |
-          sqlx database create
-          sqlx migrate run
       - name: Start JWKS server
         run: |
           cargo run --locked -p bookshelf-e2e --bin bookshelf-jwks-server > jwks_server.log 2>&1 &
@@ -127,12 +119,6 @@ jobs:
         run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - name: Create DB
         run: sudo -u postgres createdb --owner=bookshelf bookshelf
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --locked --no-default-features --features postgres,rustls
-      - name: Prepare database
-        run: |
-          sqlx database create
-          sqlx migrate run
       - name: Start JWKS server
         run: |
           node bookshelf-src/e2e-integration/jwks-server.mjs > /tmp/jwks.log 2>&1 &
