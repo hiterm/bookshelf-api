@@ -55,9 +55,9 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
 - [x] M5: Migrate `AuthorRepository` (incl. `find_or_create_by_name`) + author
   interactors + `RestoreAuthorInteractor` + tests + DI.
   - [x] plan updated
-- [ ] M6: Rewrite `ImportBooksInteractor`; move `ImportBookInput` in; rewrite
+- [x] M6: Rewrite `ImportBooksInteractor`; move `ImportBookInput` in; rewrite
   unit tests; update DI `MI`; add re-homed DB integration test.
-  - [ ] plan updated
+  - [x] plan updated
 - [ ] M7: Delete `import_books_repository.rs` (domain + infra) + module decls.
   - [ ] plan updated
 - [ ] M8: Docs — amend CLAUDE.md/AGENTS.md, append Decision Log, finalize plan.
@@ -117,6 +117,16 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   begin/commit helper in the same commit to keep the gated build green.
   Evidence: `cargo build` reported `E0061`/`E0308` errors at those call sites
   until the helpers were threaded through.
+
+- Deviation: The re-homed `import_rolls_back_on_failure` integration test no
+  longer forces a duplicate-book_id collision the way the old
+  PgImportBooksRepository test did, because the interactor now generates fresh
+  book UUIDs internally so a caller cannot supply a colliding id. The test was
+  re-expressed to assert the transactional invariant that is still reachable:
+  a domain validation failure (an empty title) occurs BEFORE `begin`, so no
+  book/author/event_set rows are persisted. True mid-transaction DB rollback
+  remains covered by the repository-level DB tests (e.g. the book repository's
+  failed-update test). Recorded here per the plan's design-blocker guidance.
 
 ## Decision Log
 
