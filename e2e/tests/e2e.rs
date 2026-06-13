@@ -310,6 +310,45 @@ async fn ensure_user_registered(token: &str) -> Result<()> {
     Ok(())
 }
 
+async fn create_test_author(name: &str, token: &str) -> Result<String> {
+    let query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        name
+    );
+    let (_, response) = graphql_request(&query, Some(token)).await?;
+    let id = response["data"]["createAuthor"]["id"]
+        .as_str()
+        .context("createAuthor id should be a string")?
+        .to_owned();
+    Ok(id)
+}
+
+async fn create_test_book(title: &str, author_id: &str, token: &str) -> Result<String> {
+    let query = format!(
+        r#"
+        mutation {{
+            createBook(bookData: {{
+                title: "{}"
+                authorIds: ["{}"]
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ id }}
+        }}
+        "#,
+        title, author_id
+    );
+    let (_, response) = graphql_request(&query, Some(token)).await?;
+    let id = response["data"]["createBook"]["id"]
+        .as_str()
+        .context("createBook id should be a string")?
+        .to_owned();
+    Ok(id)
+}
+
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_without_auth_returns_error() -> Result<()> {
@@ -944,45 +983,6 @@ async fn e2e_graphql_create_book_without_auth() -> Result<()> {
 // ============================================
 // Change History E2E Tests
 // ============================================
-
-async fn create_test_author(name: &str, token: &str) -> Result<String> {
-    let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
-        name
-    );
-    let (_, response) = graphql_request(&query, Some(token)).await?;
-    let id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("createAuthor id should be a string")?
-        .to_owned();
-    Ok(id)
-}
-
-async fn create_test_book(title: &str, author_id: &str, token: &str) -> Result<String> {
-    let query = format!(
-        r#"
-        mutation {{
-            createBook(bookData: {{
-                title: "{}"
-                authorIds: ["{}"]
-                isbn: ""
-                read: false
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ id }}
-        }}
-        "#,
-        title, author_id
-    );
-    let (_, response) = graphql_request(&query, Some(token)).await?;
-    let id = response["data"]["createBook"]["id"]
-        .as_str()
-        .context("createBook id should be a string")?
-        .to_owned();
-    Ok(id)
-}
 
 #[tokio::test]
 #[serial]
