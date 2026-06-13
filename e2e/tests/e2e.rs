@@ -1804,47 +1804,18 @@ async fn e2e_import_books() -> Result<()> {
     );
     assert_ne!(book_one_id, book_two_id, "book ids should be distinct");
 
-    // Query bookEvents for each book and verify shared eventSetId
-    let history_query_one = format!(
-        r#"{{ bookEvents(bookId: "{}") {{ eventSetId operation }} }}"#,
-        book_one_id
-    );
-    let (_, response) = graphql_request(&history_query_one, Some(&token)).await?;
-    let entries_one = response["data"]["bookEvents"]
+    // Locate the single event set produced by the import via eventSets, then
+    // inspect it directly. This replaces the old workaround of comparing the
+    // eventSetId across separate per-book bookEvents queries.
+    let (_, response) = graphql_request(r#"{ eventSets { id operation } }"#, Some(&token)).await?;
+    let event_sets = response["data"]["eventSets"]
         .as_array()
-        .context("bookEvents should be an array")?;
-    assert!(
-        entries_one
-            .iter()
-            .any(|e| e["operation"].as_str() == Some("create")),
-        "book one should have a create event"
-    );
-    let event_set_id_one = entries_one[0]["eventSetId"]
-        .as_str()
-        .context("eventSetId should be string")?;
-
-    let history_query_two = format!(
-        r#"{{ bookEvents(bookId: "{}") {{ eventSetId operation }} }}"#,
-        book_two_id
-    );
-    let (_, response) = graphql_request(&history_query_two, Some(&token)).await?;
-    let entries_two = response["data"]["bookEvents"]
-        .as_array()
-        .context("bookEvents should be an array")?;
-    assert!(
-        entries_two
-            .iter()
-            .any(|e| e["operation"].as_str() == Some("create")),
-        "book two should have a create event"
-    );
-    let event_set_id_two = entries_two[0]["eventSetId"]
-        .as_str()
-        .context("eventSetId should be string")?;
-
-    assert_eq!(
-        event_set_id_one, event_set_id_two,
-        "both books should share the same eventSetId"
-    );
+        .context("eventSets should be an array")?;
+    let import_set_id = event_sets
+        .iter()
+        .find(|s| s["operation"].as_str() == Some("import_books"))
+        .and_then(|s| s["id"].as_str())
+        .context("there should be an import_books event set")?;
 
     // The shared event set groups both book creates and the new author create.
     let event_set_query = format!(
@@ -1853,7 +1824,7 @@ async fn e2e_import_books() -> Result<()> {
             bookEvents {{ bookId operation }}
             authorEvents {{ name operation }}
         }} }}"#,
-        event_set_id_one
+        import_set_id
     );
     let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
     let event_set = &response["data"]["eventSet"];
@@ -1940,7 +1911,7 @@ async fn e2e_import_books() -> Result<()> {
         .and_then(|a| a["id"].as_str())
         .context("new author should have an id")?;
     let author_events_query = format!(
-        r#"{{ authorEvents(authorId: "{}") {{ eventId eventSetId operation name }} }}"#,
+        r#"{{ authorEvents(authorId: "{}") {{ operation name }} }}"#,
         new_author_id
     );
     let (_, response) = graphql_request(&author_events_query, Some(&token)).await?;
@@ -1961,17 +1932,6 @@ async fn e2e_import_books() -> Result<()> {
         author_events[0]["name"].as_str(),
         Some("New Author"),
         "new author event name should match"
-    );
-    assert!(
-        !author_events[0]["eventSetId"].is_null(),
-        "new author event should have eventSetId"
-    );
-    let author_event_set_id = author_events[0]["eventSetId"]
-        .as_str()
-        .context("author eventSetId should be string")?;
-    assert_eq!(
-        author_event_set_id, event_set_id_one,
-        "author event should share the same eventSetId as the books"
     );
 
     // Cleanup
