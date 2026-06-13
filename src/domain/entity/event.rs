@@ -30,6 +30,7 @@ pub enum EventSetOperation {
     DeleteAuthor,
     RestoreAuthor,
     ImportBooks,
+    SnapshotAll,
 }
 
 impl EventSetOperation {
@@ -44,6 +45,7 @@ impl EventSetOperation {
             EventSetOperation::DeleteAuthor => "delete_author",
             EventSetOperation::RestoreAuthor => "restore_author",
             EventSetOperation::ImportBooks => "import_books",
+            EventSetOperation::SnapshotAll => "snapshot_all",
         }
     }
 }
@@ -62,6 +64,7 @@ impl TryFrom<&str> for EventSetOperation {
             "delete_author" => Ok(EventSetOperation::DeleteAuthor),
             "restore_author" => Ok(EventSetOperation::RestoreAuthor),
             "import_books" => Ok(EventSetOperation::ImportBooks),
+            "snapshot_all" => Ok(EventSetOperation::SnapshotAll),
             _ => Err(format!("Unknown event set operation: {}", value)),
         }
     }
@@ -130,6 +133,7 @@ mod tests {
         assert_eq!(EventSetOperation::DeleteAuthor.as_str(), "delete_author");
         assert_eq!(EventSetOperation::RestoreAuthor.as_str(), "restore_author");
         assert_eq!(EventSetOperation::ImportBooks.as_str(), "import_books");
+        assert_eq!(EventSetOperation::SnapshotAll.as_str(), "snapshot_all");
     }
 
     #[test]
@@ -144,6 +148,7 @@ mod tests {
             EventSetOperation::DeleteAuthor,
             EventSetOperation::RestoreAuthor,
             EventSetOperation::ImportBooks,
+            EventSetOperation::SnapshotAll,
         ];
         for variant in &variants {
             let s = variant.as_str();

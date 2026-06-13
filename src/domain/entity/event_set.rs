@@ -1,7 +1,7 @@
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::domain::entity::user::UserId;
+use crate::domain::entity::{event::EventSetOperation, user::UserId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EventSetId(Uuid);
@@ -47,6 +47,6 @@ impl From<Uuid> for EventSetId {
 pub struct EventSet {
     pub id: EventSetId,
     pub user_id: UserId,
-    pub operation: String,
+    pub operation: EventSetOperation,
     pub created_at: OffsetDateTime,
 }

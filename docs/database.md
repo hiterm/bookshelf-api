@@ -24,6 +24,7 @@ Lookup table for valid `event_set.operation` values.
 | `update_author` | An author was updated                            |
 | `delete_author` | An author was deleted                            |
 | `restore_author`| An author restore was performed                  |
+| `import_books`  | A bulk import of books was performed             |
 | `snapshot_all`  | A point-in-time snapshot of all entities (system)|
 
 ### `event_set`

@@ -203,7 +203,7 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                event::{AuthorEvent, BookEvent, EventOperation},
+                event::{AuthorEvent, BookEvent, EventOperation, EventSetOperation},
                 event_set::{EventSet, EventSetId},
                 user::{User, UserId},
             },
@@ -730,7 +730,7 @@ mod tests {
         EventSet {
             id: EventSetId::from(Uuid::new_v4()),
             user_id: UserId::new("user1".to_string()).unwrap(),
-            operation: "create_book".to_string(),
+            operation: EventSetOperation::CreateBook,
             created_at: OffsetDateTime::now_utc(),
         }
     }
