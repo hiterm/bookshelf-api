@@ -58,8 +58,8 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
 - [x] M6: Rewrite `ImportBooksInteractor`; move `ImportBookInput` in; rewrite
   unit tests; update DI `MI`; add re-homed DB integration test.
   - [x] plan updated
-- [ ] M7: Delete `import_books_repository.rs` (domain + infra) + module decls.
-  - [ ] plan updated
+- [x] M7: Delete `import_books_repository.rs` (domain + infra) + module decls.
+  - [x] plan updated
 - [ ] M8: Docs — amend CLAUDE.md/AGENTS.md, append Decision Log, finalize plan.
   - [ ] plan updated
 
