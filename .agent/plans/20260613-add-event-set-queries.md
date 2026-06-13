@@ -97,7 +97,7 @@ All commands run from `/home/user/bookshelf-api`.
 Pre-commit checks (run before every commit):
 
     cargo fmt --check
-    git add -A && cargo clippy --fix --allow-staged --all-targets -- -D warnings
+    cargo clippy --fix --all-targets -- -D warnings
     cargo test
 
 Milestone 1 commit message: "Add EventSetRepository domain trait and find_by_event_set methods"

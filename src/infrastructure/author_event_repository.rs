@@ -205,4 +205,38 @@ mod tests {
 
         Ok(())
     }
+
+    #[sqlx::test]
+    async fn find_by_event_set_is_user_scoped_returns_empty_for_other_user(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repo = PgUserRepository::new(pool.clone());
+        let author_repo = PgAuthorRepository::new(pool.clone());
+        let event_repo = PgAuthorEventRepository::new(pool.clone());
+
+        let user1_id = prepare_user(&user_repo, "user1").await?;
+        let user2_id = prepare_user(&user_repo, "user2").await?;
+        let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
+        create_author(
+            &pool,
+            &author_repo,
+            &user1_id,
+            &Author::new(author_id, AuthorName::new("author1".to_owned())?)?,
+        )
+        .await?;
+
+        let (event_set_id,): (Uuid,) =
+            sqlx::query_as("SELECT event_set_id FROM author_event WHERE user_id = $1")
+                .bind(user1_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+
+        // user2 must not see user1's event set events.
+        let entries = event_repo
+            .find_by_event_set(&user2_id, &EventSetId::from(event_set_id))
+            .await?;
+        assert!(entries.is_empty());
+
+        Ok(())
+    }
 }

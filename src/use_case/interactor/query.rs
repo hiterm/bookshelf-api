@@ -192,7 +192,7 @@ where
 mod tests {
     use std::collections::HashMap;
 
-    use mockall::predicate::always;
+    use mockall::predicate::{always, eq};
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -940,27 +940,29 @@ mod tests {
     #[tokio::test]
     async fn find_event_set_returns_detail_when_found() {
         let event_set = make_event_set();
+        let event_set_id = event_set.id.clone();
         let book_uuid = Uuid::new_v4();
         let author_uuid = Uuid::new_v4();
         let book_event = make_book_event(book_uuid);
         let author_event = make_author_event(author_uuid);
 
+        // Each repository must receive the parsed event_set_id, not just any id.
         let mut event_set_repository = MockEventSetRepository::new();
         event_set_repository
             .expect_find_by_id()
-            .with(always(), always())
+            .with(always(), eq(event_set_id.clone()))
             .returning(|_, _| Ok(Some(make_event_set())));
 
         let mut book_event_repository = MockBookEventRepository::new();
         book_event_repository
             .expect_find_by_event_set()
-            .with(always(), always())
+            .with(always(), eq(event_set_id.clone()))
             .returning(move |_, _| Ok(vec![book_event.clone()]));
 
         let mut author_event_repository = MockAuthorEventRepository::new();
         author_event_repository
             .expect_find_by_event_set()
-            .with(always(), always())
+            .with(always(), eq(event_set_id.clone()))
             .returning(move |_, _| Ok(vec![author_event.clone()]));
 
         let query_interactor = QueryInteractor {
