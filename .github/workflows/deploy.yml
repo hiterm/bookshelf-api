@@ -115,16 +115,6 @@ jobs:
       - name: Create DB
         run: sudo -u postgres createdb --owner=bookshelf bookshelf
 
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --locked --no-default-features --features postgres,rustls
-
-      - name: Run migrations
-        env:
-          DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
-        run: |
-          sqlx database create
-          sqlx migrate run
-
       - name: Start JWKS server
         run: |
           node bookshelf-src/e2e-integration/jwks-server.mjs > /tmp/jwks.log 2>&1 &
