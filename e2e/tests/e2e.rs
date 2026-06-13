@@ -662,15 +662,29 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_authors() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
+    let (_user_id, token) = create_test_user().await?;
 
+    // The authors list is user-scoped, so a fresh user starts empty.
     let query = r#"{ authors { id name } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
+    let authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    assert!(authors.is_empty(), "a fresh user should have no authors");
 
-    let data = response.get("data").context("data field must exist")?;
-    let authors = data.get("authors").context("authors field must exist")?;
-    assert!(authors.is_array(), "authors should be an array");
+    // After creating one author, it should appear in the list.
+    let author_name = format!("Listed Author {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&author_name, &token).await?;
+
+    let (_, response) = graphql_request(query, Some(&token)).await?;
+    let authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    assert_eq!(authors.len(), 1, "should list exactly the created author");
+    assert_eq!(authors[0]["id"].as_str(), Some(author_id.as_str()));
+    assert_eq!(authors[0]["name"].as_str(), Some(author_name.as_str()));
+
+    delete_test_author(&author_id, &token).await?;
     Ok(())
 }
 
