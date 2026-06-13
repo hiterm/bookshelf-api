@@ -34,11 +34,11 @@ pub type MI = MutationInteractor<
     CreateBookInteractor<PgBookRepository, PgTransactionManager>,
     UpdateBookInteractor<PgBookRepository, PgTransactionManager>,
     DeleteBookInteractor<PgBookRepository, PgTransactionManager>,
-    CreateAuthorInteractor<PgAuthorRepository>,
-    UpdateAuthorInteractor<PgAuthorRepository>,
-    DeleteAuthorInteractor<PgAuthorRepository>,
+    CreateAuthorInteractor<PgAuthorRepository, PgTransactionManager>,
+    UpdateAuthorInteractor<PgAuthorRepository, PgTransactionManager>,
+    DeleteAuthorInteractor<PgAuthorRepository, PgTransactionManager>,
     RestoreBookInteractor<PgBookRepository, PgBookEventRepository, PgTransactionManager>,
-    RestoreAuthorInteractor<PgAuthorRepository, PgAuthorEventRepository>,
+    RestoreAuthorInteractor<PgAuthorRepository, PgAuthorEventRepository, PgTransactionManager>,
     ImportBooksInteractor<PgImportBooksRepository>,
 >;
 
@@ -67,13 +67,22 @@ pub fn dependency_injection(
         UpdateBookInteractor::new(book_repository.clone(), transaction_manager.clone());
     let delete_book_use_case =
         DeleteBookInteractor::new(book_repository.clone(), transaction_manager.clone());
-    let create_author_use_case = CreateAuthorInteractor::new(author_repository.clone());
-    let update_author_use_case = UpdateAuthorInteractor::new(author_repository.clone());
-    let delete_author_use_case = DeleteAuthorInteractor::new(author_repository.clone());
-    let restore_book_use_case =
-        RestoreBookInteractor::new(book_repository, book_event_repository, transaction_manager);
-    let restore_author_use_case =
-        RestoreAuthorInteractor::new(author_repository, author_event_repository);
+    let create_author_use_case =
+        CreateAuthorInteractor::new(author_repository.clone(), transaction_manager.clone());
+    let update_author_use_case =
+        UpdateAuthorInteractor::new(author_repository.clone(), transaction_manager.clone());
+    let delete_author_use_case =
+        DeleteAuthorInteractor::new(author_repository.clone(), transaction_manager.clone());
+    let restore_book_use_case = RestoreBookInteractor::new(
+        book_repository,
+        book_event_repository,
+        transaction_manager.clone(),
+    );
+    let restore_author_use_case = RestoreAuthorInteractor::new(
+        author_repository,
+        author_event_repository,
+        transaction_manager,
+    );
     let import_books_use_case = ImportBooksInteractor::new(import_books_repository);
 
     let mutation_use_case = MutationInteractor::new(

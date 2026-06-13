@@ -186,24 +186,31 @@ where
     }
 }
 
-pub struct RestoreAuthorInteractor<AR, AER> {
+pub struct RestoreAuthorInteractor<AR, AER, TM> {
     author_repository: AR,
     author_event_repository: AER,
+    transaction_manager: TM,
 }
 
-impl<AR, AER> RestoreAuthorInteractor<AR, AER> {
-    pub fn new(author_repository: AR, author_event_repository: AER) -> Self {
+impl<AR, AER, TM> RestoreAuthorInteractor<AR, AER, TM> {
+    pub fn new(
+        author_repository: AR,
+        author_event_repository: AER,
+        transaction_manager: TM,
+    ) -> Self {
         Self {
             author_repository,
             author_event_repository,
+            transaction_manager,
         }
     }
 }
 
 #[async_trait]
-impl<AR, AER> RestoreAuthorUseCase for RestoreAuthorInteractor<AR, AER>
+impl<AR, AER, TM> RestoreAuthorUseCase for RestoreAuthorInteractor<AR, AER, TM>
 where
-    AR: AuthorRepository,
+    TM: TransactionManager,
+    AR: AuthorRepository<Transaction = TM::Transaction>,
     AER: AuthorEventRepository,
 {
     async fn restore(
@@ -234,15 +241,25 @@ where
                 let author = Author::new(event.author_id, author_name)?;
 
                 let dto = AuthorDto::from(author.clone());
-                self.author_repository
-                    .restore(&user_id, event_id, Some(author))
+                let mut tx = self
+                    .transaction_manager
+                    .begin(&user_id, EventSetOperation::RestoreAuthor)
                     .await?;
+                self.author_repository
+                    .restore(&mut tx, &user_id, event_id, Some(author))
+                    .await?;
+                self.transaction_manager.commit(tx).await?;
                 Ok(Some(dto))
             }
             EventOperation::Delete => {
-                self.author_repository
-                    .restore(&user_id, event_id, None)
+                let mut tx = self
+                    .transaction_manager
+                    .begin(&user_id, EventSetOperation::RestoreAuthor)
                     .await?;
+                self.author_repository
+                    .restore(&mut tx, &user_id, event_id, None)
+                    .await?;
+                self.transaction_manager.commit(tx).await?;
                 Ok(None)
             }
         }
@@ -519,7 +536,8 @@ mod tests {
             .returning(|_, _| Ok(None));
 
         let author_repo = MockAuthorRepository::new();
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let interactor =
+            RestoreAuthorInteractor::new(author_repo, history_repo, MockTransactionManager::new());
         let result = interactor.restore("user1", 999).await;
 
         assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
@@ -539,10 +557,11 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), eq(2i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(2i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let interactor =
+            RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
         let result = interactor.restore("user1", 2).await;
 
         assert!(result.is_ok());
@@ -563,10 +582,11 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), eq(20i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(20i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let interactor =
+            RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
         let result = interactor.restore("user1", 20).await;
 
         assert!(result.is_ok());
@@ -588,10 +608,11 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), eq(2i64), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always(), eq(2i64), always())
+            .returning(|_, _, _, _| Ok(()));
 
-        let interactor = RestoreAuthorInteractor::new(author_repo, history_repo);
+        let interactor =
+            RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
         let result = interactor.restore("user1", 2).await;
 
         assert!(result.is_ok());

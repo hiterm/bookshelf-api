@@ -242,11 +242,12 @@ mod tests {
             error::DomainError,
             repository::{
                 author_repository::AuthorRepository, import_books_repository::ImportBookInput,
-                user_repository::UserRepository,
+                transaction::TransactionManager, user_repository::UserRepository,
             },
         },
         infrastructure::{
-            author_repository::PgAuthorRepository, user_repository::PgUserRepository,
+            author_repository::PgAuthorRepository, transaction::PgTransactionManager,
+            user_repository::PgUserRepository,
         },
     };
 
@@ -266,7 +267,12 @@ mod tests {
             existing_author_id,
             AuthorName::new("Existing Author".to_string())?,
         )?;
-        author_repo.create(&user_id, &existing_author).await?;
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::CreateAuthor).await?;
+        author_repo
+            .create(&mut tx, &user_id, &existing_author)
+            .await?;
+        tm.commit(tx).await?;
 
         // Import two books: one with existing author, one with new author
         let inputs = vec![

@@ -52,9 +52,9 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
 - [x] M4: Migrate `BookRepository` + `PgBookRepository` + book interactors +
   `RestoreBookInteractor` + tests + DI.
   - [x] plan updated
-- [ ] M5: Migrate `AuthorRepository` (incl. `find_or_create_by_name`) + author
+- [x] M5: Migrate `AuthorRepository` (incl. `find_or_create_by_name`) + author
   interactors + `RestoreAuthorInteractor` + tests + DI.
-  - [ ] plan updated
+  - [x] plan updated
 - [ ] M6: Rewrite `ImportBooksInteractor`; move `ImportBookInput` in; rewrite
   unit tests; update DI `MI`; add re-homed DB integration test.
   - [ ] plan updated
@@ -102,6 +102,21 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   `test-with-database` build stays green.
   Evidence: `cargo check --features test-with-database --all-targets` reported
   8 `E0061` errors across those two files before the helpers were added.
+
+- Observation: `find_or_create_by_name` needs a row struct distinct from
+  `AuthorSnapshotRow` because it selects `id` (the DB-generated id after an
+  ON CONFLICT insert) rather than `name`. Added `AuthorIdSnapshotRow`
+  (id, yomi, created_at, updated_at) to mirror the old PgImportBooksRepository
+  SELECT exactly.
+  Evidence: the original import repo selected `id, yomi, created_at, updated_at`.
+
+- Observation: Migrating `AuthorRepository` in M5 likewise broke the
+  `book_repository.rs`, `book_event_repository.rs`, and (soon-deleted)
+  `import_books_repository.rs` DB test modules that create authors as fixtures.
+  Their `prepare_authors`/inline author creates were routed through a local
+  begin/commit helper in the same commit to keep the gated build green.
+  Evidence: `cargo build` reported `E0061`/`E0308` errors at those call sites
+  until the helpers were threaded through.
 
 ## Decision Log
 

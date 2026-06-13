@@ -655,6 +655,18 @@ mod tests {
         tm.commit(tx).await
     }
 
+    async fn create_author(
+        pool: &PgPool,
+        author_repository: &PgAuthorRepository,
+        user_id: &UserId,
+        author: &Author,
+    ) -> Result<(), DomainError> {
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
+        author_repository.create(&mut tx, user_id, author).await?;
+        tm.commit(tx).await
+    }
+
     #[sqlx::test]
     async fn test_create_and_find_by_id(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
@@ -662,7 +674,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
 
         let all_books = book_repository.find_all(&user_id).await?;
         assert_eq!(all_books.len(), 0);
@@ -684,8 +696,8 @@ mod tests {
 
         let user_id = prepare_user(&user_repository, "user1").await?;
 
-        let author_ids1 = prepare_authors1(&user_id, &author_repository).await?;
-        let author_ids2 = prepare_authors2(&user_id, &author_repository).await?;
+        let author_ids1 = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        let author_ids2 = prepare_authors2(&pool, &user_id, &author_repository).await?;
 
         let all_books = book_repository.find_all(&user_id).await?;
         assert_eq!(all_books.len(), 0);
@@ -716,7 +728,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let mut author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let mut author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let mut book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
@@ -730,7 +742,7 @@ mod tests {
             another_author_id.clone(),
             AuthorName::new("another_author1".to_owned())?,
         )?;
-        author_repository.create(&user_id, &another_author).await?;
+        create_author(&pool, &author_repository, &user_id, &another_author).await?;
         author_ids.push(another_author_id);
         book.set_author_ids(author_ids);
         update_book(&pool, &book_repository, &user_id, &book).await?;
@@ -748,7 +760,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
@@ -774,11 +786,11 @@ mod tests {
         // This exercises the book_author.user_id filter inside the
         // authors_of_book_and_user CTE in find_by_id: if that CTE ignored user_id,
         // one user's find_by_id would return the other user's author_ids.
-        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let user1_author_ids = prepare_authors1(&pool, &user1_id, &author_repository).await?;
         let book1 = book_entity1(&user1_author_ids)?;
         create_book(&pool, &book_repository, &user1_id, &book1).await?;
 
-        let user2_author_ids = prepare_authors2(&user2_id, &author_repository).await?;
+        let user2_author_ids = prepare_authors2(&pool, &user2_id, &author_repository).await?;
         let book2 = book_entity1(&user2_author_ids)?;
         create_book(&pool, &book_repository, &user2_id, &book2).await?;
 
@@ -828,11 +840,11 @@ mod tests {
         // This exercises the book_author.user_id filter inside the
         // authors_of_book_and_user CTE: if that CTE ignored user_id, one user's
         // find_all would return the other user's author_ids.
-        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let user1_author_ids = prepare_authors1(&pool, &user1_id, &author_repository).await?;
         let book1 = book_entity1(&user1_author_ids)?;
         create_book(&pool, &book_repository, &user1_id, &book1).await?;
 
-        let user2_author_ids = prepare_authors2(&user2_id, &author_repository).await?;
+        let user2_author_ids = prepare_authors2(&pool, &user2_id, &author_repository).await?;
         let book2 = book_entity1(&user2_author_ids)?;
         create_book(&pool, &book_repository, &user2_id, &book2).await?;
 
@@ -879,13 +891,13 @@ mod tests {
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
         // user1 owns book X with authors [A, B]
-        let user1_author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let user1_author_ids = prepare_authors1(&pool, &user1_id, &author_repository).await?;
         let book = book_entity1(&user1_author_ids)?;
         create_book(&pool, &book_repository, &user1_id, &book).await?;
 
         // user2 also owns book X (same UUID; composite PK (id, user_id) allows this)
         // with their own author rows [A, B]
-        let user2_author_ids = prepare_authors1(&user2_id, &author_repository).await?;
+        let user2_author_ids = prepare_authors1(&pool, &user2_id, &author_repository).await?;
         let book_copy = book_entity1(&user2_author_ids)?;
         create_book(&pool, &book_repository, &user2_id, &book_copy).await?;
 
@@ -924,7 +936,7 @@ mod tests {
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
         // Only user1 owns book X; user2 does not.
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user1_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user1_id, &book).await?;
 
@@ -951,7 +963,7 @@ mod tests {
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user1_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user1_id, &book).await?;
 
@@ -983,6 +995,7 @@ mod tests {
     }
 
     async fn prepare_authors1(
+        pool: &PgPool,
         user_id: &UserId,
         repository: &PgAuthorRepository,
     ) -> Result<Vec<AuthorId>, DomainError> {
@@ -991,20 +1004,21 @@ mod tests {
         let author_ids = vec![author_id1.clone(), author_id2.clone()];
         let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
         let author2 = Author::new(author_id2, AuthorName::new("author2".to_owned())?)?;
-        repository.create(user_id, &author1).await?;
-        repository.create(user_id, &author2).await?;
+        create_author(pool, repository, user_id, &author1).await?;
+        create_author(pool, repository, user_id, &author2).await?;
 
         Ok(author_ids)
     }
 
     async fn prepare_authors2(
+        pool: &PgPool,
         user_id: &UserId,
         repository: &PgAuthorRepository,
     ) -> Result<Vec<AuthorId>, DomainError> {
         let author_id1 = AuthorId::try_from("93090e87-b7a1-403c-974c-d74d881e83b9")?;
         let author_ids = vec![author_id1.clone()];
         let author1 = Author::new(author_id1, AuthorName::new("author3".to_owned())?)?;
-        repository.create(user_id, &author1).await?;
+        create_author(pool, repository, user_id, &author1).await?;
 
         Ok(author_ids)
     }
@@ -1076,7 +1090,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
 
         create_book(&pool, &book_repository, &user_id, &book).await?;
@@ -1117,7 +1131,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
 
@@ -1170,7 +1184,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
 
@@ -1211,7 +1225,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
 
@@ -1299,7 +1313,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
 
         // Create then delete so the book is absent
@@ -1336,7 +1350,7 @@ mod tests {
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_ids = prepare_authors1(&user_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
 
@@ -1404,7 +1418,7 @@ mod tests {
 
         let user1_id = prepare_user(&user_repository, "user1").await?;
         let user2_id = prepare_user(&user_repository, "user2").await?;
-        let author_ids = prepare_authors1(&user1_id, &author_repository).await?;
+        let author_ids = prepare_authors1(&pool, &user1_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user1_id, &book).await?;
 

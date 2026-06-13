@@ -233,6 +233,18 @@ mod tests {
         tm.commit(tx).await
     }
 
+    async fn create_author(
+        pool: &PgPool,
+        author_repo: &PgAuthorRepository,
+        user_id: &UserId,
+        author: &Author,
+    ) -> Result<(), DomainError> {
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
+        author_repo.create(&mut tx, user_id, author).await?;
+        tm.commit(tx).await
+    }
+
     fn make_book(
         book_id_str: &str,
         title: &str,
@@ -263,12 +275,13 @@ mod tests {
 
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
-        author_repo
-            .create(
-                &user_id,
-                &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
-            )
-            .await?;
+        create_author(
+            &pool,
+            &author_repo,
+            &user_id,
+            &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
+        )
+        .await?;
 
         let book = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
@@ -305,18 +318,20 @@ mod tests {
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
         let author_id2 = AuthorId::try_from("925aaf96-64c7-44be-85f8-767a20b2c20c")?;
-        author_repo
-            .create(
-                &user_id,
-                &Author::new(author_id1.clone(), AuthorName::new("a1".to_owned())?)?,
-            )
-            .await?;
-        author_repo
-            .create(
-                &user_id,
-                &Author::new(author_id2.clone(), AuthorName::new("a2".to_owned())?)?,
-            )
-            .await?;
+        create_author(
+            &pool,
+            &author_repo,
+            &user_id,
+            &Author::new(author_id1.clone(), AuthorName::new("a1".to_owned())?)?,
+        )
+        .await?;
+        create_author(
+            &pool,
+            &author_repo,
+            &user_id,
+            &Author::new(author_id2.clone(), AuthorName::new("a2".to_owned())?)?,
+        )
+        .await?;
 
         let book = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
@@ -357,12 +372,13 @@ mod tests {
 
         let user_id = prepare_user(&user_repo, "user1").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
-        author_repo
-            .create(
-                &user_id,
-                &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
-            )
-            .await?;
+        create_author(
+            &pool,
+            &author_repo,
+            &user_id,
+            &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
+        )
+        .await?;
 
         let book = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
@@ -397,12 +413,13 @@ mod tests {
         let user1_id = prepare_user(&user_repo, "user1").await?;
         let user2_id = prepare_user(&user_repo, "user2").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
-        author_repo
-            .create(
-                &user1_id,
-                &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
-            )
-            .await?;
+        create_author(
+            &pool,
+            &author_repo,
+            &user1_id,
+            &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
+        )
+        .await?;
 
         let book = make_book(
             "675bc8d9-3155-42fb-87b0-0a82cb162848",
