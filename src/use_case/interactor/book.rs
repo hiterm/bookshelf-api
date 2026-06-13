@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -299,9 +299,14 @@ where
 
         let mut result_books = Vec::with_capacity(inputs.len());
         for input in inputs {
+            // Drop duplicate author names within one book (keeping first-seen
+            // order) — book_author has a primary key on (user_id, book_id,
+            // author_id), so a duplicated id would abort the whole import.
+            let mut seen_names: HashSet<&str> = HashSet::new();
             let author_ids: Vec<AuthorId> = input
                 .author_names
                 .iter()
+                .filter(|name| seen_names.insert(name.as_str()))
                 .map(|name| {
                     name_to_id.get(name.as_str()).cloned().ok_or_else(|| {
                         DomainError::Unexpected(format!(
@@ -668,6 +673,70 @@ mod tests {
         assert!(result.is_ok());
         let dtos = result.unwrap();
         assert_eq!(dtos.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn import_books_deduplicates_authors_within_one_book() {
+        // Given: one book listing the same author twice. The name is resolved
+        // once and the created book carries a single author id, since
+        // book_author cannot hold duplicate (book_id, author_id) pairs.
+        let author_uuid = Uuid::new_v4();
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_or_create_by_name()
+            .times(1)
+            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
+
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_create()
+            .withf(|_, _, book| book.author_ids().len() == 1)
+            .times(1)
+            .returning(|_, _, _| Ok(()));
+
+        let interactor = ImportBooksInteractor::new(
+            book_repository,
+            author_repository,
+            make_transaction_manager(),
+        );
+        let books = vec![import_entry("Book", vec!["Author A", "Author A"])];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn import_books_does_not_commit_when_create_fails_mid_transaction() {
+        // Given: the failure happens AFTER begin (author already resolved,
+        // book creation fails). The transaction must not be committed; the
+        // dropped transaction rolls back.
+        let author_uuid = Uuid::new_v4();
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_or_create_by_name()
+            .times(1)
+            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
+
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_create()
+            .returning(|_, _, _| Err(DomainError::Unexpected(String::from("db error"))));
+
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().times(1).returning(|_, _| Ok(()));
+        tm.expect_commit().times(0);
+
+        let interactor = ImportBooksInteractor::new(book_repository, author_repository, tm);
+        let books = vec![import_entry("Book", vec!["Author A"])];
+
+        // When
+        let result = interactor.import("user1", books).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
     }
 
     #[tokio::test]
