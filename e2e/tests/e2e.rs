@@ -310,6 +310,53 @@ async fn ensure_user_registered(token: &str) -> Result<()> {
     Ok(())
 }
 
+/// Creates a fresh, registered user and returns its `(user_id, token)`.
+async fn create_test_user() -> Result<(String, String)> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+    ensure_user_registered(&token).await?;
+    Ok((user_id, token))
+}
+
+async fn create_test_author(name: &str, token: &str) -> Result<String> {
+    let query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        name
+    );
+    let (_, response) = graphql_request(&query, Some(token)).await?;
+    let id = response["data"]["createAuthor"]["id"]
+        .as_str()
+        .context("createAuthor id should be a string")?
+        .to_owned();
+    Ok(id)
+}
+
+async fn create_test_book(title: &str, author_id: &str, token: &str) -> Result<String> {
+    let query = format!(
+        r#"
+        mutation {{
+            createBook(bookData: {{
+                title: "{}"
+                authorIds: ["{}"]
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ id }}
+        }}
+        "#,
+        title, author_id
+    );
+    let (_, response) = graphql_request(&query, Some(token)).await?;
+    let id = response["data"]["createBook"]["id"]
+        .as_str()
+        .context("createBook id should be a string")?
+        .to_owned();
+    Ok(id)
+}
+
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_without_auth_returns_error() -> Result<()> {
@@ -327,9 +374,7 @@ async fn e2e_graphql_without_auth_returns_error() -> Result<()> {
 #[serial]
 async fn e2e_graphql_books_empty() -> Result<()> {
     // Use a fresh user ID so the books list is always empty for this user
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let query = r#"{ books { id title } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
@@ -347,9 +392,7 @@ async fn e2e_graphql_books_empty() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_crud_book() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     // Create author first
     let author_name = format!("Test Author for CRUD {}", uuid::Uuid::new_v4());
@@ -531,15 +574,16 @@ async fn e2e_graphql_crud_book() -> Result<()> {
     let data = response.get("data").context("data field must exist")?;
     let book = data.get("book").context("book field must exist")?;
     assert!(book.is_null(), "book should be null after deletion");
+
+    // Clean up the author (book already deleted above)
+    delete_test_author(author_id, &token).await?;
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_book_by_id() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     // Create author first
     let author_name = format!("Test Author for BookByID {}", uuid::Uuid::new_v4());
@@ -609,36 +653,47 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
         Some("9780123456789")
     );
 
-    // Clean up
+    // Clean up: delete book first, then author
     delete_test_book(book_id, &token).await?;
+    delete_test_author(author_id, &token).await?;
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_authors() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
+    let (_user_id, token) = create_test_user().await?;
 
+    // The authors list is user-scoped, so a fresh user starts empty.
     let query = r#"{ authors { id name } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
+    let authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    assert!(authors.is_empty(), "a fresh user should have no authors");
 
-    let data = response.get("data").context("data field must exist")?;
-    let authors = data.get("authors").context("authors field must exist")?;
-    assert!(authors.is_array(), "authors should be an array");
+    // After creating one author, it should appear in the list.
+    let author_name = format!("Listed Author {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&author_name, &token).await?;
+
+    let (_, response) = graphql_request(query, Some(&token)).await?;
+    let authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    assert_eq!(authors.len(), 1, "should list exactly the created author");
+    assert_eq!(authors[0]["id"].as_str(), Some(author_id.as_str()));
+    assert_eq!(authors[0]["name"].as_str(), Some(author_name.as_str()));
+
+    delete_test_author(&author_id, &token).await?;
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_create_author() -> Result<()> {
-    // Note: Author deletion is not supported in the current GraphQL API.
-    // Created authors will remain in the database.
-    // Use random names to avoid conflicts.
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
+    // Use a random name to keep the author unique across runs.
     let random_name = format!("Test Author {}", uuid::Uuid::new_v4());
 
     let query = format!(
@@ -680,6 +735,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
         "author name should match"
     );
 
+    delete_test_author(author_id, &token).await?;
     Ok(())
 }
 
@@ -701,20 +757,10 @@ async fn e2e_graphql_book_with_invalid_id() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_delete_author_without_books_succeeds() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let random_name = format!("Author To Delete {}", uuid::Uuid::new_v4());
-    let create_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
-        random_name
-    );
-    let (_, response) = graphql_request(&create_query, Some(&token)).await?;
-    let author_id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let author_id = create_test_author(&random_name, &token).await?;
 
     delete_test_author(&author_id, &token).await?;
 
@@ -731,45 +777,14 @@ async fn e2e_graphql_delete_author_without_books_succeeds() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_delete_author_with_associated_books_fails() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     // Create author
     let random_name = format!("Author With Book {}", uuid::Uuid::new_v4());
-    let create_author_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
-        random_name
-    );
-    let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
-    let author_id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let author_id = create_test_author(&random_name, &token).await?;
 
     // Create book associated with the author
-    let create_book_query = format!(
-        r#"
-        mutation {{
-            createBook(bookData: {{
-                title: "Book Blocking Author Delete"
-                authorIds: ["{}"]
-                isbn: ""
-                read: false
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ id }}
-        }}
-        "#,
-        author_id
-    );
-    let (_, response) = graphql_request(&create_book_query, Some(&token)).await?;
-    let book_id = response["data"]["createBook"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let book_id = create_test_book("Book Blocking Author Delete", &author_id, &token).await?;
 
     // Attempt to delete the author — must fail
     let delete_author_query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
@@ -796,45 +811,14 @@ async fn e2e_graphql_delete_author_with_associated_books_fails() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_update_author() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     // Create author
     let original_name = format!("Author Before Update {}", uuid::Uuid::new_v4());
-    let create_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id name }} }}"#,
-        original_name
-    );
-    let (_, response) = graphql_request(&create_query, Some(&token)).await?;
-    let author_id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let author_id = create_test_author(&original_name, &token).await?;
 
     // Create book associated with the author
-    let create_book_query = format!(
-        r#"
-        mutation {{
-            createBook(bookData: {{
-                title: "Book For Author Update Test"
-                authorIds: ["{}"]
-                isbn: ""
-                read: false
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ id }}
-        }}
-        "#,
-        author_id
-    );
-    let (_, response) = graphql_request(&create_book_query, Some(&token)).await?;
-    let book_id = response["data"]["createBook"]["id"]
-        .as_str()
-        .context("id should be string")?
-        .to_owned();
+    let book_id = create_test_book("Book For Author Update Test", &author_id, &token).await?;
 
     // Update author name while the author has an associated book
     let updated_name = format!("Author After Update {}", uuid::Uuid::new_v4());
@@ -877,9 +861,7 @@ async fn e2e_graphql_update_author() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_update_nonexistent_author_returns_error() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let nonexistent_id = uuid::Uuid::new_v4().to_string();
     let query = format!(
@@ -897,9 +879,7 @@ async fn e2e_graphql_update_nonexistent_author_returns_error() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_delete_nonexistent_author_returns_error() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let nonexistent_id = uuid::Uuid::new_v4().to_string();
     let query = format!(
@@ -942,51 +922,10 @@ async fn e2e_graphql_create_book_without_auth() -> Result<()> {
 // Change History E2E Tests
 // ============================================
 
-async fn create_test_author(name: &str, token: &str) -> Result<String> {
-    let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
-        name
-    );
-    let (_, response) = graphql_request(&query, Some(token)).await?;
-    let id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("createAuthor id should be a string")?
-        .to_owned();
-    Ok(id)
-}
-
-async fn create_test_book(title: &str, author_id: &str, token: &str) -> Result<String> {
-    let query = format!(
-        r#"
-        mutation {{
-            createBook(bookData: {{
-                title: "{}"
-                authorIds: ["{}"]
-                isbn: ""
-                read: false
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ id }}
-        }}
-        "#,
-        title, author_id
-    );
-    let (_, response) = graphql_request(&query, Some(token)).await?;
-    let id = response["data"]["createBook"]["id"]
-        .as_str()
-        .context("createBook id should be a string")?
-        .to_owned();
-    Ok(id)
-}
-
 #[tokio::test]
 #[serial]
 async fn e2e_book_events_records_create_operation() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let author_id =
         create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
@@ -1082,9 +1021,7 @@ async fn e2e_book_events_records_create_operation() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_book_events_records_update_operation() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let author_id =
         create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
@@ -1180,9 +1117,7 @@ async fn e2e_book_events_records_update_operation() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_restore_book_reverts_to_snapshot() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let author_id =
         create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
@@ -1271,9 +1206,7 @@ async fn e2e_restore_book_reverts_to_snapshot() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_book_events_records_delete_operation() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let author_id =
         create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
@@ -1321,9 +1254,7 @@ async fn e2e_book_events_records_delete_operation() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_author_events_records_create_operation() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let author_name = format!("Author History Create {}", uuid::Uuid::new_v4());
     let author_id = create_test_author(&author_name, &token).await?;
@@ -1389,9 +1320,7 @@ async fn e2e_author_events_records_create_operation() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_author_events_records_update_operation() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let original_name = format!("Author Before Update History {}", uuid::Uuid::new_v4());
     let author_id = create_test_author(&original_name, &token).await?;
@@ -1455,9 +1384,7 @@ async fn e2e_author_events_records_update_operation() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let original_name = format!("Restore Author Original {}", uuid::Uuid::new_v4());
     let author_id = create_test_author(&original_name, &token).await?;
@@ -1526,9 +1453,7 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_author_events_records_delete_operation() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let author_name = format!("Author History Delete {}", uuid::Uuid::new_v4());
     let author_id = create_test_author(&author_name, &token).await?;
@@ -1572,9 +1497,7 @@ async fn e2e_author_events_records_delete_operation() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_restore_book_records_restore_event() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let author_id = create_test_author(
         &format!("Restore Event Author {}", uuid::Uuid::new_v4()),
@@ -1642,9 +1565,7 @@ async fn e2e_restore_book_records_restore_event() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_restore_author_records_restore_event() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let author_name = format!("Restore Event Author {}", uuid::Uuid::new_v4());
     let author_id = create_test_author(&author_name, &token).await?;
@@ -1706,20 +1627,10 @@ async fn e2e_restore_author_records_restore_event() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_import_books() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     // Pre-create an author
-    let create_author_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
-        "Existing Author"
-    );
-    let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
-    let existing_author_id = response["data"]["createAuthor"]["id"]
-        .as_str()
-        .context("author id should be string")?
-        .to_owned();
+    let existing_author_id = create_test_author("Existing Author", &token).await?;
 
     // Call importBooks
     let import_query = r#"
@@ -1948,9 +1859,7 @@ async fn e2e_import_books() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_import_books_empty_returns_error() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     let import_query = r#"mutation { importBooks(books: []) { id } }"#;
     let (_, response) = graphql_request(import_query, Some(&token)).await?;
@@ -1966,9 +1875,7 @@ async fn e2e_import_books_empty_returns_error() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_event_sets() -> Result<()> {
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let token = generate_test_token(&user_id)?;
-    ensure_user_registered(&token).await?;
+    let (_user_id, token) = create_test_user().await?;
 
     // Two separate operations => two event sets (create_author, then create_book).
     let author_id = create_test_author(
@@ -2084,9 +1991,7 @@ async fn e2e_event_sets() -> Result<()> {
     );
 
     // User isolation: a second user cannot see the first user's event set.
-    let other_user_id = uuid::Uuid::new_v4().to_string();
-    let other_token = generate_test_token(&other_user_id)?;
-    ensure_user_registered(&other_token).await?;
+    let (_other_user_id, other_token) = create_test_user().await?;
     let isolation_query = format!(r#"{{ eventSet(id: "{}") {{ id }} }}"#, create_book_set_id);
     let (_, response) = graphql_request(&isolation_query, Some(&other_token)).await?;
     assert!(
