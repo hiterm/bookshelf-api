@@ -2011,7 +2011,7 @@ async fn e2e_event_sets() -> Result<()> {
     let detail_query = format!(
         r#"{{ eventSet(id: "{}") {{
             id operation createdAt
-            bookEvents {{ bookId operation }}
+            bookEvents {{ bookId operation title changedAt }}
             authorEvents {{ name operation }}
         }} }}"#,
         create_book_set_id
@@ -2019,13 +2019,33 @@ async fn e2e_event_sets() -> Result<()> {
     let (_, response) = graphql_request(&detail_query, Some(&token)).await?;
     let detail = &response["data"]["eventSet"];
     assert!(!detail.is_null(), "eventSet should be found");
+    assert_eq!(
+        detail["id"].as_str(),
+        Some(create_book_set_id),
+        "eventSet id should round-trip the queried id"
+    );
     assert_eq!(detail["operation"].as_str(), Some("create_book"));
+    assert!(
+        detail["createdAt"].as_i64().is_some(),
+        "createdAt should be an Int"
+    );
     let book_events = detail["bookEvents"]
         .as_array()
         .context("bookEvents should be an array")?;
     assert_eq!(book_events.len(), 1, "create_book set has one book event");
     assert_eq!(book_events[0]["bookId"].as_str(), Some(book_id.as_str()));
     assert_eq!(book_events[0]["operation"].as_str(), Some("create"));
+    // The nested entry must carry the full BookEventEntry data, not just ids
+    // (guards the find_by_event_set projection).
+    assert_eq!(
+        book_events[0]["title"].as_str(),
+        Some("Event Set Book"),
+        "nested book event should carry the title"
+    );
+    assert!(
+        !book_events[0]["changedAt"].is_null(),
+        "nested book event changedAt should not be null"
+    );
     assert!(
         detail["authorEvents"]
             .as_array()
