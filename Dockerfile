@@ -33,7 +33,7 @@ EOF
 # Both stages inherit ca-certificates from here, ensuring that the regression
 # test (tls-check) exercises the exact same certificate environment as
 # production. Removing ca-certificates from this stage breaks both.
-FROM debian:trixie-slim@sha256:26f98ccd92fd0a44d6928ce8ff8f4921b4d2f535bfa07555ee5d18f61429cf0c AS base
+FROM debian:trixie-slim@sha256:4e401d95de7083948053197a9c3913343cd06b706bf15eb6a0c3ccd26f436a0e AS base
 
 # https://ianwwagner.com/reqwest-0-13-upgrade-and-webpki.html
 RUN apt-get update \
