@@ -55,6 +55,7 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book: &Book,
     ) -> Result<(), DomainError> {
+        tx.ensure_user(user_id)?;
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -284,6 +285,7 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book: &Book,
     ) -> Result<(), DomainError> {
+        tx.ensure_user(user_id)?;
         let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
@@ -400,6 +402,7 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book_id: &BookId,
     ) -> Result<(), DomainError> {
+        tx.ensure_user(user_id)?;
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
@@ -449,6 +452,7 @@ impl BookRepository for PgBookRepository {
         source_event_id: i64,
         book: Option<Book>,
     ) -> Result<(), DomainError> {
+        tx.ensure_user(user_id)?;
         let extra = json!({"version": 1, "source_event_id": source_event_id});
 
         match book {
@@ -684,6 +688,29 @@ mod tests {
 
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_create_rejects_user_mismatched_transaction(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let other_user_id = UserId::new(String::from("user2"))?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::CreateBook).await?;
+        let result = book_repository.create(&mut tx, &other_user_id, &book).await;
+        assert!(matches!(result, Err(DomainError::Unexpected(_))));
+        drop(tx);
+
+        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
+        assert_eq!(actual, None);
 
         Ok(())
     }

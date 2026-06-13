@@ -63,6 +63,7 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author: &Author,
     ) -> Result<(), DomainError> {
+        tx.ensure_user(user_id)?;
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
             .bind(author.id().to_uuid())
             .bind(user_id.as_str())
@@ -104,6 +105,7 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         name: &AuthorName,
     ) -> Result<AuthorId, DomainError> {
+        tx.ensure_user(user_id)?;
         let name = name.as_str();
         let candidate_id = Uuid::new_v4();
 
@@ -199,6 +201,7 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author: &Author,
     ) -> Result<(), DomainError> {
+        tx.ensure_user(user_id)?;
         let result = sqlx::query(
             "UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
         )
@@ -258,6 +261,7 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<(), DomainError> {
+        tx.ensure_user(user_id)?;
         // Lock the author row to prevent concurrent inserts into book_author after the count check.
         let exists: Option<(i32,)> =
             sqlx::query_as("SELECT 1 FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
@@ -331,6 +335,7 @@ impl AuthorRepository for PgAuthorRepository {
         source_event_id: i64,
         author: Option<Author>,
     ) -> Result<(), DomainError> {
+        tx.ensure_user(user_id)?;
         let extra = json!({"version": 1, "source_event_id": source_event_id});
 
         match author {

@@ -16,11 +16,26 @@ use crate::domain::{
 pub struct PgTransaction {
     tx: sqlx::Transaction<'static, Postgres>,
     event_set_id: Uuid,
+    user_id: UserId,
 }
 
 impl PgTransaction {
     pub fn event_set_id(&self) -> Uuid {
         self.event_set_id
+    }
+
+    /// The transaction (and its `event_set` row) is bound to the user passed
+    /// to `begin`. Repository methods call this to reject a `user_id` that
+    /// differs from the one the audit record was opened for.
+    pub fn ensure_user(&self, user_id: &UserId) -> Result<(), DomainError> {
+        if &self.user_id != user_id {
+            return Err(DomainError::Unexpected(format!(
+                r#"transaction was begun for user "{}" but used with user "{}""#,
+                self.user_id.as_str(),
+                user_id.as_str()
+            )));
+        }
+        Ok(())
     }
 
     // Named `as_mut` to mirror the `&mut *tx` access the repositories used
@@ -67,7 +82,11 @@ impl TransactionManager for PgTransactionManager {
             .execute(&mut *tx)
             .await?;
 
-        Ok(PgTransaction { tx, event_set_id })
+        Ok(PgTransaction {
+            tx,
+            event_set_id,
+            user_id: user_id.clone(),
+        })
     }
 
     async fn commit(&self, tx: Self::Transaction) -> Result<(), DomainError> {
