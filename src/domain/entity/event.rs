@@ -19,17 +19,30 @@ pub enum EventOperation {
     Snapshot,
 }
 
-/// TODO: Migrate other event_set operations (create_book, update_book, etc.)
-/// from hard-coded strings in book_repository.rs and author_repository.rs.
-/// See: https://github.com/hiterm/bookshelf-api/pull/225#issuecomment-4466306766
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventSetOperation {
+    CreateBook,
+    UpdateBook,
+    DeleteBook,
+    RestoreBook,
+    CreateAuthor,
+    UpdateAuthor,
+    DeleteAuthor,
+    RestoreAuthor,
     ImportBooks,
 }
 
 impl EventSetOperation {
     pub fn as_str(&self) -> &'static str {
         match self {
+            EventSetOperation::CreateBook => "create_book",
+            EventSetOperation::UpdateBook => "update_book",
+            EventSetOperation::DeleteBook => "delete_book",
+            EventSetOperation::RestoreBook => "restore_book",
+            EventSetOperation::CreateAuthor => "create_author",
+            EventSetOperation::UpdateAuthor => "update_author",
+            EventSetOperation::DeleteAuthor => "delete_author",
+            EventSetOperation::RestoreAuthor => "restore_author",
             EventSetOperation::ImportBooks => "import_books",
         }
     }
@@ -40,6 +53,14 @@ impl TryFrom<&str> for EventSetOperation {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
+            "create_book" => Ok(EventSetOperation::CreateBook),
+            "update_book" => Ok(EventSetOperation::UpdateBook),
+            "delete_book" => Ok(EventSetOperation::DeleteBook),
+            "restore_book" => Ok(EventSetOperation::RestoreBook),
+            "create_author" => Ok(EventSetOperation::CreateAuthor),
+            "update_author" => Ok(EventSetOperation::UpdateAuthor),
+            "delete_author" => Ok(EventSetOperation::DeleteAuthor),
+            "restore_author" => Ok(EventSetOperation::RestoreAuthor),
             "import_books" => Ok(EventSetOperation::ImportBooks),
             _ => Err(format!("Unknown event set operation: {}", value)),
         }
@@ -100,14 +121,35 @@ mod tests {
 
     #[test]
     fn event_set_operation_as_str() {
+        assert_eq!(EventSetOperation::CreateBook.as_str(), "create_book");
+        assert_eq!(EventSetOperation::UpdateBook.as_str(), "update_book");
+        assert_eq!(EventSetOperation::DeleteBook.as_str(), "delete_book");
+        assert_eq!(EventSetOperation::RestoreBook.as_str(), "restore_book");
+        assert_eq!(EventSetOperation::CreateAuthor.as_str(), "create_author");
+        assert_eq!(EventSetOperation::UpdateAuthor.as_str(), "update_author");
+        assert_eq!(EventSetOperation::DeleteAuthor.as_str(), "delete_author");
+        assert_eq!(EventSetOperation::RestoreAuthor.as_str(), "restore_author");
         assert_eq!(EventSetOperation::ImportBooks.as_str(), "import_books");
     }
 
     #[test]
     fn event_set_operation_roundtrip() {
-        let s = EventSetOperation::ImportBooks.as_str();
-        let back = EventSetOperation::try_from(s).expect("round-trip failed");
-        assert_eq!(back, EventSetOperation::ImportBooks);
+        let variants = [
+            EventSetOperation::CreateBook,
+            EventSetOperation::UpdateBook,
+            EventSetOperation::DeleteBook,
+            EventSetOperation::RestoreBook,
+            EventSetOperation::CreateAuthor,
+            EventSetOperation::UpdateAuthor,
+            EventSetOperation::DeleteAuthor,
+            EventSetOperation::RestoreAuthor,
+            EventSetOperation::ImportBooks,
+        ];
+        for variant in &variants {
+            let s = variant.as_str();
+            let back = EventSetOperation::try_from(s).expect("round-trip failed");
+            assert_eq!(&back, variant, "round-trip mismatch for {:?}", variant);
+        }
     }
 
     #[test]

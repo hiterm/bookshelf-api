@@ -45,23 +45,23 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   - [x] plan updated
 - [x] M1: Expand `EventSetOperation` to 9 variants + unit tests.
   - [x] plan updated
-- [x] M2: Add domain `TransactionManager` trait.
-  - [x] plan updated
-- [x] M3: Add infra `PgTransaction` + `PgTransactionManager`.
-  - [x] plan updated
-- [x] M4: Migrate `BookRepository` + `PgBookRepository` + book interactors +
+- [ ] M2: Add domain `TransactionManager` trait.
+  - [ ] plan updated
+- [ ] M3: Add infra `PgTransaction` + `PgTransactionManager`.
+  - [ ] plan updated
+- [ ] M4: Migrate `BookRepository` + `PgBookRepository` + book interactors +
   `RestoreBookInteractor` + tests + DI.
-  - [x] plan updated
-- [x] M5: Migrate `AuthorRepository` (incl. `find_or_create_by_name`) + author
+  - [ ] plan updated
+- [ ] M5: Migrate `AuthorRepository` (incl. `find_or_create_by_name`) + author
   interactors + `RestoreAuthorInteractor` + tests + DI.
-  - [x] plan updated
-- [x] M6: Rewrite `ImportBooksInteractor`; move `ImportBookInput` in; rewrite
+  - [ ] plan updated
+- [ ] M6: Rewrite `ImportBooksInteractor`; move `ImportBookInput` in; rewrite
   unit tests; update DI `MI`; add re-homed DB integration test.
-  - [x] plan updated
-- [x] M7: Delete `import_books_repository.rs` (domain + infra) + module decls.
-  - [x] plan updated
-- [x] M8: Docs — amend CLAUDE.md/AGENTS.md, append Decision Log, finalize plan.
-  - [x] plan updated
+  - [ ] plan updated
+- [ ] M7: Delete `import_books_repository.rs` (domain + infra) + module decls.
+  - [ ] plan updated
+- [ ] M8: Docs — amend CLAUDE.md/AGENTS.md, append Decision Log, finalize plan.
+  - [ ] plan updated
 
 ## Surprises & Discoveries
 
@@ -149,20 +149,7 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
 
 ## Outcomes & Retrospective
 
-Completed all milestones M0-M8. `ImportBooksRepository` and
-`PgImportBooksRepository` are deleted. Transaction control now lives in the
-use-case layer via the domain `TransactionManager` trait and its infrastructure
-implementation `PgTransactionManager`/`PgTransaction`. Every mutating
-repository method accepts `&mut Self::Transaction`. The import is composed from
-`BookRepository` + `AuthorRepository` + `TransactionManager` and preserves the
-single shared `import_books` event_set. SQL semantics were moved verbatim; the
-only structural change is that the `event_set` INSERT was lifted out of each
-repository method into `PgTransactionManager::begin`.
-
-Database-gated tests (`#[cfg(feature = "test-with-database")]`) cannot run in
-the implementation environment (no PostgreSQL). They were kept compiling and
-must be run locally by the user, together with the `e2e_import_books`
-end-to-end test, to confirm byte-for-byte DB equivalence.
+To be written at completion (M8).
 
 ## Context and Orientation
 
