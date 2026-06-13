@@ -531,6 +531,9 @@ async fn e2e_graphql_crud_book() -> Result<()> {
     let data = response.get("data").context("data field must exist")?;
     let book = data.get("book").context("book field must exist")?;
     assert!(book.is_null(), "book should be null after deletion");
+
+    // Clean up the author (book already deleted above)
+    delete_test_author(author_id, &token).await?;
     Ok(())
 }
 
@@ -609,8 +612,9 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
         Some("9780123456789")
     );
 
-    // Clean up
+    // Clean up: delete book first, then author
     delete_test_book(book_id, &token).await?;
+    delete_test_author(author_id, &token).await?;
     Ok(())
 }
 
@@ -632,13 +636,11 @@ async fn e2e_graphql_authors() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_create_author() -> Result<()> {
-    // Note: Author deletion is not supported in the current GraphQL API.
-    // Created authors will remain in the database.
-    // Use random names to avoid conflicts.
     let user_id = uuid::Uuid::new_v4().to_string();
     let token = generate_test_token(&user_id)?;
     ensure_user_registered(&token).await?;
 
+    // Use a random name to keep the author unique across runs.
     let random_name = format!("Test Author {}", uuid::Uuid::new_v4());
 
     let query = format!(
@@ -680,6 +682,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
         "author name should match"
     );
 
+    delete_test_author(author_id, &token).await?;
     Ok(())
 }
 
