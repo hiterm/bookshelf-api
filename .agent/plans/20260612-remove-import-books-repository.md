@@ -45,8 +45,8 @@ operation inserts exactly one `event_set` row and one or more `book_event` /
   - [x] plan updated
 - [x] M1: Expand `EventSetOperation` to 9 variants + unit tests.
   - [x] plan updated
-- [ ] M2: Add domain `TransactionManager` trait.
-  - [ ] plan updated
+- [x] M2: Add domain `TransactionManager` trait.
+  - [x] plan updated
 - [ ] M3: Add infra `PgTransaction` + `PgTransactionManager`.
   - [ ] plan updated
 - [ ] M4: Migrate `BookRepository` + `PgBookRepository` + book interactors +
