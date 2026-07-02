@@ -211,6 +211,80 @@ impl BookRepository for PgBookRepository {
         Ok(book)
     }
 
+    async fn find_by_id_in_tx(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        book_id: &BookId,
+    ) -> Result<Option<Book>, DomainError> {
+        tx.ensure_user(user_id)?;
+        let book_row: Option<BookRow> = sqlx::query_as(
+            "WITH book_of_user AS(
+                SELECT
+                    *
+                FROM
+                    book
+                WHERE
+                    book.user_id = $1
+            ),
+            authors_of_book_and_user AS(
+                SELECT
+                    book_id,
+                    array_agg(author_id) AS author_ids
+                FROM
+                    book_author
+                WHERE
+                    book_author.user_id = $1
+                GROUP BY
+                    book_author.book_id
+            )
+            SELECT
+                *
+            FROM
+                book_of_user
+                LEFT OUTER JOIN
+                    authors_of_book_and_user
+                ON  book_of_user.id = authors_of_book_and_user.book_id
+            WHERE book_of_user.id = $2",
+        )
+        .bind(user_id.as_str())
+        .bind(book_id.to_uuid())
+        .fetch_optional(tx.as_mut())
+        .await?;
+
+        let book = book_row.map(|row| {
+            let book_id = BookId::new(row.id)?;
+            let title = BookTitle::new(row.title)?;
+            let author_ids: Vec<AuthorId> = row
+                .author_ids
+                .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
+                .unwrap_or_default();
+            let isbn = Isbn::new(row.isbn)?;
+            let read = ReadFlag::new(row.read);
+            let owned = OwnedFlag::new(row.owned);
+            let priority = Priority::new(row.priority)?;
+            let format = BookFormat::try_from(row.format.as_str())?;
+            let store = BookStore::try_from(row.store.as_str())?;
+
+            Book::new(
+                book_id,
+                title,
+                author_ids,
+                isbn,
+                read,
+                owned,
+                priority,
+                format,
+                store,
+                row.created_at,
+                row.updated_at,
+            )
+        });
+        let book = book.transpose()?;
+
+        Ok(book)
+    }
+
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
         let books: Result<Vec<Book>, DomainError> = sqlx::query_as(
             "WITH book_of_user AS(

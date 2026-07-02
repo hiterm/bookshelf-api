@@ -116,7 +116,15 @@ where
     ) -> Result<BookDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let book_id = BookId::try_from(book_data.id.as_str())?;
-        let book = self.book_repository.find_by_id(&user_id, &book_id).await?;
+
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::UpdateBook)
+            .await?;
+        let book = self
+            .book_repository
+            .find_by_id_in_tx(&mut tx, &user_id, &book_id)
+            .await?;
         let mut book = match book {
             Some(book) => book,
             None => {
@@ -152,10 +160,6 @@ where
         book.set_store(store);
         book.set_updated_at(OffsetDateTime::now_utc());
 
-        let mut tx = self
-            .transaction_manager
-            .begin(&user_id, EventSetOperation::UpdateBook)
-            .await?;
         self.book_repository
             .update(&mut tx, &user_id, &book)
             .await?;
@@ -384,6 +388,13 @@ mod tests {
         tm
     }
 
+    fn make_begin_only_transaction_manager() -> MockTransactionManager {
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit().times(0);
+        tm
+    }
+
     fn make_book(uuid: Uuid) -> Book {
         Book::new(
             BookId::new(uuid).unwrap(),
@@ -464,9 +475,9 @@ mod tests {
 
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_find_by_id()
-            .with(always(), always())
-            .returning(move |_, _| Ok(Some(book.clone())));
+            .expect_find_by_id_in_tx()
+            .with(always(), always(), always())
+            .returning(move |_, _, _| Ok(Some(book.clone())));
         book_repository
             .expect_update()
             .with(always(), always(), always())
@@ -503,11 +514,12 @@ mod tests {
 
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_find_by_id()
-            .with(always(), always())
-            .returning(|_, _| Ok(None));
+            .expect_find_by_id_in_tx()
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(None));
 
-        let interactor = UpdateBookInteractor::new(book_repository, MockTransactionManager::new());
+        let interactor =
+            UpdateBookInteractor::new(book_repository, make_begin_only_transaction_manager());
         let book_data = UpdateBookDto::new(
             book_id_str,
             "Updated Book".to_string(),
