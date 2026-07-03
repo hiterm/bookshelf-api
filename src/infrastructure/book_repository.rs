@@ -211,7 +211,7 @@ impl BookRepository for PgBookRepository {
         Ok(book)
     }
 
-    async fn find_by_id_in_transaction(
+    async fn find_by_id_with_tx(
         &self,
         tx: &mut Self::Transaction,
         user_id: &UserId,

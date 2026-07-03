@@ -25,7 +25,7 @@ pub trait BookRepository: Send + Sync + 'static {
         user_id: &UserId,
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError>;
-    async fn find_by_id_in_transaction(
+    async fn find_by_id_with_tx(
         &self,
         tx: &mut Self::Transaction,
         user_id: &UserId,
