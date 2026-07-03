@@ -115,7 +115,29 @@ where
         book_data: UpdateBookDto,
     ) -> Result<BookDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
-        let book_id = BookId::try_from(book_data.id.as_str())?;
+        let UpdateBookDto {
+            id,
+            title,
+            author_ids,
+            isbn,
+            read,
+            owned,
+            priority,
+            format,
+            store,
+        } = book_data;
+
+        let book_id = BookId::try_from(id.as_str())?;
+        let title = BookTitle::new(title)?;
+        let author_ids: Result<Vec<AuthorId>, DomainError> = author_ids
+            .into_iter()
+            .map(|author_id| AuthorId::try_from(author_id.as_str()))
+            .collect();
+        let author_ids = author_ids?;
+        let isbn = Isbn::new(isbn)?;
+        let read = ReadFlag::new(read);
+        let owned = OwnedFlag::new(owned);
+        let priority = Priority::new(priority)?;
 
         let mut tx = self
             .transaction_manager
@@ -130,25 +152,11 @@ where
             None => {
                 return Err(UseCaseError::NotFound {
                     entity_type: "book",
-                    entity_id: book_data.id,
+                    entity_id: id,
                     user_id: user_id.into_string(),
                 });
             }
         };
-
-        let title = BookTitle::new(book_data.title)?;
-        let author_ids: Result<Vec<AuthorId>, DomainError> = book_data
-            .author_ids
-            .into_iter()
-            .map(|author_id| AuthorId::try_from(author_id.as_str()))
-            .collect();
-        let author_ids = author_ids?;
-        let isbn = Isbn::new(book_data.isbn)?;
-        let read = ReadFlag::new(book_data.read);
-        let owned = OwnedFlag::new(book_data.owned);
-        let priority = Priority::new(book_data.priority)?;
-        let format = book_data.format;
-        let store = book_data.store;
 
         book.set_title(title);
         book.set_author_ids(author_ids);
@@ -504,6 +512,33 @@ mod tests {
         let dto = result.unwrap();
         assert_eq!(dto.title, "Updated Book");
         assert_eq!(dto.priority, 70);
+    }
+
+    #[tokio::test]
+    async fn update_book_fails_with_empty_title_before_transaction() {
+        // Given
+        let book_uuid = Uuid::new_v4();
+        let book_id_str = book_uuid.hyphenated().to_string();
+        let book_repository = MockBookRepository::new();
+
+        let interactor = UpdateBookInteractor::new(book_repository, MockTransactionManager::new());
+        let book_data = UpdateBookDto::new(
+            book_id_str,
+            "".to_string(),
+            vec![],
+            "".to_string(),
+            false,
+            false,
+            0,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        // When
+        let result = interactor.update("user1", book_data).await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
     }
 
     #[tokio::test]
