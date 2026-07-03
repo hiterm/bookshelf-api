@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{Executor, PgPool, Postgres};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -61,6 +61,51 @@ fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
         row.created_at,
         row.updated_at,
     )
+}
+
+async fn find_book_by_id_with_executor<'e, E>(
+    executor: E,
+    user_id: &UserId,
+    book_id: &BookId,
+) -> Result<Option<Book>, DomainError>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    let book_row: Option<BookRow> = sqlx::query_as(
+        "WITH book_of_user AS(
+            SELECT
+                *
+            FROM
+                book
+            WHERE
+                book.user_id = $1
+        ),
+        authors_of_book_and_user AS(
+            SELECT
+                book_id,
+                array_agg(author_id) AS author_ids
+            FROM
+                book_author
+            WHERE
+                book_author.user_id = $1
+            GROUP BY
+                book_author.book_id
+        )
+        SELECT
+            *
+        FROM
+            book_of_user
+            LEFT OUTER JOIN
+                authors_of_book_and_user
+            ON  book_of_user.id = authors_of_book_and_user.book_id
+        WHERE book_of_user.id = $2",
+    )
+    .bind(user_id.as_str())
+    .bind(book_id.to_uuid())
+    .fetch_optional(executor)
+    .await?;
+
+    book_row.map(book_from_row).transpose()
 }
 
 #[derive(Debug, Clone)]
@@ -173,41 +218,7 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError> {
-        let book_row: Option<BookRow> = sqlx::query_as(
-            "WITH book_of_user AS(
-                SELECT
-                    *
-                FROM
-                    book
-                WHERE
-                    book.user_id = $1
-            ),
-            authors_of_book_and_user AS(
-                SELECT
-                    book_id,
-                    array_agg(author_id) AS author_ids
-                FROM
-                    book_author
-                WHERE
-                    book_author.user_id = $1
-                GROUP BY
-                    book_author.book_id
-            )
-            SELECT
-                *
-            FROM
-                book_of_user
-                LEFT OUTER JOIN
-                    authors_of_book_and_user
-                ON  book_of_user.id = authors_of_book_and_user.book_id
-            WHERE book_of_user.id = $2",
-        )
-        .bind(user_id.as_str())
-        .bind(book_id.to_uuid())
-        .fetch_optional(&self.pool)
-        .await?;
-
-        book_row.map(book_from_row).transpose()
+        find_book_by_id_with_executor(&self.pool, user_id, book_id).await
     }
 
     async fn find_by_id_with_tx(
@@ -217,41 +228,7 @@ impl BookRepository for PgBookRepository {
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError> {
         tx.ensure_user(user_id)?;
-        let book_row: Option<BookRow> = sqlx::query_as(
-            "WITH book_of_user AS(
-                SELECT
-                    *
-                FROM
-                    book
-                WHERE
-                    book.user_id = $1
-            ),
-            authors_of_book_and_user AS(
-                SELECT
-                    book_id,
-                    array_agg(author_id) AS author_ids
-                FROM
-                    book_author
-                WHERE
-                    book_author.user_id = $1
-                GROUP BY
-                    book_author.book_id
-            )
-            SELECT
-                *
-            FROM
-                book_of_user
-                LEFT OUTER JOIN
-                    authors_of_book_and_user
-                ON  book_of_user.id = authors_of_book_and_user.book_id
-            WHERE book_of_user.id = $2",
-        )
-        .bind(user_id.as_str())
-        .bind(book_id.to_uuid())
-        .fetch_optional(tx.as_mut())
-        .await?;
-
-        book_row.map(book_from_row).transpose()
+        find_book_by_id_with_executor(tx.as_mut(), user_id, book_id).await
     }
 
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
