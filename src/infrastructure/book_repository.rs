@@ -579,6 +579,7 @@ mod tests {
         domain::{
             entity::{
                 author::{Author, AuthorName},
+                book::BookDetailsUpdate,
                 user::User,
             },
             error::DomainError,
@@ -805,7 +806,6 @@ mod tests {
         assert_eq!(actual, Some(book.clone()));
 
         // update
-        book.set_title(BookTitle::new("another_title".to_owned())?);
         author_ids.pop();
         let another_author_id = AuthorId::try_from("e30ce456-d34a-4c42-831c-b08d5f9ed81f")?;
         let another_author = Author::new(
@@ -814,7 +814,18 @@ mod tests {
         )?;
         create_author(&pool, &author_repository, &user_id, &another_author).await?;
         author_ids.push(another_author_id);
-        book.set_author_ids(author_ids);
+        let update = BookDetailsUpdate {
+            title: BookTitle::new("another_title".to_owned())?,
+            author_ids,
+            isbn: book.isbn().clone(),
+            read: book.read().clone(),
+            owned: book.owned().clone(),
+            priority: book.priority().clone(),
+            format: book.format().clone(),
+            store: book.store().clone(),
+        };
+        let updated_at = *book.updated_at();
+        book.update_details(update, updated_at);
         update_book(&pool, &book_repository, &user_id, &book).await?;
 
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
