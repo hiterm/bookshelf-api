@@ -123,7 +123,7 @@ where
             .await?;
         let book = self
             .book_repository
-            .find_by_id_in_tx(&mut tx, &user_id, &book_id)
+            .find_by_id_in_transaction(&mut tx, &user_id, &book_id)
             .await?;
         let mut book = match book {
             Some(book) => book,
@@ -475,7 +475,7 @@ mod tests {
 
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_find_by_id_in_tx()
+            .expect_find_by_id_in_transaction()
             .with(always(), always(), always())
             .returning(move |_, _, _| Ok(Some(book.clone())));
         book_repository
@@ -514,7 +514,7 @@ mod tests {
 
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_find_by_id_in_tx()
+            .expect_find_by_id_in_transaction()
             .with(always(), always(), always())
             .returning(|_, _, _| Ok(None));
 
