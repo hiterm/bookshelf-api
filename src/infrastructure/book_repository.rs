@@ -687,15 +687,12 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_find_by_id_with_tx_matches_find_by_id_and_checks_user(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
+    async fn test_find_by_id_with_tx_matches_find_by_id(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
 
         let user_id = prepare_user(&user_repository, "user1").await?;
-        let other_user_id = UserId::new(String::from("user2"))?;
         let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
@@ -710,6 +707,24 @@ mod tests {
         assert_eq!(actual, expected);
         tm.commit(tx).await?;
 
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_find_by_id_with_tx_rejects_user_mismatched_transaction(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let other_user_id = UserId::new(String::from("user2"))?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        create_book(&pool, &book_repository, &user_id, &book).await?;
+
+        let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(&user_id, EventSetOperation::UpdateBook).await?;
         let result = book_repository
             .find_by_id_with_tx(&mut tx, &other_user_id, book.id())
