@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{Executor, PgPool, Postgres};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -32,6 +32,80 @@ struct BookRow {
     store: String,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
+}
+
+fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
+    let book_id = BookId::new(row.id)?;
+    let title = BookTitle::new(row.title)?;
+    let author_ids: Vec<AuthorId> = row
+        .author_ids
+        .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
+        .unwrap_or_default();
+    let isbn = Isbn::new(row.isbn)?;
+    let read = ReadFlag::new(row.read);
+    let owned = OwnedFlag::new(row.owned);
+    let priority = Priority::new(row.priority)?;
+    let format = BookFormat::try_from(row.format.as_str())?;
+    let store = BookStore::try_from(row.store.as_str())?;
+
+    Book::new(
+        book_id,
+        title,
+        author_ids,
+        isbn,
+        read,
+        owned,
+        priority,
+        format,
+        store,
+        row.created_at,
+        row.updated_at,
+    )
+}
+
+async fn find_book_by_id_with_executor<'e, E>(
+    executor: E,
+    user_id: &UserId,
+    book_id: &BookId,
+) -> Result<Option<Book>, DomainError>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    let book_row: Option<BookRow> = sqlx::query_as(
+        "WITH book_of_user AS(
+            SELECT
+                *
+            FROM
+                book
+            WHERE
+                book.user_id = $1
+        ),
+        authors_of_book_and_user AS(
+            SELECT
+                book_id,
+                array_agg(author_id) AS author_ids
+            FROM
+                book_author
+            WHERE
+                book_author.user_id = $1
+            GROUP BY
+                book_author.book_id
+        )
+        SELECT
+            *
+        FROM
+            book_of_user
+            LEFT OUTER JOIN
+                authors_of_book_and_user
+            ON  book_of_user.id = authors_of_book_and_user.book_id
+        WHERE book_of_user.id = $2",
+    )
+    .bind(user_id.as_str())
+    .bind(book_id.to_uuid())
+    .fetch_optional(executor)
+    .await?;
+
+    book_row.map(book_from_row).transpose()
 }
 
 #[derive(Debug, Clone)]
@@ -144,71 +218,17 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError> {
-        let book_row: Option<BookRow> = sqlx::query_as(
-            "WITH book_of_user AS(
-                SELECT
-                    *
-                FROM
-                    book
-                WHERE
-                    book.user_id = $1
-            ),
-            authors_of_book_and_user AS(
-                SELECT
-                    book_id,
-                    array_agg(author_id) AS author_ids
-                FROM
-                    book_author
-                WHERE
-                    book_author.user_id = $1
-                GROUP BY
-                    book_author.book_id
-            )
-            SELECT
-                *
-            FROM
-                book_of_user
-                LEFT OUTER JOIN
-                    authors_of_book_and_user
-                ON  book_of_user.id = authors_of_book_and_user.book_id
-            WHERE book_of_user.id = $2",
-        )
-        .bind(user_id.as_str())
-        .bind(book_id.to_uuid())
-        .fetch_optional(&self.pool)
-        .await?;
+        find_book_by_id_with_executor(&self.pool, user_id, book_id).await
+    }
 
-        let book = book_row.map(|row| {
-            let book_id = BookId::new(row.id)?;
-            let title = BookTitle::new(row.title)?;
-            let author_ids: Vec<AuthorId> = row
-                .author_ids
-                .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
-                .unwrap_or_default();
-            let isbn = Isbn::new(row.isbn)?;
-            let read = ReadFlag::new(row.read);
-            let owned = OwnedFlag::new(row.owned);
-            let priority = Priority::new(row.priority)?;
-            let format = BookFormat::try_from(row.format.as_str())?;
-            let store = BookStore::try_from(row.store.as_str())?;
-
-            Book::new(
-                book_id,
-                title,
-                author_ids,
-                isbn,
-                read,
-                owned,
-                priority,
-                format,
-                store,
-                row.created_at,
-                row.updated_at,
-            )
-        });
-        let book = book.transpose()?;
-
-        Ok(book)
+    async fn find_by_id_with_tx(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        book_id: &BookId,
+    ) -> Result<Option<Book>, DomainError> {
+        tx.ensure_user(user_id)?;
+        find_book_by_id_with_executor(tx.as_mut(), user_id, book_id).await
     }
 
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
@@ -244,33 +264,7 @@ impl BookRepository for PgBookRepository {
         .fetch(&self.pool)
         .map(
             |row: Result<BookRow, sqlx::Error>| -> Result<Book, DomainError> {
-                let row = row?;
-                let book_id = BookId::new(row.id)?;
-                let title = BookTitle::new(row.title)?;
-                let author_ids: Vec<AuthorId> = row
-                    .author_ids
-                    .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
-                    .unwrap_or_else(std::vec::Vec::new);
-                let isbn = Isbn::new(row.isbn)?;
-                let read = ReadFlag::new(row.read);
-                let owned = OwnedFlag::new(row.owned);
-                let priority = Priority::new(row.priority)?;
-                let format = BookFormat::try_from(row.format.as_str())?;
-                let store = BookStore::try_from(row.store.as_str())?;
-
-                Book::new(
-                    book_id,
-                    title,
-                    author_ids,
-                    isbn,
-                    read,
-                    owned,
-                    priority,
-                    format,
-                    store,
-                    row.created_at,
-                    row.updated_at,
-                )
+                book_from_row(row?)
             },
         )
         .try_collect()
@@ -688,6 +682,55 @@ mod tests {
 
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_find_by_id_with_tx_matches_find_by_id(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        create_book(&pool, &book_repository, &user_id, &book).await?;
+
+        let expected = book_repository.find_by_id(&user_id, book.id()).await?;
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateBook).await?;
+        let actual = book_repository
+            .find_by_id_with_tx(&mut tx, &user_id, book.id())
+            .await?;
+        assert_eq!(actual, expected);
+        tm.commit(tx).await?;
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_find_by_id_with_tx_rejects_user_mismatched_transaction(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let other_user_id = UserId::new(String::from("user2"))?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        let book = book_entity1(&author_ids)?;
+        create_book(&pool, &book_repository, &user_id, &book).await?;
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateBook).await?;
+        let result = book_repository
+            .find_by_id_with_tx(&mut tx, &other_user_id, book.id())
+            .await;
+        assert!(matches!(result, Err(DomainError::Unexpected(_))));
+        drop(tx);
 
         Ok(())
     }
