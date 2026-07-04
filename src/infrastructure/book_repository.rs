@@ -579,7 +579,7 @@ mod tests {
         domain::{
             entity::{
                 author::{Author, AuthorName},
-                book::BookDetailsUpdate,
+                book::BookUpdate,
                 user::User,
             },
             error::DomainError,
@@ -814,7 +814,7 @@ mod tests {
         )?;
         create_author(&pool, &author_repository, &user_id, &another_author).await?;
         author_ids.push(another_author_id);
-        let update = BookDetailsUpdate {
+        let update = BookUpdate {
             title: BookTitle::new("another_title".to_owned())?,
             author_ids,
             isbn: book.isbn().clone(),
@@ -825,7 +825,7 @@ mod tests {
             store: book.store().clone(),
         };
         let updated_at = *book.updated_at();
-        book.update_details(update, updated_at);
+        book.update(update, updated_at);
         update_book(&pool, &book_repository, &user_id, &book).await?;
 
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;

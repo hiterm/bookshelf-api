@@ -144,7 +144,7 @@ pub struct Book {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BookDetailsUpdate {
+pub struct BookUpdate {
     pub title: BookTitle,
     pub author_ids: Vec<AuthorId>,
     pub isbn: Isbn,
@@ -200,7 +200,7 @@ impl Book {
         })
     }
 
-    pub fn update_details(&mut self, update: BookDetailsUpdate, updated_at: OffsetDateTime) {
+    pub fn update(&mut self, update: BookUpdate, updated_at: OffsetDateTime) {
         self.title = update.title;
         self.author_ids = update.author_ids;
         self.isbn = update.isbn;
@@ -236,11 +236,11 @@ mod test {
 
     use crate::common::types::{BookFormat, BookStore};
 
-    use super::{Book, BookDetailsUpdate, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag};
+    use super::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag};
     use crate::domain::entity::author::AuthorId;
 
     #[test]
-    fn update_details_updates_editable_fields_and_updated_at() {
+    fn update_updates_editable_fields_and_updated_at() {
         let id = BookId::new(Uuid::new_v4()).expect("valid book id");
         let created_at = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid time");
         let original_updated_at =
@@ -264,7 +264,7 @@ mod test {
         )
         .expect("valid book");
 
-        let update = BookDetailsUpdate {
+        let update = BookUpdate {
             title: BookTitle::new("Updated title".to_owned()).expect("valid title"),
             author_ids: updated_author_ids.clone(),
             isbn: Isbn::new("978-4062758574".to_owned()).expect("valid isbn"),
@@ -275,7 +275,7 @@ mod test {
             store: BookStore::Kindle,
         };
 
-        book.update_details(update, updated_at);
+        book.update(update, updated_at);
 
         assert_eq!(book.title().as_str(), "Updated title");
         assert_eq!(book.author_ids(), &updated_author_ids);

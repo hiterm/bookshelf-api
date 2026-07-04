@@ -9,9 +9,7 @@ use crate::{
     domain::{
         entity::{
             author::{AuthorId, AuthorName},
-            book::{
-                Book, BookDetailsUpdate, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag,
-            },
+            book::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag},
             event::EventSetOperation,
             user::UserId,
         },
@@ -160,7 +158,7 @@ where
             }
         };
 
-        let update = BookDetailsUpdate {
+        let update = BookUpdate {
             title,
             author_ids,
             isbn,
@@ -170,7 +168,7 @@ where
             format,
             store,
         };
-        book.update_details(update, OffsetDateTime::now_utc());
+        book.update(update, OffsetDateTime::now_utc());
 
         self.book_repository
             .update(&mut tx, &user_id, &book)
