@@ -571,6 +571,53 @@ mod tests {
     }
 
     #[sqlx::test]
+    async fn find_by_id_with_tx_matches_find_by_id(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id.clone(), AuthorName::new(String::from("author1"))?)?;
+        create_author(&pool, &author_repository, &user_id, &author).await?;
+
+        let expected = author_repository.find_by_id(&user_id, &author_id).await?;
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateAuthor).await?;
+        let actual = author_repository
+            .find_by_id_with_tx(&mut tx, &user_id, &author_id)
+            .await?;
+        assert_eq!(actual, expected);
+        tm.commit(tx).await?;
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_id_with_tx_rejects_user_mismatched_transaction(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let other_user_id = UserId::new(String::from("user2"))?;
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id.clone(), AuthorName::new(String::from("author1"))?)?;
+        create_author(&pool, &author_repository, &user_id, &author).await?;
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateAuthor).await?;
+        let result = author_repository
+            .find_by_id_with_tx(&mut tx, &other_user_id, &author_id)
+            .await;
+        assert!(matches!(result, Err(DomainError::Unexpected(_))));
+        drop(tx);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn create_and_find_all(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
