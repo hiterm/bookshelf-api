@@ -1,4 +1,4 @@
-use getset::{Getters, Setters};
+use getset::Getters;
 use regex::Regex;
 use std::sync::LazyLock;
 use time::OffsetDateTime;
@@ -117,30 +117,42 @@ impl Priority {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Getters, Setters)]
+#[derive(Debug, Clone, PartialEq, Eq, Getters)]
 pub struct Book {
     #[getset(get = "pub")]
     id: BookId,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     title: BookTitle,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     author_ids: Vec<AuthorId>,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     isbn: Isbn,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     read: ReadFlag,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     owned: OwnedFlag,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     priority: Priority,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     format: BookFormat,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     store: BookStore,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     created_at: OffsetDateTime,
-    #[getset(get = "pub", set = "pub")]
+    #[getset(get = "pub")]
     updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BookUpdate {
+    pub title: BookTitle,
+    pub author_ids: Vec<AuthorId>,
+    pub isbn: Isbn,
+    pub read: ReadFlag,
+    pub owned: OwnedFlag,
+    pub priority: Priority,
+    pub format: BookFormat,
+    pub store: BookStore,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,6 +200,18 @@ impl Book {
         })
     }
 
+    pub fn update(&mut self, update: BookUpdate, updated_at: OffsetDateTime) {
+        self.title = update.title;
+        self.author_ids = update.author_ids;
+        self.isbn = update.isbn;
+        self.read = update.read;
+        self.owned = update.owned;
+        self.priority = update.priority;
+        self.format = update.format;
+        self.store = update.store;
+        self.updated_at = updated_at;
+    }
+
     pub fn destructure(self) -> DestructureBook {
         DestructureBook {
             id: self.id,
@@ -207,7 +231,64 @@ impl Book {
 
 #[cfg(test)]
 mod test {
-    use super::{Isbn, Priority};
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    use crate::common::types::{BookFormat, BookStore};
+
+    use super::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag};
+    use crate::domain::entity::author::AuthorId;
+
+    #[test]
+    fn update_updates_editable_fields_and_updated_at() {
+        let id = BookId::new(Uuid::new_v4()).expect("valid book id");
+        let created_at = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid time");
+        let original_updated_at =
+            OffsetDateTime::from_unix_timestamp(1_700_000_100).expect("valid time");
+        let updated_at = OffsetDateTime::from_unix_timestamp(1_700_000_200).expect("valid time");
+        let original_author_id = AuthorId::new(Uuid::new_v4());
+        let updated_author_ids = vec![AuthorId::new(Uuid::new_v4()), AuthorId::new(Uuid::new_v4())];
+
+        let mut book = Book::new(
+            id.clone(),
+            BookTitle::new("Original title".to_owned()).expect("valid title"),
+            vec![original_author_id],
+            Isbn::new("9784062758574".to_owned()).expect("valid isbn"),
+            ReadFlag::new(false),
+            OwnedFlag::new(false),
+            Priority::new(10).expect("valid priority"),
+            BookFormat::Printed,
+            BookStore::Unknown,
+            created_at,
+            original_updated_at,
+        )
+        .expect("valid book");
+
+        let update = BookUpdate {
+            title: BookTitle::new("Updated title".to_owned()).expect("valid title"),
+            author_ids: updated_author_ids.clone(),
+            isbn: Isbn::new("978-4062758574".to_owned()).expect("valid isbn"),
+            read: ReadFlag::new(true),
+            owned: OwnedFlag::new(true),
+            priority: Priority::new(99).expect("valid priority"),
+            format: BookFormat::EBook,
+            store: BookStore::Kindle,
+        };
+
+        book.update(update, updated_at);
+
+        assert_eq!(book.title().as_str(), "Updated title");
+        assert_eq!(book.author_ids(), &updated_author_ids);
+        assert_eq!(book.isbn().as_str(), "978-4062758574");
+        assert!(book.read().to_bool());
+        assert!(book.owned().to_bool());
+        assert_eq!(book.priority().to_i32(), 99);
+        assert_eq!(book.format(), &BookFormat::EBook);
+        assert_eq!(book.store(), &BookStore::Kindle);
+        assert_eq!(book.updated_at(), &updated_at);
+        assert_eq!(book.id(), &id);
+        assert_eq!(book.created_at(), &created_at);
+    }
 
     #[test]
     fn valid_isbn_with_hyphen() {
