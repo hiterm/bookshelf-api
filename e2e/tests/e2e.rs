@@ -357,6 +357,21 @@ async fn create_test_book(title: &str, author_id: &str, token: &str) -> Result<S
     Ok(id)
 }
 
+fn assert_graphql_errors(response: &serde_json::Value, context: &str) {
+    assert!(
+        response.get("errors").is_some(),
+        "{context} should return GraphQL errors: {response:?}"
+    );
+}
+
+fn assert_no_graphql_errors(response: &serde_json::Value, context: &str) {
+    assert!(
+        response.get("errors").is_none(),
+        "{context} should not return GraphQL errors: {:?}",
+        response.get("errors")
+    );
+}
+
 #[tokio::test]
 #[serial]
 async fn e2e_graphql_without_auth_returns_error() -> Result<()> {
@@ -367,6 +382,39 @@ async fn e2e_graphql_without_auth_returns_error() -> Result<()> {
         status, 401,
         "Expected 401 Unauthorized when accessing GraphQL without authentication"
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_register_user_and_logged_in_user() -> Result<()> {
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = generate_test_token(&user_id)?;
+
+    let (_, response) = graphql_request(r#"{ loggedInUser { id } }"#, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "loggedInUser before registration");
+    assert!(
+        response["data"]["loggedInUser"].is_null(),
+        "unregistered user should not be returned by loggedInUser"
+    );
+
+    let (_, response) =
+        graphql_request(r#"mutation { registerUser { id } }"#, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "registerUser");
+    assert_eq!(
+        response["data"]["registerUser"]["id"].as_str(),
+        Some(user_id.as_str()),
+        "registerUser should return the JWT subject"
+    );
+
+    let (_, response) = graphql_request(r#"{ loggedInUser { id } }"#, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "loggedInUser after registration");
+    assert_eq!(
+        response["data"]["loggedInUser"]["id"].as_str(),
+        Some(user_id.as_str()),
+        "loggedInUser should return the registered user"
+    );
+
     Ok(())
 }
 
@@ -915,6 +963,237 @@ async fn e2e_graphql_create_book_without_auth() -> Result<()> {
     "#;
     let (status, _response) = graphql_request(query, None).await?;
     assert_eq!(status, 401, "createBook without auth should return 401");
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_update_nonexistent_book_returns_error() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let nonexistent_id = uuid::Uuid::new_v4().to_string();
+    let query = format!(
+        r#"
+        mutation {{
+            updateBook(bookData: {{
+                id: "{}"
+                title: "Ghost Book"
+                authorIds: []
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ id title }}
+        }}
+        "#,
+        nonexistent_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert_graphql_errors(&response, "updateBook for a non-existent book");
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_delete_nonexistent_book_returns_error() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let nonexistent_id = uuid::Uuid::new_v4().to_string();
+    let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, nonexistent_id);
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert_graphql_errors(&response, "deleteBook for a non-existent book");
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_books_authors_are_user_isolated() -> Result<()> {
+    let (_owner_user_id, owner_token) = create_test_user().await?;
+    let (_other_user_id, other_token) = create_test_user().await?;
+
+    let author_name = format!("Isolation Author {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&author_name, &owner_token).await?;
+    let book_id = create_test_book("Isolation Book", &author_id, &owner_token).await?;
+
+    let (_, response) =
+        graphql_request(r#"{ books { id } authors { id } }"#, Some(&other_token)).await?;
+    let other_books = response["data"]["books"]
+        .as_array()
+        .context("books should be an array")?;
+    let other_authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    assert!(
+        other_books
+            .iter()
+            .all(|book| book["id"].as_str() != Some(book_id.as_str())),
+        "other user should not list owner user's book"
+    );
+    assert!(
+        other_authors
+            .iter()
+            .all(|author| author["id"].as_str() != Some(author_id.as_str())),
+        "other user should not list owner user's author"
+    );
+
+    let book_query = format!(r#"{{ book(id: "{}") {{ id }} }}"#, book_id);
+    let (_, response) = graphql_request(&book_query, Some(&other_token)).await?;
+    assert!(
+        response["data"]["book"].is_null(),
+        "other user should not fetch owner user's book by id"
+    );
+
+    let author_query = format!(r#"{{ author(id: "{}") {{ id }} }}"#, author_id);
+    let (_, response) = graphql_request(&author_query, Some(&other_token)).await?;
+    assert!(
+        response["data"]["author"].is_null(),
+        "other user should not fetch owner user's author by id"
+    );
+
+    let update_book_query = format!(
+        r#"
+        mutation {{
+            updateBook(bookData: {{
+                id: "{}"
+                title: "Hijacked Book"
+                authorIds: []
+                isbn: ""
+                read: true
+                owned: true
+                priority: 1
+                format: PRINTED
+                store: KINDLE
+            }}) {{ id }}
+        }}
+        "#,
+        book_id
+    );
+    let (_, response) = graphql_request(&update_book_query, Some(&other_token)).await?;
+    assert_graphql_errors(&response, "other user's updateBook");
+
+    let delete_book_query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
+    let (_, response) = graphql_request(&delete_book_query, Some(&other_token)).await?;
+    assert_graphql_errors(&response, "other user's deleteBook");
+
+    let update_author_query = format!(
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Hijacked Author" }}) {{ id }} }}"#,
+        author_id
+    );
+    let (_, response) = graphql_request(&update_author_query, Some(&other_token)).await?;
+    assert_graphql_errors(&response, "other user's updateAuthor");
+
+    let delete_author_query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
+    let (_, response) = graphql_request(&delete_author_query, Some(&other_token)).await?;
+    assert_graphql_errors(&response, "other user's deleteAuthor");
+
+    let owner_book_query = format!(r#"{{ book(id: "{}") {{ title }} }}"#, book_id);
+    let (_, response) = graphql_request(&owner_book_query, Some(&owner_token)).await?;
+    assert_eq!(
+        response["data"]["book"]["title"].as_str(),
+        Some("Isolation Book"),
+        "owner user's book should remain unchanged"
+    );
+    let owner_author_query = format!(r#"{{ author(id: "{}") {{ name }} }}"#, author_id);
+    let (_, response) = graphql_request(&owner_author_query, Some(&owner_token)).await?;
+    assert_eq!(
+        response["data"]["author"]["name"].as_str(),
+        Some(author_name.as_str()),
+        "owner user's author should remain unchanged"
+    );
+
+    delete_test_book(&book_id, &owner_token).await?;
+    delete_test_author(&author_id, &owner_token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+
+    let (_, response) = graphql_request(
+        r#"mutation { createAuthor(authorData: { name: "" }) { id } }"#,
+        Some(&token),
+    )
+    .await?;
+    assert_graphql_errors(&response, "createAuthor with an empty name");
+
+    let invalid_book_queries = [
+        r#"
+        mutation {
+            createBook(bookData: {
+                title: ""
+                authorIds: []
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }) { id }
+        }
+        "#,
+        r#"
+        mutation {
+            createBook(bookData: {
+                title: "Invalid ISBN Book"
+                authorIds: []
+                isbn: "bad-isbn"
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }) { id }
+        }
+        "#,
+        r#"
+        mutation {
+            createBook(bookData: {
+                title: "Invalid Priority Book"
+                authorIds: []
+                isbn: ""
+                read: false
+                owned: false
+                priority: 101
+                format: E_BOOK
+                store: KINDLE
+            }) { id }
+        }
+        "#,
+    ];
+    for query in invalid_book_queries {
+        let (_, response) = graphql_request(query, Some(&token)).await?;
+        assert_graphql_errors(&response, "createBook with invalid input");
+    }
+
+    let (_, response) = graphql_request(
+        r#"{ books { id } authors { id } eventSets { id } }"#,
+        Some(&token),
+    )
+    .await?;
+    assert!(
+        response["data"]["books"]
+            .as_array()
+            .context("books should be an array")?
+            .is_empty(),
+        "invalid createBook requests should not create books"
+    );
+    assert!(
+        response["data"]["authors"]
+            .as_array()
+            .context("authors should be an array")?
+            .is_empty(),
+        "invalid createAuthor request should not create authors"
+    );
+    assert!(
+        response["data"]["eventSets"]
+            .as_array()
+            .context("eventSets should be an array")?
+            .is_empty(),
+        "invalid create requests should not create event sets"
+    );
+
     Ok(())
 }
 
@@ -1626,6 +1905,90 @@ async fn e2e_restore_author_records_restore_event() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+async fn e2e_restore_mutations_reject_invalid_or_missing_event_ids() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+
+    let invalid_queries = [
+        r#"mutation { restoreBook(eventId: "not-an-int") { id } }"#,
+        r#"mutation { restoreAuthor(eventId: "not-an-int") { id } }"#,
+        r#"mutation { restoreBook(eventId: "999999999") { id } }"#,
+        r#"mutation { restoreAuthor(eventId: "999999999") { id } }"#,
+    ];
+
+    for query in invalid_queries {
+        let (_, response) = graphql_request(query, Some(&token)).await?;
+        assert_graphql_errors(&response, "restore with an invalid or missing event id");
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_restore_mutations_are_user_isolated() -> Result<()> {
+    let (_owner_user_id, owner_token) = create_test_user().await?;
+    let (_other_user_id, other_token) = create_test_user().await?;
+
+    let author_name = format!("Restore Isolation Author {}", uuid::Uuid::new_v4());
+    let author_id = create_test_author(&author_name, &owner_token).await?;
+    let book_id = create_test_book("Restore Isolation Book", &author_id, &owner_token).await?;
+
+    let book_events_query = format!(
+        r#"{{ bookEvents(bookId: "{}") {{ eventId operation }} }}"#,
+        book_id
+    );
+    let (_, response) = graphql_request(&book_events_query, Some(&owner_token)).await?;
+    let book_event_id = response["data"]["bookEvents"][0]["eventId"]
+        .as_str()
+        .context("book event id should be a string")?
+        .to_owned();
+
+    let author_events_query = format!(
+        r#"{{ authorEvents(authorId: "{}") {{ eventId operation }} }}"#,
+        author_id
+    );
+    let (_, response) = graphql_request(&author_events_query, Some(&owner_token)).await?;
+    let author_event_id = response["data"]["authorEvents"][0]["eventId"]
+        .as_str()
+        .context("author event id should be a string")?
+        .to_owned();
+
+    let restore_book_query = format!(
+        r#"mutation {{ restoreBook(eventId: "{}") {{ id }} }}"#,
+        book_event_id
+    );
+    let (_, response) = graphql_request(&restore_book_query, Some(&other_token)).await?;
+    assert_graphql_errors(&response, "other user's restoreBook");
+
+    let restore_author_query = format!(
+        r#"mutation {{ restoreAuthor(eventId: "{}") {{ id }} }}"#,
+        author_event_id
+    );
+    let (_, response) = graphql_request(&restore_author_query, Some(&other_token)).await?;
+    assert_graphql_errors(&response, "other user's restoreAuthor");
+
+    let owner_book_query = format!(r#"{{ book(id: "{}") {{ title }} }}"#, book_id);
+    let (_, response) = graphql_request(&owner_book_query, Some(&owner_token)).await?;
+    assert_eq!(
+        response["data"]["book"]["title"].as_str(),
+        Some("Restore Isolation Book"),
+        "other user's restoreBook should not alter owner data"
+    );
+    let owner_author_query = format!(r#"{{ author(id: "{}") {{ name }} }}"#, author_id);
+    let (_, response) = graphql_request(&owner_author_query, Some(&owner_token)).await?;
+    assert_eq!(
+        response["data"]["author"]["name"].as_str(),
+        Some(author_name.as_str()),
+        "other user's restoreAuthor should not alter owner data"
+    );
+
+    delete_test_book(&book_id, &owner_token).await?;
+    delete_test_author(&author_id, &owner_token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn e2e_import_books() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
@@ -1853,6 +2216,437 @@ async fn e2e_import_books() -> Result<()> {
     // Delete New Author
     delete_test_author(new_author_id, &token).await?;
 
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_import_books_many_entries() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let run_id = uuid::Uuid::new_v4();
+
+    let existing_author_names: Vec<String> = (0..3)
+        .map(|i| format!("Bulk Existing Author {run_id} {i}"))
+        .collect();
+    let mut author_ids = Vec::new();
+    for name in &existing_author_names {
+        author_ids.push(create_test_author(name, &token).await?);
+    }
+
+    let import_count = 25;
+    let imported_entries = (0..import_count)
+        .map(|i| {
+            let title = format!("Bulk Import Book {run_id} {i:02}");
+            let existing_author_name = &existing_author_names[i % existing_author_names.len()];
+            let new_author_name = format!("Bulk New Author {run_id} {i:02}");
+            format!(
+                r#"{{
+                    title: "{title}"
+                    authorNames: ["{existing_author_name}", "{new_author_name}"]
+                    isbn: "978000000{i:04}"
+                    read: false
+                    owned: true
+                    priority: 50
+                    format: E_BOOK
+                    store: KINDLE
+                }}"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+
+    let import_query = format!(
+        r#"
+        mutation {{
+            importBooks(books: [{imported_entries}]) {{
+                id
+                title
+                authors {{ name }}
+            }}
+        }}
+        "#
+    );
+    let (_, response) = graphql_request(&import_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "bulk importBooks should not return errors: {:?}",
+        response.get("errors")
+    );
+
+    let imported_books = response["data"]["importBooks"]
+        .as_array()
+        .context("importBooks should return an array")?;
+    assert_eq!(
+        imported_books.len(),
+        import_count,
+        "bulk import should return every requested book"
+    );
+
+    let mut imported_book_ids = Vec::new();
+    for (i, book) in imported_books.iter().enumerate() {
+        let book_id = book["id"]
+            .as_str()
+            .context("imported book id should be a string")?;
+        imported_book_ids.push(book_id.to_owned());
+        assert_eq!(
+            book["title"].as_str(),
+            Some(format!("Bulk Import Book {run_id} {i:02}").as_str())
+        );
+        let authors = book["authors"]
+            .as_array()
+            .context("imported book authors should be an array")?;
+        assert_eq!(authors.len(), 2, "each bulk imported book has 2 authors");
+        assert!(authors.iter().any(|author| {
+            author["name"].as_str()
+                == Some(existing_author_names[i % existing_author_names.len()].as_str())
+        }));
+        assert!(authors.iter().any(|author| {
+            author["name"].as_str() == Some(format!("Bulk New Author {run_id} {i:02}").as_str())
+        }));
+    }
+
+    let (_, response) = graphql_request(r#"{ eventSets { id operation } }"#, Some(&token)).await?;
+    let event_sets = response["data"]["eventSets"]
+        .as_array()
+        .context("eventSets should be an array")?;
+    let import_set_id = event_sets
+        .iter()
+        .find(|s| s["operation"].as_str() == Some("import_books"))
+        .and_then(|s| s["id"].as_str())
+        .context("there should be an import_books event set")?;
+
+    let event_set_query = format!(
+        r#"{{ eventSet(id: "{}") {{
+            operation
+            bookEvents {{ bookId operation }}
+            authorEvents {{ name operation }}
+        }} }}"#,
+        import_set_id
+    );
+    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
+    let event_set = &response["data"]["eventSet"];
+    assert_eq!(event_set["operation"].as_str(), Some("import_books"));
+    let grouped_book_events = event_set["bookEvents"]
+        .as_array()
+        .context("bookEvents should be an array")?;
+    assert_eq!(
+        grouped_book_events.len(),
+        import_count,
+        "bulk import event set should group every book create event"
+    );
+    assert!(
+        grouped_book_events
+            .iter()
+            .all(|event| event["operation"].as_str() == Some("create")),
+        "all bulk import book events should be create events"
+    );
+    for book_id in &imported_book_ids {
+        assert!(
+            grouped_book_events
+                .iter()
+                .any(|event| event["bookId"].as_str() == Some(book_id.as_str())),
+            "bulk import event set should contain book id {book_id}"
+        );
+    }
+
+    let grouped_author_events = event_set["authorEvents"]
+        .as_array()
+        .context("authorEvents should be an array")?;
+    assert_eq!(
+        grouped_author_events.len(),
+        import_count,
+        "bulk import event set should only group newly created author events"
+    );
+    for i in 0..import_count {
+        let new_author_name = format!("Bulk New Author {run_id} {i:02}");
+        assert!(
+            grouped_author_events.iter().any(|event| {
+                event["operation"].as_str() == Some("create")
+                    && event["name"].as_str() == Some(new_author_name.as_str())
+            }),
+            "bulk import event set should contain author event for {new_author_name}"
+        );
+    }
+
+    let (_, response) = graphql_request(r#"{ authors { id name } }"#, Some(&token)).await?;
+    let all_authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    for existing_author_name in &existing_author_names {
+        assert_eq!(
+            all_authors
+                .iter()
+                .filter(|author| author["name"].as_str() == Some(existing_author_name.as_str()))
+                .count(),
+            1,
+            "existing bulk import authors should not be duplicated"
+        );
+    }
+    for i in 0..import_count {
+        let new_author_name = format!("Bulk New Author {run_id} {i:02}");
+        let new_author_id = all_authors
+            .iter()
+            .find(|author| author["name"].as_str() == Some(new_author_name.as_str()))
+            .and_then(|author| author["id"].as_str())
+            .context("new bulk import author should exist")?;
+        author_ids.push(new_author_id.to_owned());
+    }
+
+    for book_id in &imported_book_ids {
+        delete_test_book(book_id, &token).await?;
+    }
+    for author_id in &author_ids {
+        delete_test_author(author_id, &token).await?;
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_import_books_rolls_back_when_one_entry_is_invalid() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let run_id = uuid::Uuid::new_v4();
+    let valid_title = format!("Rollback Import Valid Book {run_id}");
+    let valid_author = format!("Rollback Import Valid Author {run_id}");
+    let invalid_author = format!("Rollback Import Invalid Author {run_id}");
+
+    let import_query = format!(
+        r#"
+        mutation {{
+            importBooks(books: [
+                {{
+                    title: "{valid_title}"
+                    authorNames: ["{valid_author}"]
+                    isbn: ""
+                    read: false
+                    owned: false
+                    priority: 50
+                    format: E_BOOK
+                    store: KINDLE
+                }},
+                {{
+                    title: ""
+                    authorNames: ["{invalid_author}"]
+                    isbn: ""
+                    read: false
+                    owned: false
+                    priority: 50
+                    format: E_BOOK
+                    store: KINDLE
+                }}
+            ]) {{ id }}
+        }}
+        "#
+    );
+    let (_, response) = graphql_request(&import_query, Some(&token)).await?;
+    assert_graphql_errors(&response, "importBooks with one invalid entry");
+
+    let (_, response) = graphql_request(
+        r#"{ books { title } authors { name } eventSets { operation } }"#,
+        Some(&token),
+    )
+    .await?;
+    let books = response["data"]["books"]
+        .as_array()
+        .context("books should be an array")?;
+    let authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    let event_sets = response["data"]["eventSets"]
+        .as_array()
+        .context("eventSets should be an array")?;
+    assert!(
+        books
+            .iter()
+            .all(|book| book["title"].as_str() != Some(valid_title.as_str())),
+        "failed import should not persist the valid book"
+    );
+    assert!(
+        authors.iter().all(|author| {
+            author["name"].as_str() != Some(valid_author.as_str())
+                && author["name"].as_str() != Some(invalid_author.as_str())
+        }),
+        "failed import should not persist any import authors"
+    );
+    assert!(
+        event_sets
+            .iter()
+            .all(|set| set["operation"].as_str() != Some("import_books")),
+        "failed import should not create an import_books event set"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_import_books_rejects_more_than_max_batch() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let run_id = uuid::Uuid::new_v4();
+    let imported_entries = (0..1001)
+        .map(|i| {
+            format!(
+                r#"{{
+                    title: "Too Many Import Book {run_id} {i:04}"
+                    authorNames: []
+                    isbn: ""
+                    read: false
+                    owned: false
+                    priority: 50
+                    format: E_BOOK
+                    store: KINDLE
+                }}"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+    let import_query =
+        format!(r#"mutation {{ importBooks(books: [{imported_entries}]) {{ id }} }}"#);
+
+    let (_, response) = graphql_request(&import_query, Some(&token)).await?;
+    assert_graphql_errors(&response, "importBooks above the max batch size");
+
+    let (_, response) =
+        graphql_request(r#"{ books { id } eventSets { operation } }"#, Some(&token)).await?;
+    assert!(
+        response["data"]["books"]
+            .as_array()
+            .context("books should be an array")?
+            .is_empty(),
+        "rejected oversized import should not create books"
+    );
+    assert!(
+        response["data"]["eventSets"]
+            .as_array()
+            .context("eventSets should be an array")?
+            .iter()
+            .all(|set| set["operation"].as_str() != Some("import_books")),
+        "rejected oversized import should not create an import event set"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let run_id = uuid::Uuid::new_v4();
+    let shared_author = format!("Shared Imported Author {run_id}");
+    let titles: Vec<String> = (0..3)
+        .map(|i| format!("Shared Author Import Book {run_id} {i}"))
+        .collect();
+    let imported_entries = titles
+        .iter()
+        .map(|title| {
+            format!(
+                r#"{{
+                    title: "{title}"
+                    authorNames: ["{shared_author}"]
+                    isbn: ""
+                    read: false
+                    owned: false
+                    priority: 50
+                    format: E_BOOK
+                    store: KINDLE
+                }}"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+    let import_query = format!(
+        r#"
+        mutation {{
+            importBooks(books: [{imported_entries}]) {{
+                id
+                title
+                authors {{ name }}
+            }}
+        }}
+        "#
+    );
+    let (_, response) = graphql_request(&import_query, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "importBooks with a shared new author");
+
+    let imported_books = response["data"]["importBooks"]
+        .as_array()
+        .context("importBooks should return an array")?;
+    assert_eq!(imported_books.len(), titles.len());
+    let imported_book_ids: Vec<String> = imported_books
+        .iter()
+        .map(|book| {
+            let authors = book["authors"]
+                .as_array()
+                .context("book authors should be an array")?;
+            assert_eq!(authors.len(), 1, "each book should have the shared author");
+            assert_eq!(authors[0]["name"].as_str(), Some(shared_author.as_str()));
+            book["id"]
+                .as_str()
+                .context("book id should be a string")
+                .map(str::to_owned)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let (_, response) = graphql_request(
+        r#"{ authors { id name } eventSets { id operation } }"#,
+        Some(&token),
+    )
+    .await?;
+    let authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    let matching_authors: Vec<&serde_json::Value> = authors
+        .iter()
+        .filter(|author| author["name"].as_str() == Some(shared_author.as_str()))
+        .collect();
+    assert_eq!(
+        matching_authors.len(),
+        1,
+        "shared new author should be created once"
+    );
+    let shared_author_id = matching_authors[0]["id"]
+        .as_str()
+        .context("shared author id should be a string")?;
+
+    let import_set_id = response["data"]["eventSets"]
+        .as_array()
+        .context("eventSets should be an array")?
+        .iter()
+        .find(|set| set["operation"].as_str() == Some("import_books"))
+        .and_then(|set| set["id"].as_str())
+        .context("there should be an import_books event set")?;
+    let event_set_query = format!(
+        r#"{{ eventSet(id: "{}") {{ bookEvents {{ bookId operation }} authorEvents {{ name operation }} }} }}"#,
+        import_set_id
+    );
+    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
+    assert_eq!(
+        response["data"]["eventSet"]["bookEvents"]
+            .as_array()
+            .context("bookEvents should be an array")?
+            .len(),
+        titles.len(),
+        "each imported book should have a create event"
+    );
+    let author_events = response["data"]["eventSet"]["authorEvents"]
+        .as_array()
+        .context("authorEvents should be an array")?;
+    assert_eq!(
+        author_events.len(),
+        1,
+        "shared author should have one create event"
+    );
+    assert_eq!(
+        author_events[0]["name"].as_str(),
+        Some(shared_author.as_str())
+    );
+    assert_eq!(author_events[0]["operation"].as_str(), Some("create"));
+
+    for book_id in &imported_book_ids {
+        delete_test_book(book_id, &token).await?;
+    }
+    delete_test_author(shared_author_id, &token).await?;
     Ok(())
 }
 
