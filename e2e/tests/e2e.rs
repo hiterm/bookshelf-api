@@ -1858,6 +1858,189 @@ async fn e2e_import_books() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+async fn e2e_import_books_many_entries() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let run_id = uuid::Uuid::new_v4();
+
+    let existing_author_names: Vec<String> = (0..3)
+        .map(|i| format!("Bulk Existing Author {run_id} {i}"))
+        .collect();
+    let mut author_ids = Vec::new();
+    for name in &existing_author_names {
+        author_ids.push(create_test_author(name, &token).await?);
+    }
+
+    let import_count = 25;
+    let imported_entries = (0..import_count)
+        .map(|i| {
+            let title = format!("Bulk Import Book {run_id} {i:02}");
+            let existing_author_name = &existing_author_names[i % existing_author_names.len()];
+            let new_author_name = format!("Bulk New Author {run_id} {i:02}");
+            format!(
+                r#"{{
+                    title: "{title}"
+                    authorNames: ["{existing_author_name}", "{new_author_name}"]
+                    isbn: "978000000{i:04}"
+                    read: false
+                    owned: true
+                    priority: 50
+                    format: E_BOOK
+                    store: KINDLE
+                }}"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+
+    let import_query = format!(
+        r#"
+        mutation {{
+            importBooks(books: [{imported_entries}]) {{
+                id
+                title
+                authors {{ name }}
+            }}
+        }}
+        "#
+    );
+    let (_, response) = graphql_request(&import_query, Some(&token)).await?;
+    assert!(
+        response.get("errors").is_none(),
+        "bulk importBooks should not return errors: {:?}",
+        response.get("errors")
+    );
+
+    let imported_books = response["data"]["importBooks"]
+        .as_array()
+        .context("importBooks should return an array")?;
+    assert_eq!(
+        imported_books.len(),
+        import_count,
+        "bulk import should return every requested book"
+    );
+
+    let mut imported_book_ids = Vec::new();
+    for (i, book) in imported_books.iter().enumerate() {
+        let book_id = book["id"]
+            .as_str()
+            .context("imported book id should be a string")?;
+        imported_book_ids.push(book_id.to_owned());
+        assert_eq!(
+            book["title"].as_str(),
+            Some(format!("Bulk Import Book {run_id} {i:02}").as_str())
+        );
+        let authors = book["authors"]
+            .as_array()
+            .context("imported book authors should be an array")?;
+        assert_eq!(authors.len(), 2, "each bulk imported book has 2 authors");
+        assert!(authors.iter().any(|author| {
+            author["name"].as_str()
+                == Some(existing_author_names[i % existing_author_names.len()].as_str())
+        }));
+        assert!(authors.iter().any(|author| {
+            author["name"].as_str() == Some(format!("Bulk New Author {run_id} {i:02}").as_str())
+        }));
+    }
+
+    let (_, response) = graphql_request(r#"{ eventSets { id operation } }"#, Some(&token)).await?;
+    let event_sets = response["data"]["eventSets"]
+        .as_array()
+        .context("eventSets should be an array")?;
+    let import_set_id = event_sets
+        .iter()
+        .find(|s| s["operation"].as_str() == Some("import_books"))
+        .and_then(|s| s["id"].as_str())
+        .context("there should be an import_books event set")?;
+
+    let event_set_query = format!(
+        r#"{{ eventSet(id: "{}") {{
+            operation
+            bookEvents {{ bookId operation }}
+            authorEvents {{ name operation }}
+        }} }}"#,
+        import_set_id
+    );
+    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
+    let event_set = &response["data"]["eventSet"];
+    assert_eq!(event_set["operation"].as_str(), Some("import_books"));
+    let grouped_book_events = event_set["bookEvents"]
+        .as_array()
+        .context("bookEvents should be an array")?;
+    assert_eq!(
+        grouped_book_events.len(),
+        import_count,
+        "bulk import event set should group every book create event"
+    );
+    assert!(
+        grouped_book_events
+            .iter()
+            .all(|event| event["operation"].as_str() == Some("create")),
+        "all bulk import book events should be create events"
+    );
+    for book_id in &imported_book_ids {
+        assert!(
+            grouped_book_events
+                .iter()
+                .any(|event| event["bookId"].as_str() == Some(book_id.as_str())),
+            "bulk import event set should contain book id {book_id}"
+        );
+    }
+
+    let grouped_author_events = event_set["authorEvents"]
+        .as_array()
+        .context("authorEvents should be an array")?;
+    assert_eq!(
+        grouped_author_events.len(),
+        import_count,
+        "bulk import event set should only group newly created author events"
+    );
+    for i in 0..import_count {
+        let new_author_name = format!("Bulk New Author {run_id} {i:02}");
+        assert!(
+            grouped_author_events.iter().any(|event| {
+                event["operation"].as_str() == Some("create")
+                    && event["name"].as_str() == Some(new_author_name.as_str())
+            }),
+            "bulk import event set should contain author event for {new_author_name}"
+        );
+    }
+
+    let (_, response) = graphql_request(r#"{ authors { id name } }"#, Some(&token)).await?;
+    let all_authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    for existing_author_name in &existing_author_names {
+        assert_eq!(
+            all_authors
+                .iter()
+                .filter(|author| author["name"].as_str() == Some(existing_author_name.as_str()))
+                .count(),
+            1,
+            "existing bulk import authors should not be duplicated"
+        );
+    }
+    for i in 0..import_count {
+        let new_author_name = format!("Bulk New Author {run_id} {i:02}");
+        let new_author_id = all_authors
+            .iter()
+            .find(|author| author["name"].as_str() == Some(new_author_name.as_str()))
+            .and_then(|author| author["id"].as_str())
+            .context("new bulk import author should exist")?;
+        author_ids.push(new_author_id.to_owned());
+    }
+
+    for book_id in &imported_book_ids {
+        delete_test_book(book_id, &token).await?;
+    }
+    for author_id in &author_ids {
+        delete_test_author(author_id, &token).await?;
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn e2e_import_books_empty_returns_error() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
