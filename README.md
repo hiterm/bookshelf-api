@@ -20,18 +20,13 @@ mv .env.template .env
 vim .env  # Fill your value
 ```
 
-### Run migration
-
-```sh
-cargo install sqlx-cli
-sqlx migrate run
-```
-
 ### Start server
 
 ```sh
 cargo run
 ```
+
+The server applies pending migrations on startup.
 
 ### Run via Docker Compose
 
@@ -57,10 +52,7 @@ cargo test
 cp .env.template .env.docker
 docker compose -f docker-compose-test.yml up -d
 
-# 2) Database setup (install sqlx if needed)
-cargo install sqlx-cli --no-default-features --features postgres,rustls
-sqlx database create
-sqlx migrate run
+# 2) Database setup
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE ROLE bookshelf WITH LOGIN PASSWORD 'password';"
 docker compose -f docker-compose-test.yml exec -T db psql -U postgres -c "CREATE DATABASE bookshelf OWNER bookshelf;"
 
