@@ -160,19 +160,17 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<Option<Author>, DomainError> {
-        let row: Option<AuthorRow> =
-            sqlx::query_as("SELECT * FROM author WHERE id = $1 AND user_id = $2")
-                .bind(author_id.to_uuid())
-                .bind(user_id.as_str())
-                .fetch_optional(&self.pool)
-                .await?;
+        find_author_by_id_with_executor(&self.pool, user_id, author_id).await
+    }
 
-        row.map(|row| -> Result<Author, DomainError> {
-            let author_id: AuthorId = row.id.into();
-            let author_name = AuthorName::new(row.name)?;
-            Author::new(author_id, author_name)
-        })
-        .transpose()
+    async fn find_by_id_with_tx(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        author_id: &AuthorId,
+    ) -> Result<Option<Author>, DomainError> {
+        tx.ensure_user(user_id)?;
+        find_author_by_id_with_executor(tx.as_mut(), user_id, author_id).await
     }
 
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError> {
@@ -446,6 +444,29 @@ impl AuthorRepository for PgAuthorRepository {
     }
 }
 
+async fn find_author_by_id_with_executor<'e, E>(
+    executor: E,
+    user_id: &UserId,
+    author_id: &AuthorId,
+) -> Result<Option<Author>, DomainError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let row: Option<AuthorRow> =
+        sqlx::query_as("SELECT * FROM author WHERE id = $1 AND user_id = $2")
+            .bind(author_id.to_uuid())
+            .bind(user_id.as_str())
+            .fetch_optional(executor)
+            .await?;
+
+    row.map(|row| -> Result<Author, DomainError> {
+        let author_id: AuthorId = row.id.into();
+        let author_name = AuthorName::new(row.name)?;
+        Author::new(author_id, author_name)
+    })
+    .transpose()
+}
+
 #[cfg(feature = "test-with-database")]
 #[cfg(test)]
 mod tests {
@@ -545,6 +566,53 @@ mod tests {
 
         let actual = author_repository.find_by_id(&user_id, &author_id).await?;
         assert_eq!(actual, Some(author.clone()));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_id_with_tx_matches_find_by_id(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id.clone(), AuthorName::new(String::from("author1"))?)?;
+        create_author(&pool, &author_repository, &user_id, &author).await?;
+
+        let expected = author_repository.find_by_id(&user_id, &author_id).await?;
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateAuthor).await?;
+        let actual = author_repository
+            .find_by_id_with_tx(&mut tx, &user_id, &author_id)
+            .await?;
+        assert_eq!(actual, expected);
+        tm.commit(tx).await?;
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_id_with_tx_rejects_user_mismatched_transaction(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let other_user_id = UserId::new(String::from("user2"))?;
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id.clone(), AuthorName::new(String::from("author1"))?)?;
+        create_author(&pool, &author_repository, &user_id, &author).await?;
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateAuthor).await?;
+        let result = author_repository
+            .find_by_id_with_tx(&mut tx, &other_user_id, &author_id)
+            .await;
+        assert!(matches!(result, Err(DomainError::Unexpected(_))));
+        drop(tx);
 
         Ok(())
     }

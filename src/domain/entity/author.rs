@@ -69,9 +69,18 @@ pub struct DestructureAuthor {
     pub name: AuthorName,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthorUpdate {
+    pub name: AuthorName,
+}
+
 impl Author {
     pub fn new(id: AuthorId, name: AuthorName) -> Result<Author, DomainError> {
         Ok(Author { id, name })
+    }
+
+    pub fn update(&mut self, update: AuthorUpdate) {
+        self.name = update.name;
     }
 
     pub fn destructure(self) -> DestructureAuthor {
@@ -85,7 +94,7 @@ impl Author {
 #[cfg(test)]
 mod tests {
     use crate::domain::{
-        entity::author::{AuthorId, AuthorName},
+        entity::author::{Author, AuthorId, AuthorName, AuthorUpdate},
         error::DomainError,
     };
 
@@ -94,6 +103,21 @@ mod tests {
         let uuid_str = "c6ea22c8-7b70-470c-a713-c7aade5693bd";
         let author_id = AuthorId::try_from(uuid_str).unwrap();
         assert_eq!(author_id.to_string(), uuid_str);
+    }
+
+    #[test]
+    fn update_changes_name() {
+        let mut author = Author::new(
+            AuthorId::try_from("c6ea22c8-7b70-470c-a713-c7aade5693bd").unwrap(),
+            AuthorName::new(String::from("author1")).unwrap(),
+        )
+        .unwrap();
+
+        author.update(AuthorUpdate {
+            name: AuthorName::new(String::from("author2")).unwrap(),
+        });
+
+        assert_eq!(author.name().as_str(), "author2");
     }
 
     #[test]
