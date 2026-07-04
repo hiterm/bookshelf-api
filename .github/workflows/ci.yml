@@ -67,6 +67,7 @@ jobs:
           load: true
           tags: bookshelf-api:tls-check
           target: tls-check
+          cache-from: type=gha
       - name: Verify HTTPS connectivity via reqwest
         run: docker run --rm bookshelf-api:tls-check
 
@@ -101,7 +102,7 @@ jobs:
           for i in {1..20}; do
             if curl --fail http://localhost:8080/health 2>/dev/null; then
               echo "Health check passed after ${i} seconds"
-              docker stop test-container postgres
+              docker stop -t 1 test-container postgres
               docker network remove test-network
               exit 0
             fi
@@ -111,7 +112,7 @@ jobs:
           echo "Health check failed after 20 seconds"
           echo "=== Container Logs ==="
           docker logs test-container
-          docker stop test-container postgres
+          docker stop -t 1 test-container postgres
           docker network remove test-network
           exit 1
 
