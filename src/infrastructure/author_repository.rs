@@ -160,19 +160,17 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<Option<Author>, DomainError> {
-        let row: Option<AuthorRow> =
-            sqlx::query_as("SELECT * FROM author WHERE id = $1 AND user_id = $2")
-                .bind(author_id.to_uuid())
-                .bind(user_id.as_str())
-                .fetch_optional(&self.pool)
-                .await?;
+        find_author_by_id_with_executor(&self.pool, user_id, author_id).await
+    }
 
-        row.map(|row| -> Result<Author, DomainError> {
-            let author_id: AuthorId = row.id.into();
-            let author_name = AuthorName::new(row.name)?;
-            Author::new(author_id, author_name)
-        })
-        .transpose()
+    async fn find_by_id_with_tx(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        author_id: &AuthorId,
+    ) -> Result<Option<Author>, DomainError> {
+        tx.ensure_user(user_id)?;
+        find_author_by_id_with_executor(tx.as_mut(), user_id, author_id).await
     }
 
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError> {
@@ -444,6 +442,29 @@ impl AuthorRepository for PgAuthorRepository {
 
         Ok(authors_map)
     }
+}
+
+async fn find_author_by_id_with_executor<'e, E>(
+    executor: E,
+    user_id: &UserId,
+    author_id: &AuthorId,
+) -> Result<Option<Author>, DomainError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let row: Option<AuthorRow> =
+        sqlx::query_as("SELECT * FROM author WHERE id = $1 AND user_id = $2")
+            .bind(author_id.to_uuid())
+            .bind(user_id.as_str())
+            .fetch_optional(executor)
+            .await?;
+
+    row.map(|row| -> Result<Author, DomainError> {
+        let author_id: AuthorId = row.id.into();
+        let author_name = AuthorName::new(row.name)?;
+        Author::new(author_id, author_name)
+    })
+    .transpose()
 }
 
 #[cfg(feature = "test-with-database")]

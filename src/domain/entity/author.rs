@@ -69,9 +69,18 @@ pub struct DestructureAuthor {
     pub name: AuthorName,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthorUpdate {
+    pub name: AuthorName,
+}
+
 impl Author {
     pub fn new(id: AuthorId, name: AuthorName) -> Result<Author, DomainError> {
         Ok(Author { id, name })
+    }
+
+    pub fn update(&mut self, update: AuthorUpdate) {
+        self.name = update.name;
     }
 
     pub fn destructure(self) -> DestructureAuthor {
