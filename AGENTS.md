@@ -71,11 +71,18 @@ If any command fails, fix the issue before committing. Do not commit with failur
 
 ```bash
 cargo fmt --check
-cargo clippy --fix --all-targets -- -D warnings
-cargo test
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
 ```
 
 If `cargo fmt --check` fails, run `cargo fmt` to fix formatting, then re-run the check.
+If `cargo clippy` reports machine-applicable fixes, inspect the current diff first.
+If the fixes appear safe to apply, you may run the following command and inspect
+the diff again before re-running the checks:
+
+```bash
+cargo clippy --fix --allow-dirty --allow-staged --all-targets --locked -- -D warnings
+```
 
 ## ExecPlans
 
