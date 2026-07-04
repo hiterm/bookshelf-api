@@ -110,91 +110,8 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('bookshelf-src/pnpm-lock.yaml') }}
       - uses: ./.github/actions/setup-rust-toolchain
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: Build API and prepare frontend
-        run: |
-          set -euo pipefail
-
-          api_log="${RUNNER_TEMP}/bookshelf-api-build.log"
-          api_duration="${RUNNER_TEMP}/bookshelf-api-build.duration"
-          frontend_log="${RUNNER_TEMP}/bookshelf-frontend-prepare.log"
-          frontend_duration="${RUNNER_TEMP}/bookshelf-frontend-prepare.duration"
-          api_timing="${RUNNER_TEMP}/bookshelf-api-build.timing"
-          frontend_timing="${RUNNER_TEMP}/bookshelf-frontend-prepare.timing"
-          : >"${frontend_timing}"
-
-          (
-            set +e
-            start_time=$(date +%s)
-            cargo build --locked --release
-            status=$?
-            end_time=$(date +%s)
-            echo "$((end_time - start_time))" >"${api_duration}"
-            printf 'API build: %ss (status %s)\n' "$((end_time - start_time))" "${status}" >"${api_timing}"
-            exit "${status}"
-          ) >"${api_log}" 2>&1 &
-          api_pid=$!
-
-          (
-            set +e
-            start_time=$(date +%s)
-            cd bookshelf-src
-            status=$?
-            if [ "${status}" -eq 0 ]; then
-              step_start=$(date +%s)
-              pnpm install --frozen-lockfile
-              status=$?
-              step_end=$(date +%s)
-              printf 'Frontend pnpm install: %ss (status %s)\n' "$((step_end - step_start))" "${status}" >>"${frontend_timing}"
-            fi
-            if [ "${status}" -eq 0 ]; then
-              step_start=$(date +%s)
-              pnpm run generate
-              status=$?
-              step_end=$(date +%s)
-              printf 'Frontend generate: %ss (status %s)\n' "$((step_end - step_start))" "${status}" >>"${frontend_timing}"
-            fi
-            if [ "${status}" -eq 0 ]; then
-              step_start=$(date +%s)
-              pnpm exec playwright install --with-deps chromium
-              status=$?
-              step_end=$(date +%s)
-              printf 'Frontend Playwright install: %ss (status %s)\n' "$((step_end - step_start))" "${status}" >>"${frontend_timing}"
-            fi
-            end_time=$(date +%s)
-            echo "$((end_time - start_time))" >"${frontend_duration}"
-            printf 'Frontend total: %ss (status %s)\n' "$((end_time - start_time))" "${status}" >>"${frontend_timing}"
-            exit "${status}"
-          ) >"${frontend_log}" 2>&1 &
-          frontend_pid=$!
-
-          set +e
-          wait "${api_pid}"
-          api_status=$?
-          wait "${frontend_pid}"
-          frontend_status=$?
-          set -e
-
-          api_seconds=$(cat "${api_duration}" 2>/dev/null || echo "unknown")
-          frontend_seconds=$(cat "${frontend_duration}" 2>/dev/null || echo "unknown")
-
-          echo "::group::Preparation timings"
-          cat "${api_timing}" 2>/dev/null || true
-          cat "${frontend_timing}" 2>/dev/null || true
-          echo "::endgroup::"
-
-          echo "::group::API build log (${api_seconds}s, status ${api_status})"
-          cat "${api_log}"
-          echo "::endgroup::"
-
-          echo "::group::Frontend preparation log (${frontend_seconds}s, status ${frontend_status})"
-          cat "${frontend_log}"
-          echo "::endgroup::"
-
-          if [ "${api_status}" -ne 0 ] || [ "${frontend_status}" -ne 0 ]; then
-            exit 1
-          fi
-
-          echo "API build and frontend preparation completed in parallel"
+      - name: Build bookshelf-api
+        run: cargo build --locked --release
       - name: Start PostgreSQL
         run: sudo systemctl start postgresql.service
       - name: Wait for PostgreSQL
@@ -238,6 +155,15 @@ jobs:
             sleep 1
           done
           cat /tmp/api.log; exit 1
+      - name: Install pnpm dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: bookshelf-src
+      - name: Generate GraphQL types
+        run: pnpm run generate
+        working-directory: bookshelf-src
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+        working-directory: bookshelf-src
       - name: Run e2e-integration tests
         run: pnpm run test:integration
         working-directory: bookshelf-src
