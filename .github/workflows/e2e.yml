@@ -83,6 +83,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: clang
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
     permissions:
       contents: read
     steps:
@@ -109,6 +111,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bookshelf-src/pnpm-lock.yaml') }}
       - uses: ./.github/actions/setup-rust-toolchain
+      - name: Install mold
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold clang
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Build API and prepare frontend
         run: |
