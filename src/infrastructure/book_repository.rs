@@ -123,13 +123,8 @@ impl PgBookRepository {
 impl BookRepository for PgBookRepository {
     type Transaction = PgTransaction;
 
-    async fn create(
-        &self,
-        tx: &mut Self::Transaction,
-        user_id: &UserId,
-        book: &Book,
-    ) -> Result<(), DomainError> {
-        tx.ensure_user(user_id)?;
+    async fn create(&self, tx: &mut Self::Transaction, book: &Book) -> Result<(), DomainError> {
+        let user_id = tx.user_id().clone();
         sqlx::query(
             "INSERT INTO book (
                id,
@@ -227,7 +222,6 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError> {
-        tx.ensure_user(user_id)?;
         find_book_by_id_with_executor(tx.as_mut(), user_id, book_id).await
     }
 
@@ -273,13 +267,8 @@ impl BookRepository for PgBookRepository {
         books
     }
 
-    async fn update(
-        &self,
-        tx: &mut Self::Transaction,
-        user_id: &UserId,
-        book: &Book,
-    ) -> Result<(), DomainError> {
-        tx.ensure_user(user_id)?;
+    async fn update(&self, tx: &mut Self::Transaction, book: &Book) -> Result<(), DomainError> {
+        let user_id = tx.user_id().clone();
         let result = sqlx::query(
             "UPDATE book SET
                user_id = $1,
@@ -393,10 +382,9 @@ impl BookRepository for PgBookRepository {
     async fn delete(
         &self,
         tx: &mut Self::Transaction,
-        user_id: &UserId,
         book_id: &BookId,
     ) -> Result<(), DomainError> {
-        tx.ensure_user(user_id)?;
+        let user_id = tx.user_id().clone();
         sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
             .bind(user_id.as_str())
             .bind(book_id.to_uuid())
@@ -442,11 +430,10 @@ impl BookRepository for PgBookRepository {
     async fn restore(
         &self,
         tx: &mut Self::Transaction,
-        user_id: &UserId,
         source_event_id: i64,
         book: Option<Book>,
     ) -> Result<(), DomainError> {
-        tx.ensure_user(user_id)?;
+        let user_id = tx.user_id().clone();
         let extra = json!({"version": 1, "source_event_id": source_event_id});
 
         match book {
@@ -611,7 +598,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
-        book_repository.create(&mut tx, user_id, book).await?;
+        book_repository.create(&mut tx, book).await?;
         tm.commit(tx).await
     }
 
@@ -623,7 +610,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::UpdateBook).await?;
-        book_repository.update(&mut tx, user_id, book).await?;
+        book_repository.update(&mut tx, book).await?;
         tm.commit(tx).await
     }
 
@@ -635,7 +622,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::DeleteBook).await?;
-        book_repository.delete(&mut tx, user_id, book_id).await?;
+        book_repository.delete(&mut tx, book_id).await?;
         tm.commit(tx).await
     }
 
@@ -649,7 +636,7 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::RestoreBook).await?;
         book_repository
-            .restore(&mut tx, user_id, source_event_id, book)
+            .restore(&mut tx, source_event_id, book)
             .await?;
         tm.commit(tx).await
     }
@@ -662,7 +649,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
-        author_repository.create(&mut tx, user_id, author).await?;
+        author_repository.create(&mut tx, author).await?;
         tm.commit(tx).await
     }
 
@@ -712,9 +699,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_find_by_id_with_tx_rejects_user_mismatched_transaction(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
+    async fn test_find_by_id_with_tx_uses_explicit_user_scope(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
         let book_repository = PgBookRepository::new(pool.clone());
@@ -727,34 +712,11 @@ mod tests {
 
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(&user_id, EventSetOperation::UpdateBook).await?;
-        let result = book_repository
+        let actual = book_repository
             .find_by_id_with_tx(&mut tx, &other_user_id, book.id())
-            .await;
-        assert!(matches!(result, Err(DomainError::Unexpected(_))));
-        drop(tx);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_create_rejects_user_mismatched_transaction(pool: PgPool) -> anyhow::Result<()> {
-        let user_repository = PgUserRepository::new(pool.clone());
-        let author_repository = PgAuthorRepository::new(pool.clone());
-        let book_repository = PgBookRepository::new(pool.clone());
-
-        let user_id = prepare_user(&user_repository, "user1").await?;
-        let other_user_id = UserId::new(String::from("user2"))?;
-        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
-        let book = book_entity1(&author_ids)?;
-
-        let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user_id, EventSetOperation::CreateBook).await?;
-        let result = book_repository.create(&mut tx, &other_user_id, &book).await;
-        assert!(matches!(result, Err(DomainError::Unexpected(_))));
-        drop(tx);
-
-        let actual = book_repository.find_by_id(&user_id, book.id()).await?;
+            .await?;
         assert_eq!(actual, None);
+        tm.commit(tx).await?;
 
         Ok(())
     }

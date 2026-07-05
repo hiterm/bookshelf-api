@@ -16,10 +16,12 @@ existing entities (`Book`, `Author`) and any new entity added in the future.
 The transaction boundary is owned by the use-case layer via the
 `TransactionManager` domain trait: an interactor calls
 `transaction_manager.begin(user_id, operation)` to open a transaction,
-passes the resulting transaction by `&mut` into each repository method, and
-calls `transaction_manager.commit(tx)` at the end. This lets a single
-interactor compose multiple repositories (e.g. the bulk import composes
-`BookRepository` and `AuthorRepository`) inside one transaction.
+passes the resulting transaction by `&mut` into each mutating repository method,
+and calls `transaction_manager.commit(tx)` at the end. Mutating repositories get
+the user from the transaction opened by `begin`; callers do not pass a second
+`user_id` to those methods. This lets a single interactor compose multiple
+repositories (e.g. the bulk import composes `BookRepository` and
+`AuthorRepository`) inside one transaction.
 
 The only event concept that crosses into the use-case layer is the choice of
 `EventSetOperation` passed to `begin`. Everything else about event recording
@@ -27,19 +29,22 @@ remains exclusively in the infrastructure layer.
 
 ## Infrastructure responsibilities
 
-- `PgTransactionManager::begin` generates the `event_set` UUID and inserts the
-  single `event_set` row (the one place `event_set` rows are created).
-- Each `Pg*` repository method reads `tx.event_set_id()` and inserts the
-  per-event `<entity>_event` rows. Domain repository traits expose only an
-  associated `Transaction` type; they carry no other event knowledge.
+- `PgTransactionManager::begin` generates the `event_set` UUID, binds the
+  transaction to the user, and inserts the single `event_set` row (the one
+  place `event_set` rows are created).
+- Each mutating `Pg*` repository method reads `tx.user_id()` for row ownership,
+  reads `tx.event_set_id()` for event recording, and inserts the per-event
+  `<entity>_event` rows. Domain repository traits expose only an associated
+  `Transaction` type; they carry no other event knowledge.
 
 ## Adding a new entity or mutation operation
 
 - Drive the operation inside a single transaction opened via
   `TransactionManager::begin` with the appropriate `EventSetOperation`.
-- Repository methods accept `tx: &mut Self::Transaction` and read
-  `tx.event_set_id()`; they must not open their own transaction or create
-  `event_set` rows.
+- Mutating repository methods accept `tx: &mut Self::Transaction`, read the
+  user from the transaction, and read `tx.event_set_id()`; they must not open
+  their own transaction, accept a separate `user_id`, or create `event_set`
+  rows.
 - Create a dedicated `<entity>_event` table (and `<entity>_event_author`-style
   join tables if needed) following the `book_event` / `author_event` schema.
 - The `event_set` row is inserted once in `PgTransactionManager::begin`; each

@@ -52,9 +52,7 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::CreateAuthor)
             .await?;
-        self.author_repository
-            .create(&mut tx, &user_id, &author)
-            .await?;
+        self.author_repository.create(&mut tx, &author).await?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(author.into())
@@ -111,9 +109,7 @@ where
 
         author.update(AuthorUpdate { name: author_name });
 
-        self.author_repository
-            .update(&mut tx, &user_id, &author)
-            .await?;
+        self.author_repository.update(&mut tx, &author).await?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(author.into())
@@ -148,9 +144,7 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::DeleteAuthor)
             .await?;
-        self.author_repository
-            .delete(&mut tx, &user_id, &author_id)
-            .await?;
+        self.author_repository.delete(&mut tx, &author_id).await?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(())
@@ -194,8 +188,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_create()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
 
         let interactor = CreateAuthorInteractor::new(author_repository, make_transaction_manager());
         let author_data = CreateAuthorDto::new("Test Author".to_string());
@@ -257,8 +251,8 @@ mod tests {
             .returning(move |_, _, _| Ok(Some(existing_author.clone())));
         author_repository
             .expect_update()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
 
         let interactor = UpdateAuthorInteractor::new(author_repository, make_transaction_manager());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -351,8 +345,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
 
         let interactor = DeleteAuthorInteractor::new(author_repository, make_transaction_manager());
 
@@ -371,8 +365,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always(), always())
-            .returning(|_, _, _| {
+            .with(always(), always())
+            .returning(|_, _| {
                 Err(DomainError::NotFound {
                     entity_type: "author",
                     entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
@@ -397,8 +391,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always(), always())
-            .returning(|_, _, _| {
+            .with(always(), always())
+            .returning(|_, _| {
                 Err(DomainError::HasAssociatedBooks {
                     author_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                     user_id: "user1".to_string(),

@@ -166,7 +166,7 @@ where
                     .begin(&user_id, EventSetOperation::RestoreBook)
                     .await?;
                 self.book_repository
-                    .restore(&mut tx, &user_id, event_id, Some(book))
+                    .restore(&mut tx, event_id, Some(book))
                     .await?;
                 self.transaction_manager.commit(tx).await?;
                 Ok(Some(dto))
@@ -177,7 +177,7 @@ where
                     .begin(&user_id, EventSetOperation::RestoreBook)
                     .await?;
                 self.book_repository
-                    .restore(&mut tx, &user_id, event_id, None)
+                    .restore(&mut tx, event_id, None)
                     .await?;
                 self.transaction_manager.commit(tx).await?;
                 Ok(None)
@@ -246,7 +246,7 @@ where
                     .begin(&user_id, EventSetOperation::RestoreAuthor)
                     .await?;
                 self.author_repository
-                    .restore(&mut tx, &user_id, event_id, Some(author))
+                    .restore(&mut tx, event_id, Some(author))
                     .await?;
                 self.transaction_manager.commit(tx).await?;
                 Ok(Some(dto))
@@ -257,7 +257,7 @@ where
                     .begin(&user_id, EventSetOperation::RestoreAuthor)
                     .await?;
                 self.author_repository
-                    .restore(&mut tx, &user_id, event_id, None)
+                    .restore(&mut tx, event_id, None)
                     .await?;
                 self.transaction_manager.commit(tx).await?;
                 Ok(None)
@@ -465,8 +465,8 @@ mod tests {
         let mut book_repo = MockBookRepository::new();
         book_repo
             .expect_restore()
-            .with(always(), always(), eq(1i64), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(1i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor =
             RestoreBookInteractor::new(book_repo, history_repo, make_transaction_manager());
@@ -490,8 +490,8 @@ mod tests {
         let mut book_repo = MockBookRepository::new();
         book_repo
             .expect_restore()
-            .with(always(), always(), eq(10i64), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(10i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor =
             RestoreBookInteractor::new(book_repo, history_repo, make_transaction_manager());
@@ -516,8 +516,8 @@ mod tests {
         let mut book_repo = MockBookRepository::new();
         book_repo
             .expect_restore()
-            .with(always(), always(), eq(1i64), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(1i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor =
             RestoreBookInteractor::new(book_repo, history_repo, make_transaction_manager());
@@ -557,8 +557,8 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), always(), eq(2i64), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(2i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor =
             RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
@@ -582,8 +582,8 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), always(), eq(20i64), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(20i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor =
             RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
@@ -608,8 +608,8 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), always(), eq(2i64), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(2i64), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor =
             RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
