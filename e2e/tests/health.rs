@@ -16,7 +16,3 @@ async fn e2e_health_check() -> Result<()> {
     assert!(res.status().is_success(), "health check should succeed");
     Ok(())
 }
-
-// ============================================
-// GET /me Endpoint E2E Tests
-// ============================================
