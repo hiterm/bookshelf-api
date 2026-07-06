@@ -144,17 +144,16 @@ pub async fn ensure_user_registered(token: &str) -> Result<()> {
 
     // Always check for GraphQL errors, regardless of HTTP status
     if let Some(errors) = response.get("errors") {
-        let error_message = errors
-            .as_array()
-            .and_then(|arr| arr.first())
-            .and_then(|e| e.get("message"))
-            .and_then(|m| m.as_str())
-            .unwrap_or("");
+        let is_conflict = errors.as_array().is_some_and(|errors| {
+            errors
+                .iter()
+                .any(|error| graphql_error_code(error) == Some("CONFLICT"))
+        });
 
-        if !error_message.contains("duplicate key") {
-            anyhow::bail!("registerUser failed with error: {}", error_message);
+        if !is_conflict {
+            anyhow::bail!("registerUser failed with error: {}", errors);
         }
-        // Duplicate key means user already exists - that's OK
+        // A conflict means user already exists - that's OK.
         return Ok(());
     }
 
@@ -180,6 +179,7 @@ pub async fn create_test_author(name: &str, token: &str) -> Result<String> {
         name
     );
     let (_, response) = graphql_request(&query, Some(token)).await?;
+    bail_on_graphql_errors(&response, "createAuthor")?;
     let id = response["data"]["createAuthor"]["id"]
         .as_str()
         .context("createAuthor id should be a string")?
@@ -206,11 +206,88 @@ pub async fn create_test_book(title: &str, author_id: &str, token: &str) -> Resu
         title, author_id
     );
     let (_, response) = graphql_request(&query, Some(token)).await?;
+    bail_on_graphql_errors(&response, "createBook")?;
     let id = response["data"]["createBook"]["id"]
         .as_str()
         .context("createBook id should be a string")?
         .to_owned();
     Ok(id)
+}
+
+pub async fn update_test_book(
+    book_id: &str,
+    title: &str,
+    author_id: &str,
+    isbn: &str,
+    read: bool,
+    owned: bool,
+    priority: i32,
+    format: &str,
+    store: &str,
+    token: &str,
+) -> Result<serde_json::Value> {
+    let query = format!(
+        r#"
+        mutation {{
+            updateBook(bookData: {{
+                id: "{}"
+                title: "{}"
+                authorIds: ["{}"]
+                isbn: "{}"
+                read: {}
+                owned: {}
+                priority: {}
+                format: {}
+                store: {}
+            }}) {{
+                id
+                title
+                authorIds
+                isbn
+                read
+                owned
+                priority
+                format
+                store
+            }}
+        }}
+        "#,
+        book_id, title, author_id, isbn, read, owned, priority, format, store
+    );
+    let (_, response) = graphql_request(&query, Some(token)).await?;
+    bail_on_graphql_errors(&response, "updateBook")?;
+    Ok(response["data"]["updateBook"].clone())
+}
+
+pub async fn find_event_set_by_operation(
+    operation: &str,
+    token: &str,
+) -> Result<serde_json::Value> {
+    let (_, response) = graphql_request(r#"{ eventSets { id operation } }"#, Some(token)).await?;
+    bail_on_graphql_errors(&response, "eventSets")?;
+    let event_set_id = response["data"]["eventSets"]
+        .as_array()
+        .context("eventSets should be an array")?
+        .iter()
+        .find(|set| set["operation"].as_str() == Some(operation))
+        .and_then(|set| set["id"].as_str())
+        .context("matching event set should exist")?;
+
+    let event_set_query = format!(
+        r#"{{ eventSet(id: "{}") {{
+            operation
+            bookEvents {{ bookId operation }}
+            authorEvents {{ name operation }}
+        }} }}"#,
+        event_set_id
+    );
+    let (_, response) = graphql_request(&event_set_query, Some(token)).await?;
+    bail_on_graphql_errors(&response, "eventSet")?;
+    let event_set = response["data"]["eventSet"].clone();
+    if event_set.is_null() {
+        anyhow::bail!("matching event set should be found");
+    }
+    Ok(event_set)
 }
 
 pub fn assert_graphql_errors(response: &serde_json::Value, context: &str) {
@@ -226,4 +303,18 @@ pub fn assert_no_graphql_errors(response: &serde_json::Value, context: &str) {
         "{context} should not return GraphQL errors: {:?}",
         response.get("errors")
     );
+}
+
+pub fn bail_on_graphql_errors(response: &serde_json::Value, context: &str) -> Result<()> {
+    if let Some(errors) = response.get("errors") {
+        anyhow::bail!("{context} returned GraphQL errors: {errors}");
+    }
+    Ok(())
+}
+
+fn graphql_error_code(error: &serde_json::Value) -> Option<&str> {
+    error
+        .get("extensions")
+        .and_then(|extensions| extensions.get("code"))
+        .and_then(|code| code.as_str())
 }

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use async_graphql::{ErrorExtensionValues, ErrorExtensions};
 use thiserror::Error;
 
 use crate::use_case::error::UseCaseError;
@@ -29,5 +30,25 @@ impl From<UseCaseError> for PresentationalError {
             }
             UseCaseError::Unexpected(message) => PresentationalError::Unexpected(message),
         }
+    }
+}
+
+impl ErrorExtensions for PresentationalError {
+    fn extend(&self) -> async_graphql::Error {
+        let mut error = async_graphql::Error::new(self.to_string());
+        error.extensions = Some(ErrorExtensionValues::default());
+        error = error.extend_with(|_, extensions| {
+            extensions.set(
+                "code",
+                match self {
+                    PresentationalError::NotFound(_) => "NOT_FOUND",
+                    PresentationalError::Validation(_) => "VALIDATION_ERROR",
+                    PresentationalError::Conflict(_) => "CONFLICT",
+                    PresentationalError::OtherError(_) => "OTHER_ERROR",
+                    PresentationalError::Unexpected(_) => "UNEXPECTED_ERROR",
+                },
+            );
+        });
+        error
     }
 }
