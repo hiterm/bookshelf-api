@@ -57,13 +57,8 @@ impl PgAuthorRepository {
 impl AuthorRepository for PgAuthorRepository {
     type Transaction = PgTransaction;
 
-    async fn create(
-        &self,
-        tx: &mut Self::Transaction,
-        user_id: &UserId,
-        author: &Author,
-    ) -> Result<(), DomainError> {
-        tx.ensure_user(user_id)?;
+    async fn create(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError> {
+        let user_id = tx.user_id().clone();
         sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
             .bind(author.id().to_uuid())
             .bind(user_id.as_str())
@@ -102,10 +97,9 @@ impl AuthorRepository for PgAuthorRepository {
     async fn find_or_create_by_name(
         &self,
         tx: &mut Self::Transaction,
-        user_id: &UserId,
         name: &AuthorName,
     ) -> Result<AuthorId, DomainError> {
-        tx.ensure_user(user_id)?;
+        let user_id = tx.user_id().clone();
         let name = name.as_str();
         let candidate_id = Uuid::new_v4();
 
@@ -169,7 +163,6 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<Option<Author>, DomainError> {
-        tx.ensure_user(user_id)?;
         find_author_by_id_with_executor(tx.as_mut(), user_id, author_id).await
     }
 
@@ -193,13 +186,8 @@ impl AuthorRepository for PgAuthorRepository {
         authors
     }
 
-    async fn update(
-        &self,
-        tx: &mut Self::Transaction,
-        user_id: &UserId,
-        author: &Author,
-    ) -> Result<(), DomainError> {
-        tx.ensure_user(user_id)?;
+    async fn update(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError> {
+        let user_id = tx.user_id().clone();
         let result = sqlx::query(
             "UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
         )
@@ -256,10 +244,9 @@ impl AuthorRepository for PgAuthorRepository {
     async fn delete(
         &self,
         tx: &mut Self::Transaction,
-        user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<(), DomainError> {
-        tx.ensure_user(user_id)?;
+        let user_id = tx.user_id().clone();
         // Lock the author row to prevent concurrent inserts into book_author after the count check.
         let exists: Option<(i32,)> =
             sqlx::query_as("SELECT 1 FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
@@ -329,11 +316,10 @@ impl AuthorRepository for PgAuthorRepository {
     async fn restore(
         &self,
         tx: &mut Self::Transaction,
-        user_id: &UserId,
         source_event_id: i64,
         author: Option<Author>,
     ) -> Result<(), DomainError> {
-        tx.ensure_user(user_id)?;
+        let user_id = tx.user_id().clone();
         let extra = json!({"version": 1, "source_event_id": source_event_id});
 
         match author {
@@ -507,7 +493,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
-        book_repository.create(&mut tx, user_id, book).await?;
+        book_repository.create(&mut tx, book).await?;
         tm.commit(tx).await
     }
 
@@ -521,7 +507,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
-        author_repository.create(&mut tx, user_id, author).await?;
+        author_repository.create(&mut tx, author).await?;
         tm.commit(tx).await
     }
 
@@ -533,7 +519,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::UpdateAuthor).await?;
-        author_repository.update(&mut tx, user_id, author).await?;
+        author_repository.update(&mut tx, author).await?;
         tm.commit(tx).await
     }
 
@@ -545,9 +531,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::DeleteAuthor).await?;
-        author_repository
-            .delete(&mut tx, user_id, author_id)
-            .await?;
+        author_repository.delete(&mut tx, author_id).await?;
         tm.commit(tx).await
     }
 
@@ -594,9 +578,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn find_by_id_with_tx_rejects_user_mismatched_transaction(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
+    async fn find_by_id_with_tx_uses_explicit_user_scope(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
 
@@ -608,11 +590,11 @@ mod tests {
 
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(&user_id, EventSetOperation::UpdateAuthor).await?;
-        let result = author_repository
+        let actual = author_repository
             .find_by_id_with_tx(&mut tx, &other_user_id, &author_id)
-            .await;
-        assert!(matches!(result, Err(DomainError::Unexpected(_))));
-        drop(tx);
+            .await?;
+        assert_eq!(actual, None);
+        tm.commit(tx).await?;
 
         Ok(())
     }
@@ -1048,7 +1030,7 @@ mod tests {
         let mut tx = tm.begin(&user_id, EventSetOperation::ImportBooks).await?;
         let name = AuthorName::new("New Author".to_owned())?;
         let author_id = author_repository
-            .find_or_create_by_name(&mut tx, &user_id, &name)
+            .find_or_create_by_name(&mut tx, &name)
             .await?;
         tm.commit(tx).await?;
 
@@ -1098,7 +1080,7 @@ mod tests {
         let mut tx = tm.begin(&user_id, EventSetOperation::ImportBooks).await?;
         let name = AuthorName::new("Existing".to_owned())?;
         let resolved = author_repository
-            .find_or_create_by_name(&mut tx, &user_id, &name)
+            .find_or_create_by_name(&mut tx, &name)
             .await?;
         tm.commit(tx).await?;
 

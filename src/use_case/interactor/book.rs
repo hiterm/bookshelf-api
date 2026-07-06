@@ -80,9 +80,7 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::CreateBook)
             .await?;
-        self.book_repository
-            .create(&mut tx, &user_id, &book)
-            .await?;
+        self.book_repository.create(&mut tx, &book).await?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(book.into())
@@ -170,9 +168,7 @@ where
         };
         book.update(update, OffsetDateTime::now_utc());
 
-        self.book_repository
-            .update(&mut tx, &user_id, &book)
-            .await?;
+        self.book_repository.update(&mut tx, &book).await?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(book.into())
@@ -207,9 +203,7 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::DeleteBook)
             .await?;
-        self.book_repository
-            .delete(&mut tx, &user_id, &book_id)
-            .await?;
+        self.book_repository.delete(&mut tx, &book_id).await?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(())
@@ -305,7 +299,7 @@ where
                 }
                 let author_id = self
                     .author_repository
-                    .find_or_create_by_name(&mut tx, &user_id, author_name)
+                    .find_or_create_by_name(&mut tx, author_name)
                     .await?;
                 name_to_id.insert(key, author_id);
             }
@@ -345,9 +339,7 @@ where
                 input.updated_at,
             )?;
 
-            self.book_repository
-                .create(&mut tx, &user_id, &book)
-                .await?;
+            self.book_repository.create(&mut tx, &book).await?;
             result_books.push(book);
         }
 
@@ -428,8 +420,8 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_create()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
 
         let interactor = CreateBookInteractor::new(book_repository, make_transaction_manager());
         let book_data = CreateBookDto::new(
@@ -490,8 +482,8 @@ mod tests {
             .returning(move |_, _, _| Ok(Some(book.clone())));
         book_repository
             .expect_update()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
 
         let interactor = UpdateBookInteractor::new(book_repository, make_transaction_manager());
         let book_data = UpdateBookDto::new(
@@ -585,8 +577,8 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_delete()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
 
         let interactor = DeleteBookInteractor::new(book_repository, make_transaction_manager());
 
@@ -651,7 +643,7 @@ mod tests {
         book_repository
             .expect_create()
             .times(super::MAX_BOOK_BATCH)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,
@@ -697,13 +689,13 @@ mod tests {
         author_repository
             .expect_find_or_create_by_name()
             .times(2)
-            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
+            .returning(move |_, _| Ok(AuthorId::new(author_uuid)));
 
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_create()
             .times(2)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,
@@ -734,14 +726,14 @@ mod tests {
         author_repository
             .expect_find_or_create_by_name()
             .times(1)
-            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
+            .returning(move |_, _| Ok(AuthorId::new(author_uuid)));
 
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_create()
-            .withf(|_, _, book| book.author_ids().len() == 1)
+            .withf(|_, book| book.author_ids().len() == 1)
             .times(1)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,
@@ -767,12 +759,12 @@ mod tests {
         author_repository
             .expect_find_or_create_by_name()
             .times(1)
-            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
+            .returning(move |_, _| Ok(AuthorId::new(author_uuid)));
 
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_create()
-            .returning(|_, _, _| Err(DomainError::Unexpected(String::from("db error"))));
+            .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().times(1).returning(|_, _| Ok(()));
@@ -794,7 +786,7 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_create()
-            .returning(|_, _, _| Err(DomainError::Unexpected(String::from("db error"))));
+            .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,

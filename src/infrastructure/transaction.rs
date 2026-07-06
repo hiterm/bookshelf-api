@@ -24,18 +24,10 @@ impl PgTransaction {
         self.event_set_id
     }
 
-    /// The transaction (and its `event_set` row) is bound to the user passed
-    /// to `begin`. Repository methods call this to reject a `user_id` that
-    /// differs from the one the audit record was opened for.
-    pub fn ensure_user(&self, user_id: &UserId) -> Result<(), DomainError> {
-        if &self.user_id != user_id {
-            return Err(DomainError::Unexpected(format!(
-                r#"transaction was begun for user "{}" but used with user "{}""#,
-                self.user_id.as_str(),
-                user_id.as_str()
-            )));
-        }
-        Ok(())
+    /// Returns the user passed to `begin`, which is the single source of
+    /// truth for mutating repository operations in this transaction.
+    pub fn user_id(&self) -> &UserId {
+        &self.user_id
     }
 
     // Named `as_mut` to mirror the `&mut *tx` access the repositories used

@@ -16,12 +16,7 @@ use crate::domain::{
 pub trait AuthorRepository: Send + Sync + 'static {
     type Transaction: Send;
 
-    async fn create(
-        &self,
-        tx: &mut Self::Transaction,
-        user_id: &UserId,
-        author: &Author,
-    ) -> Result<(), DomainError>;
+    async fn create(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError>;
     async fn find_by_id(
         &self,
         user_id: &UserId,
@@ -44,19 +39,12 @@ pub trait AuthorRepository: Send + Sync + 'static {
     async fn find_or_create_by_name(
         &self,
         tx: &mut Self::Transaction,
-        user_id: &UserId,
         name: &AuthorName,
     ) -> Result<AuthorId, DomainError>;
-    async fn update(
-        &self,
-        tx: &mut Self::Transaction,
-        user_id: &UserId,
-        author: &Author,
-    ) -> Result<(), DomainError>;
+    async fn update(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError>;
     async fn delete(
         &self,
         tx: &mut Self::Transaction,
-        user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<(), DomainError>;
     // Upserts or deletes the entity and records a restore event in one transaction.
@@ -64,7 +52,6 @@ pub trait AuthorRepository: Send + Sync + 'static {
     async fn restore(
         &self,
         tx: &mut Self::Transaction,
-        user_id: &UserId,
         source_event_id: i64,
         author: Option<Author>,
     ) -> Result<(), DomainError>;

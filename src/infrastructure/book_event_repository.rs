@@ -255,7 +255,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
-        book_repo.create(&mut tx, user_id, book).await?;
+        book_repo.create(&mut tx, book).await?;
         tm.commit(tx).await
     }
 
@@ -267,7 +267,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::UpdateBook).await?;
-        book_repo.update(&mut tx, user_id, book).await?;
+        book_repo.update(&mut tx, book).await?;
         tm.commit(tx).await
     }
 
@@ -279,7 +279,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
-        author_repo.create(&mut tx, user_id, author).await?;
+        author_repo.create(&mut tx, author).await?;
         tm.commit(tx).await
     }
 

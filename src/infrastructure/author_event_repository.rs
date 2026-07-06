@@ -155,7 +155,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
-        author_repo.create(&mut tx, user_id, author).await?;
+        author_repo.create(&mut tx, author).await?;
         tm.commit(tx).await
     }
 
