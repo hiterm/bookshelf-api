@@ -242,7 +242,10 @@ pub async fn update_test_book(
             }}) {{
                 id
                 title
-                authorIds
+                authors {{
+                    id
+                    name
+                }}
                 isbn
                 read
                 owned
