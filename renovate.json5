@@ -4,16 +4,6 @@
     "config:best-practices",
   ],
   "minimumReleaseAge": "3 days",
-  "customManagers": [
-    {
-      "customType": "regex",
-      "managerFilePatterns": ["/(^|/)rust-toolchain(\\.toml)?$/"],
-      "matchStrings": ["channel\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
-      "depNameTemplate": "rust",
-      "packageNameTemplate": "rust-lang/rust",
-      "datasourceTemplate": "github-releases",
-    },
-  ],
   "packageRules": [
     {
       // Group minor/patch updates by manager (e.g. npm, github-actions).
@@ -40,7 +30,7 @@
     {
       // Keep rust-toolchain.toml and Dockerfile rust base image in sync
       "matchDepNames": ["rust"],
-      "matchManagers": ["custom.regex", "dockerfile"],
+      "matchManagers": ["rust-toolchain", "dockerfile"],
       "minimumReleaseAge": null,
       "groupName": "rust version"
     },
