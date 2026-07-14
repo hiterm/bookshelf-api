@@ -45,10 +45,10 @@ where
             .create_book(&claims.sub, book_data.into())
             .await?;
 
-        Ok(BookMutationPayload {
-            book: book.value.into(),
-            event_set_id: ID(book.event_set_id),
-        })
+        Ok(BookMutationPayload::new(
+            book.value.into(),
+            ID(book.event_set_id),
+        ))
     }
 
     async fn update_book(
@@ -62,10 +62,10 @@ where
             .update_book(&claims.sub, book_data.into())
             .await?;
 
-        Ok(BookMutationPayload {
-            book: book.value.into(),
-            event_set_id: ID(book.event_set_id),
-        })
+        Ok(BookMutationPayload::new(
+            book.value.into(),
+            ID(book.event_set_id),
+        ))
     }
 
     async fn delete_book(
@@ -95,10 +95,10 @@ where
             .mutation_use_case
             .create_author(&claims.sub, author_data.into())
             .await?;
-        Ok(AuthorMutationPayload {
-            author: author.value.into(),
-            event_set_id: ID(author.event_set_id),
-        })
+        Ok(AuthorMutationPayload::new(
+            author.value.into(),
+            ID(author.event_set_id),
+        ))
     }
 
     async fn update_author(
@@ -111,10 +111,10 @@ where
             .mutation_use_case
             .update_author(&claims.sub, author_data.into())
             .await?;
-        Ok(AuthorMutationPayload {
-            author: author.value.into(),
-            event_set_id: ID(author.event_set_id),
-        })
+        Ok(AuthorMutationPayload::new(
+            author.value.into(),
+            ID(author.event_set_id),
+        ))
     }
 
     async fn delete_author(
