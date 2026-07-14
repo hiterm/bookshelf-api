@@ -125,7 +125,7 @@ async fn e2e_book_events_records_update_operation() -> Result<()> {
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }}) {{ id title }}
+            }}) {{ book {{ id title }} eventSetId }}
         }}
         "#,
         book_id, author_id
@@ -322,7 +322,7 @@ async fn e2e_author_events_records_update_operation() -> Result<()> {
 
     let updated_name = format!("Author After Update History {}", uuid::Uuid::new_v4());
     let update_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ id name }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ author {{ id name }} eventSetId }} }}"#,
         author_id, updated_name
     );
     let (_, response) = graphql_request(&update_query, Some(&token)).await?;

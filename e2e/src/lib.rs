@@ -81,7 +81,10 @@ pub async fn graphql_request(query: &str, token: Option<&str>) -> Result<(u16, s
 }
 
 pub async fn delete_test_author(author_id: &str, token: &str) -> Result<()> {
-    let query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
+    let query = format!(
+        r#"mutation {{ deleteAuthor(authorId: "{}") {{ authorId }} }}"#,
+        author_id
+    );
     let (status, response) = graphql_request(&query, Some(token)).await?;
 
     if status != 200 {
@@ -97,9 +100,9 @@ pub async fn delete_test_author(author_id: &str, token: &str) -> Result<()> {
         .get("deleteAuthor")
         .context("deleteAuthor field must exist")?;
 
-    let delete_result_str = delete_result
+    let delete_result_str = delete_result["authorId"]
         .as_str()
-        .context("deleteAuthor result should be a string")?;
+        .context("deleteAuthor authorId should be a string")?;
 
     assert_eq!(
         delete_result_str, author_id,
@@ -110,7 +113,10 @@ pub async fn delete_test_author(author_id: &str, token: &str) -> Result<()> {
 }
 
 pub async fn delete_test_book(book_id: &str, token: &str) -> Result<()> {
-    let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
+    let query = format!(
+        r#"mutation {{ deleteBook(bookId: "{}") {{ bookId }} }}"#,
+        book_id
+    );
     let (status, response) = graphql_request(&query, Some(token)).await?;
 
     if status != 200 {
@@ -126,9 +132,9 @@ pub async fn delete_test_book(book_id: &str, token: &str) -> Result<()> {
         .get("deleteBook")
         .context("deleteBook field must exist")?;
 
-    let delete_result_str = delete_result
+    let delete_result_str = delete_result["bookId"]
         .as_str()
-        .context("deleteResult should be a string")?;
+        .context("deleteBook bookId should be a string")?;
 
     assert_eq!(
         delete_result_str, book_id,
@@ -176,11 +182,11 @@ pub async fn create_test_user() -> Result<(String, String)> {
 
 pub async fn create_test_author(name: &str, token: &str) -> Result<String> {
     let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} }} }}"#,
         name
     );
     let (_, response) = graphql_request(&query, Some(token)).await?;
-    let id = response["data"]["createAuthor"]["id"]
+    let id = response["data"]["createAuthor"]["author"]["id"]
         .as_str()
         .context("createAuthor id should be a string")?
         .to_owned();
@@ -200,13 +206,13 @@ pub async fn create_test_book(title: &str, author_id: &str, token: &str) -> Resu
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }}) {{ id }}
+            }}) {{ book {{ id }} }}
         }}
         "#,
         title, author_id
     );
     let (_, response) = graphql_request(&query, Some(token)).await?;
-    let id = response["data"]["createBook"]["id"]
+    let id = response["data"]["createBook"]["book"]["id"]
         .as_str()
         .context("createBook id should be a string")?
         .to_owned();
