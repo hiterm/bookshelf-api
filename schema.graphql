@@ -100,11 +100,13 @@ input CreateBookInput {
 type DeleteAuthorPayload {
 	authorId: ID!
 	eventSetId: ID!
+	id: ID!
 }
 
 type DeleteBookPayload {
 	bookId: ID!
 	eventSetId: ID!
+	id: ID!
 }
 
 type EventSetDetail {

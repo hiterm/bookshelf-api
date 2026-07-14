@@ -495,12 +495,14 @@ impl AuthorMutationPayload {
 pub struct DeleteBookPayload {
     pub book_id: ID,
     pub event_set_id: ID,
+    pub id: ID,
 }
 
 #[derive(SimpleObject)]
 pub struct DeleteAuthorPayload {
     pub author_id: ID,
     pub event_set_id: ID,
+    pub id: ID,
 }
 
 #[derive(SimpleObject)]
