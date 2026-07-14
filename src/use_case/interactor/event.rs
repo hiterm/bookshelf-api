@@ -9,9 +9,11 @@ use crate::{
             user::UserId,
         },
         repository::{
-            author_event_repository::AuthorEventRepository, author_repository::AuthorRepository,
-            book_event_repository::BookEventRepository, book_repository::BookRepository,
-            transaction::TransactionManager,
+            author_event_repository::AuthorEventRepository,
+            author_repository::AuthorRepository,
+            book_event_repository::BookEventRepository,
+            book_repository::BookRepository,
+            transaction::{TransactionEventSet, TransactionManager},
         },
     },
     use_case::{
@@ -19,6 +21,7 @@ use crate::{
             author::AuthorDto,
             book::BookDto,
             event::{AuthorEventDto, BookEventDto},
+            mutation::{MutationResultDto, RestoreAuthorResultDto, RestoreBookResultDto},
         },
         error::UseCaseError,
         traits::event::{
@@ -111,7 +114,11 @@ where
     BR: BookRepository<Transaction = TM::Transaction>,
     BER: BookEventRepository,
 {
-    async fn restore(&self, user_id: &str, event_id: i64) -> Result<Option<BookDto>, UseCaseError> {
+    async fn restore(
+        &self,
+        user_id: &str,
+        event_id: i64,
+    ) -> Result<RestoreBookResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let event = self
             .book_event_repository
@@ -168,8 +175,9 @@ where
                 self.book_repository
                     .restore(&mut tx, event_id, Some(book))
                     .await?;
+                let event_set_id = tx.event_set_id().hyphenated().to_string();
                 self.transaction_manager.commit(tx).await?;
-                Ok(Some(dto))
+                Ok(MutationResultDto::new(Some(dto), event_set_id))
             }
             EventOperation::Delete => {
                 let mut tx = self
@@ -179,8 +187,9 @@ where
                 self.book_repository
                     .restore(&mut tx, event_id, None)
                     .await?;
+                let event_set_id = tx.event_set_id().hyphenated().to_string();
                 self.transaction_manager.commit(tx).await?;
-                Ok(None)
+                Ok(MutationResultDto::new(None, event_set_id))
             }
         }
     }
@@ -217,7 +226,7 @@ where
         &self,
         user_id: &str,
         event_id: i64,
-    ) -> Result<Option<AuthorDto>, UseCaseError> {
+    ) -> Result<RestoreAuthorResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let event = self
             .author_event_repository
@@ -248,8 +257,9 @@ where
                 self.author_repository
                     .restore(&mut tx, event_id, Some(author))
                     .await?;
+                let event_set_id = tx.event_set_id().hyphenated().to_string();
                 self.transaction_manager.commit(tx).await?;
-                Ok(Some(dto))
+                Ok(MutationResultDto::new(Some(dto), event_set_id))
             }
             EventOperation::Delete => {
                 let mut tx = self
@@ -259,8 +269,9 @@ where
                 self.author_repository
                     .restore(&mut tx, event_id, None)
                     .await?;
+                let event_set_id = tx.event_set_id().hyphenated().to_string();
                 self.transaction_manager.commit(tx).await?;
-                Ok(None)
+                Ok(MutationResultDto::new(None, event_set_id))
             }
         }
     }
@@ -473,7 +484,7 @@ mod tests {
         let result = interactor.restore("user1", 1).await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().unwrap().title, "Old Title");
+        assert_eq!(result.unwrap().value.unwrap().title, "Old Title");
     }
 
     #[tokio::test]
@@ -565,7 +576,7 @@ mod tests {
         let result = interactor.restore("user1", 2).await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().unwrap().name, "Old Name");
+        assert_eq!(result.unwrap().value.unwrap().name, "Old Name");
     }
 
     #[tokio::test]

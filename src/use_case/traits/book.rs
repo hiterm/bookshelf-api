@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use mockall::automock;
 
 use crate::use_case::{
-    dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto},
+    dto::{
+        book::{CreateBookDto, ImportBookEntryDto, UpdateBookDto},
+        mutation::{BookMutationResultDto, DeleteBookResultDto, ImportBooksResultDto},
+    },
     error::UseCaseError,
 };
 
@@ -13,7 +16,7 @@ pub trait CreateBookUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         book_data: CreateBookDto,
-    ) -> Result<BookDto, UseCaseError>;
+    ) -> Result<BookMutationResultDto, UseCaseError>;
 }
 
 #[automock]
@@ -23,13 +26,17 @@ pub trait UpdateBookUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         book_data: UpdateBookDto,
-    ) -> Result<BookDto, UseCaseError>;
+    ) -> Result<BookMutationResultDto, UseCaseError>;
 }
 
 #[automock]
 #[async_trait]
 pub trait DeleteBookUseCase: Send + Sync + 'static {
-    async fn delete(&self, user_id: &str, book_id: &str) -> Result<(), UseCaseError>;
+    async fn delete(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<DeleteBookResultDto, UseCaseError>;
 }
 
 #[automock]
@@ -39,5 +46,5 @@ pub trait ImportBooksUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         books: Vec<ImportBookEntryDto>,
-    ) -> Result<Vec<BookDto>, UseCaseError>;
+    ) -> Result<ImportBooksResultDto, UseCaseError>;
 }

@@ -23,15 +23,16 @@ the user from the transaction opened by `begin`; callers do not pass a second
 repositories (e.g. the bulk import composes `BookRepository` and
 `AuthorRepository`) inside one transaction.
 
-The only event concept that crosses into the use-case layer is the choice of
-`EventSetOperation` passed to `begin`. Everything else about event recording
-remains exclusively in the infrastructure layer.
+The use-case layer knows two event concepts: the `EventSetOperation` passed
+to `begin`, and the generated `event_set.id` exposed by the transaction so
+mutation results can return an `eventSetId` after a successful commit. Event
+row creation and persistence details remain in the infrastructure layer.
 
 ## Infrastructure responsibilities
 
 - `PgTransactionManager::begin` generates the `event_set` UUID, binds the
-  transaction to the user, and inserts the single `event_set` row (the one
-  place `event_set` rows are created).
+  transaction to the user, exposes that id on the transaction, and inserts the
+  single `event_set` row (the one place `event_set` rows are created).
 - Each mutating `Pg*` repository method reads `tx.user_id()` for row ownership,
   reads `tx.event_set_id()` for event recording, and inserts the per-event
   `<entity>_event` rows. Domain repository traits expose only an associated

@@ -39,10 +39,13 @@ async fn e2e_import_books() -> Result<()> {
                     store: KINDLE
                 }
             ]) {
-                id
-                title
-                authors {
-                    name
+                eventSetId
+                books {
+                    id
+                    title
+                    authors {
+                        name
+                    }
                 }
             }
         }
@@ -54,7 +57,7 @@ async fn e2e_import_books() -> Result<()> {
         response.get("errors")
     );
 
-    let imported_books = response["data"]["importBooks"]
+    let imported_books = response["data"]["importBooks"]["books"]
         .as_array()
         .context("importBooks should return an array")?;
     assert_eq!(imported_books.len(), 2, "should import exactly 2 books");
@@ -100,15 +103,9 @@ async fn e2e_import_books() -> Result<()> {
     // Locate the single event set produced by the import via eventSets, then
     // inspect it directly. This replaces the old workaround of comparing the
     // eventSetId across separate per-book bookEvents queries.
-    let (_, response) = graphql_request(r#"{ eventSets { id operation } }"#, Some(&token)).await?;
-    let event_sets = response["data"]["eventSets"]
-        .as_array()
-        .context("eventSets should be an array")?;
-    let import_set_id = event_sets
-        .iter()
-        .find(|s| s["operation"].as_str() == Some("import_books"))
-        .and_then(|s| s["id"].as_str())
-        .context("there should be an import_books event set")?;
+    let import_set_id = response["data"]["importBooks"]["eventSetId"]
+        .as_str()
+        .context("importBooks should return eventSetId")?;
 
     // The shared event set groups both book creates and the new author create.
     let event_set_query = format!(
@@ -278,9 +275,12 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         r#"
         mutation {{
             importBooks(books: [{imported_entries}]) {{
-                id
-                title
-                authors {{ name }}
+                eventSetId
+                books {{
+                    id
+                    title
+                    authors {{ name }}
+                }}
             }}
         }}
         "#
@@ -292,7 +292,7 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         response.get("errors")
     );
 
-    let imported_books = response["data"]["importBooks"]
+    let imported_books = response["data"]["importBooks"]["books"]
         .as_array()
         .context("importBooks should return an array")?;
     assert_eq!(
@@ -324,15 +324,9 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         }));
     }
 
-    let (_, response) = graphql_request(r#"{ eventSets { id operation } }"#, Some(&token)).await?;
-    let event_sets = response["data"]["eventSets"]
-        .as_array()
-        .context("eventSets should be an array")?;
-    let import_set_id = event_sets
-        .iter()
-        .find(|s| s["operation"].as_str() == Some("import_books"))
-        .and_then(|s| s["id"].as_str())
-        .context("there should be an import_books event set")?;
+    let import_set_id = response["data"]["importBooks"]["eventSetId"]
+        .as_str()
+        .context("importBooks should return eventSetId")?;
 
     let event_set_query = format!(
         r#"{{ eventSet(id: "{}") {{
@@ -521,7 +515,7 @@ async fn e2e_import_books_rejects_more_than_max_batch() -> Result<()> {
         .collect::<Vec<_>>()
         .join(",\n");
     let import_query =
-        format!(r#"mutation {{ importBooks(books: [{imported_entries}]) {{ id }} }}"#);
+        format!(r#"mutation {{ importBooks(books: [{imported_entries}]) {{ books {{ id }} }} }}"#);
 
     let (_, response) = graphql_request(&import_query, Some(&token)).await?;
     assert_graphql_errors(&response, "importBooks above the max batch size");
@@ -578,9 +572,12 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
         r#"
         mutation {{
             importBooks(books: [{imported_entries}]) {{
-                id
-                title
-                authors {{ name }}
+                eventSetId
+                books {{
+                    id
+                    title
+                    authors {{ name }}
+                }}
             }}
         }}
         "#
@@ -588,7 +585,7 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
     let (_, response) = graphql_request(&import_query, Some(&token)).await?;
     assert_no_graphql_errors(&response, "importBooks with a shared new author");
 
-    let imported_books = response["data"]["importBooks"]
+    let imported_books = response["data"]["importBooks"]["books"]
         .as_array()
         .context("importBooks should return an array")?;
     assert_eq!(imported_books.len(), titles.len());
@@ -607,11 +604,12 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
         })
         .collect::<Result<Vec<_>>>()?;
 
-    let (_, response) = graphql_request(
-        r#"{ authors { id name } eventSets { id operation } }"#,
-        Some(&token),
-    )
-    .await?;
+    let import_set_id = response["data"]["importBooks"]["eventSetId"]
+        .as_str()
+        .context("importBooks should return eventSetId")?
+        .to_owned();
+
+    let (_, response) = graphql_request(r#"{ authors { id name } }"#, Some(&token)).await?;
     let authors = response["data"]["authors"]
         .as_array()
         .context("authors should be an array")?;
@@ -628,13 +626,7 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
         .as_str()
         .context("shared author id should be a string")?;
 
-    let import_set_id = response["data"]["eventSets"]
-        .as_array()
-        .context("eventSets should be an array")?
-        .iter()
-        .find(|set| set["operation"].as_str() == Some("import_books"))
-        .and_then(|set| set["id"].as_str())
-        .context("there should be an import_books event set")?;
+    let import_set_id = import_set_id.as_str();
     let event_set_query = format!(
         r#"{{ eventSet(id: "{}") {{ bookEvents {{ bookId operation }} authorEvents {{ name operation }} }} }}"#,
         import_set_id
@@ -674,7 +666,7 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
 async fn e2e_import_books_empty_returns_error() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
-    let import_query = r#"mutation { importBooks(books: []) { id } }"#;
+    let import_query = r#"mutation { importBooks(books: []) { books { id } } }"#;
     let (_, response) = graphql_request(import_query, Some(&token)).await?;
     assert!(
         response.get("errors").is_some(),

@@ -436,3 +436,45 @@ impl From<EventSetDetailDto> for EventSetDetail {
         }
     }
 }
+
+#[derive(SimpleObject)]
+pub struct BookMutationPayload {
+    pub book: Book,
+    pub event_set_id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct AuthorMutationPayload {
+    pub author: Author,
+    pub event_set_id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct DeleteBookPayload {
+    pub book_id: ID,
+    pub event_set_id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct DeleteAuthorPayload {
+    pub author_id: ID,
+    pub event_set_id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct ImportBooksPayload {
+    pub books: Vec<Book>,
+    pub event_set_id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct RestoreBookPayload {
+    pub book: Option<Book>,
+    pub event_set_id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct RestoreAuthorPayload {
+    pub author: Option<Author>,
+    pub event_set_id: ID,
+}

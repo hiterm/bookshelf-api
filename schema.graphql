@@ -16,6 +16,11 @@ type AuthorEventEntry {
 	extra: JSON
 }
 
+type AuthorMutationPayload {
+	author: Author!
+	eventSetId: ID!
+}
+
 type Book {
 	id: String!
 	title: String!
@@ -55,6 +60,11 @@ enum BookFormat {
 	UNKNOWN
 }
 
+type BookMutationPayload {
+	book: Book!
+	eventSetId: ID!
+}
+
 enum BookStore {
 	KINDLE
 	UNKNOWN
@@ -73,6 +83,16 @@ input CreateBookInput {
 	priority: Int!
 	format: BookFormat!
 	store: BookStore!
+}
+
+type DeleteAuthorPayload {
+	authorId: ID!
+	eventSetId: ID!
+}
+
+type DeleteBookPayload {
+	bookId: ID!
+	eventSetId: ID!
 }
 
 type EventSetDetail {
@@ -124,6 +144,11 @@ input ImportBookInput {
 	store: BookStore!
 }
 
+type ImportBooksPayload {
+	books: [Book!]!
+	eventSetId: ID!
+}
+
 """
 A scalar that can represent any JSON value.
 """
@@ -131,18 +156,18 @@ scalar JSON
 
 type Mutation {
 	registerUser: User!
-	createBook(bookData: CreateBookInput!): Book!
-	updateBook(bookData: UpdateBookInput!): Book!
-	deleteBook(bookId: ID!): String!
-	createAuthor(authorData: CreateAuthorInput!): Author!
-	updateAuthor(authorData: UpdateAuthorInput!): Author!
-	deleteAuthor(authorId: ID!): String!
-	restoreBook(eventId: ID!): Book
-	restoreAuthor(eventId: ID!): Author
+	createBook(bookData: CreateBookInput!): BookMutationPayload!
+	updateBook(bookData: UpdateBookInput!): BookMutationPayload!
+	deleteBook(bookId: ID!): DeleteBookPayload!
+	createAuthor(authorData: CreateAuthorInput!): AuthorMutationPayload!
+	updateAuthor(authorData: UpdateAuthorInput!): AuthorMutationPayload!
+	deleteAuthor(authorId: ID!): DeleteAuthorPayload!
+	restoreBook(eventId: ID!): RestoreBookPayload!
+	restoreAuthor(eventId: ID!): RestoreAuthorPayload!
 	"""
 	Imports multiple books. Creates authors if they do not exist.
 	"""
-	importBooks(books: [ImportBookInput!]!): [Book!]!
+	importBooks(books: [ImportBookInput!]!): ImportBooksPayload!
 }
 
 type Query {
@@ -169,6 +194,16 @@ type Query {
 	Returns a single event set with nested events, or null if not found.
 	"""
 	eventSet(id: ID!): EventSetDetail
+}
+
+type RestoreAuthorPayload {
+	author: Author
+	eventSetId: ID!
+}
+
+type RestoreBookPayload {
+	book: Book
+	eventSetId: ID!
 }
 
 input UpdateAuthorInput {
