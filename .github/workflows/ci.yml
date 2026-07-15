@@ -1,6 +1,17 @@
 name: Continuous integration
 
-on: [push]
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to validate
+        required: true
+        type: string
+      release_pr_head_sha:
+        description: Release pull request head SHA to receive the aggregate status
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,6 +26,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
       - uses: ./.github/actions/setup-rust-toolchain
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: sudo systemctl start postgresql.service
@@ -30,6 +42,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -119,6 +132,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
       - uses: ./.github/actions/setup-rust-toolchain
         with:
           components: rustfmt
@@ -132,6 +146,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
       - uses: ./.github/actions/setup-rust-toolchain
         with:
           components: clippy
@@ -146,6 +161,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
       - run: sudo systemctl start postgresql.service
       - run: pg_isready
       - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" postgres
@@ -163,9 +179,40 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
       - uses: ./.github/actions/setup-rust-toolchain
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Generate schema
         run: cargo run --bin gen_schema --locked > /tmp/schema.graphql.generated
       - name: Check schema is up to date
         run: diff schema.graphql /tmp/schema.graphql.generated
+
+  release-pr-status:
+    name: Release PR CI status
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    needs: [test, test-image-building, fmt, clippy, migration-test, check-schema]
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Report aggregate status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.release_pr_head_sha }}
+          REPOSITORY: ${{ github.repository }}
+          RESULTS: ${{ join(needs.*.result, ',') }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          state=failure
+          description="Release PR validation failed"
+          if [[ "${RESULTS}" == "success,success,success,success,success,success" ]]; then
+            state=success
+            description="Release PR validation passed"
+          fi
+
+          gh api --method POST \
+            "repos/${REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state="${state}" \
+            -f context=release-pr-ci \
+            -f description="${description}" \
+            -f target_url="${RUN_URL}"
