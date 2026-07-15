@@ -10,8 +10,8 @@ Production releases currently require a GitHub Release draft and a separate vers
 
 - [x] Milestone 1: Add manually dispatched Release PR validation and aggregate commit status. Completed 2026-07-16.
   - [x] plan updated
-- [ ] Milestone 2: Add tagpr configuration, orchestration workflow, and release-note configuration; remove Release Drafter.
-  - [ ] plan updated
+- [x] Milestone 2: Add tagpr configuration, orchestration workflow, and release-note configuration; remove Release Drafter. Completed 2026-07-16.
+  - [x] plan updated
 - [ ] Milestone 3: Deploy the exact released tag through a reusable workflow and document the new production operation.
   - [ ] plan updated
 - [ ] Milestone 4: After the implementation pull request merges, verify the first `2.8.2` Release PR and its production rollout.
@@ -34,10 +34,16 @@ Work began on 2026-07-16 in branch `feat-adopt-tagpr-release-flow`.
 - Decision: Pin `Songmu/tagpr` v1.20.1 to commit `d1b8138b7a31075141b6cd64103de9485ced7ac9`.
   Rationale: A full commit SHA makes the third-party Action immutable while retaining the reviewed v1.20.1 behavior.
   Date/Author: 2026-07-16 / Codex
+- Decision: Dispatch `ci.yml` from its `main` definition while passing the Release PR branch as the required checkout ref.
+  Rationale: The implementation guarantees GitHub can find an already-installed dispatchable workflow on the default branch, while all six jobs still validate the exact Release PR contents and report to its supplied head SHA.
+  Date/Author: 2026-07-16 / Codex
+- Decision: On workflow retries, accept only an unprefixed semantic-version tag pointing directly at the checked-out `main` HEAD.
+  Rationale: This recovers deployment after tag creation without accidentally deploying an older tag or a non-release tag. It also matches the repository's existing `2.8.1` tag convention.
+  Date/Author: 2026-07-16 / Codex
 
 ## Outcomes & Retrospective
 
-Milestone 1 is complete: the existing six CI jobs can validate an explicitly supplied Release PR ref, and an aggregate job reports the result to that pull request's exact head SHA. Implementation of release orchestration remains in progress. Production rollout remains deliberately deferred until the implementation pull request has merged and tagpr has generated the first Release PR.
+Milestones 1 and 2 are complete. The existing six CI jobs can validate an explicitly supplied Release PR ref and report one aggregate status, and tagpr now owns the single Release PR, changelog, tag, and GitHub Release path. Release Drafter and its cargo-edit version-bump PR path are removed. Exact-tag deployment remains to be wired. Production rollout remains deliberately deferred until the implementation pull request has merged and tagpr has generated the first Release PR.
 
 ## Context and Orientation
 
@@ -110,6 +116,8 @@ Milestone 1 local validation completed on 2026-07-16:
     zizmor .                                               no findings
     cargo metadata --locked --no-deps                      passed
 
+Milestone 2 repeated the same validation set on 2026-07-16 with 139 Rust tests passing, no actionlint errors, no zizmor findings, and valid locked Cargo metadata.
+
 Expected first image tag:
 
     ghcr.io/hiterm/bookshelf-api:2.8.2
@@ -123,3 +131,5 @@ GitHub CLI `gh`, preinstalled on GitHub-hosted runners, performs workflow dispat
 Plan revision note (2026-07-16): Created the initial self-contained implementation plan and recorded the verified tagpr Action pin and CI aggregation design.
 
 Plan revision note (2026-07-16): Marked milestone 1 complete and recorded its local validation results and the transient dependency-download failure.
+
+Plan revision note (2026-07-16): Marked milestone 2 complete, recorded validation, and documented the default-branch dispatch and exact-HEAD tag recovery decisions.

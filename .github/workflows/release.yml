@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  tagpr:
+    name: Update release pull request or tag release
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    outputs:
+      release_tag: ${{ steps.release_tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust-toolchain
+      - name: Run tagpr
+        id: tagpr
+        uses: Songmu/tagpr@d1b8138b7a31075141b6cd64103de9485ced7ac9 # v1.20.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate release pull request
+        if: ${{ steps.tagpr.outputs.pull_request != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PULL_REQUEST: ${{ steps.tagpr.outputs.pull_request }}
+        run: |
+          ref=$(jq -er '.head.ref' <<<"${PULL_REQUEST}")
+          head_sha=$(jq -er '.head.sha' <<<"${PULL_REQUEST}")
+
+          for attempt in {1..5}; do
+            if gh workflow run ci.yml \
+              --ref main \
+              -f ref="${ref}" \
+              -f release_pr_head_sha="${head_sha}"; then
+              exit 0
+            fi
+
+            if [[ "${attempt}" -lt 5 ]]; then
+              sleep $((attempt * 2))
+            fi
+          done
+
+          echo "::error::Could not dispatch release pull request CI after 5 attempts"
+          exit 1
+      - name: Determine release tag
+        id: release_tag
+        env:
+          TAGPR_TAG: ${{ steps.tagpr.outputs.tag }}
+        run: |
+          tag="${TAGPR_TAG}"
+          if [[ -z "${tag}" ]]; then
+            git fetch --force --tags origin
+            tag=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$' | sort -V | tail -n 1)
+          fi
+
+          if [[ -n "${tag}" ]] && [[ ! "${tag}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::tagpr returned a non-SemVer tag: ${tag}"
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
