@@ -69,3 +69,17 @@ jobs:
           fi
 
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+  deploy:
+    name: Deploy release
+    if: ${{ needs.tagpr.outputs.release_tag != '' }}
+    needs: tagpr
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      release_tag: ${{ needs.tagpr.outputs.release_tag }}
+    # secrets-inherit: deploy.yml is repository-local and needs GITHUB_TOKEN plus
+    # RENDER_DEPLOY_HOOK only for the trusted main release path.
+    secrets: inherit # zizmor: ignore[secrets-inherit]

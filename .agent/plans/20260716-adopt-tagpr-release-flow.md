@@ -12,8 +12,8 @@ Production releases currently require a GitHub Release draft and a separate vers
   - [x] plan updated
 - [x] Milestone 2: Add tagpr configuration, orchestration workflow, and release-note configuration; remove Release Drafter. Completed 2026-07-16.
   - [x] plan updated
-- [ ] Milestone 3: Deploy the exact released tag through a reusable workflow and document the new production operation.
-  - [ ] plan updated
+- [x] Milestone 3: Deploy the exact released tag through a reusable workflow and document the new production operation. Completed 2026-07-16.
+  - [x] plan updated
 - [ ] Milestone 4: After the implementation pull request merges, verify the first `2.8.2` Release PR and its production rollout.
   - [ ] plan updated
 
@@ -40,10 +40,13 @@ Work began on 2026-07-16 in branch `feat-adopt-tagpr-release-flow`.
 - Decision: On workflow retries, accept only an unprefixed semantic-version tag pointing directly at the checked-out `main` HEAD.
   Rationale: This recovers deployment after tag creation without accidentally deploying an older tag or a non-release tag. It also matches the repository's existing `2.8.1` tag convention.
   Date/Author: 2026-07-16 / Codex
+- Decision: Preserve the deployment's build, frontend integration test, image push, and Render hook ordering while changing only its trigger and version source.
+  Rationale: The release-flow migration should not weaken the existing packaged-image validation; the only behavioral change is that every artifact now derives from the exact released Git tag and only that raw GHCR tag is published.
+  Date/Author: 2026-07-16 / Codex
 
 ## Outcomes & Retrospective
 
-Milestones 1 and 2 are complete. The existing six CI jobs can validate an explicitly supplied Release PR ref and report one aggregate status, and tagpr now owns the single Release PR, changelog, tag, and GitHub Release path. Release Drafter and its cargo-edit version-bump PR path are removed. Exact-tag deployment remains to be wired. Production rollout remains deliberately deferred until the implementation pull request has merged and tagpr has generated the first Release PR.
+The three local implementation milestones are complete. The six-job Release PR validation reports one aggregate status; tagpr owns the Release PR, changelog, tag, and GitHub Release path; and deployment now checks out and publishes only the exact released tag before invoking Render. Release Drafter and its cargo-edit version-bump PR path are removed. The remaining milestone is the intentionally external production rollout after this implementation pull request merges and creates the first `2.8.2` Release PR.
 
 ## Context and Orientation
 
@@ -118,6 +121,8 @@ Milestone 1 local validation completed on 2026-07-16:
 
 Milestone 2 repeated the same validation set on 2026-07-16 with 139 Rust tests passing, no actionlint errors, no zizmor findings, and valid locked Cargo metadata.
 
+Milestone 3 repeated the same validation set on 2026-07-16 with 139 Rust tests passing, no actionlint errors, no zizmor findings, and valid locked Cargo metadata. The repository adds no API endpoint, so no new API E2E test is required; the existing frontend integration test remains in the exact-tag deployment workflow.
+
 Expected first image tag:
 
     ghcr.io/hiterm/bookshelf-api:2.8.2
@@ -133,3 +138,5 @@ Plan revision note (2026-07-16): Created the initial self-contained implementati
 Plan revision note (2026-07-16): Marked milestone 1 complete and recorded its local validation results and the transient dependency-download failure.
 
 Plan revision note (2026-07-16): Marked milestone 2 complete, recorded validation, and documented the default-branch dispatch and exact-HEAD tag recovery decisions.
+
+Plan revision note (2026-07-16): Marked milestone 3 complete, recorded validation and the E2E assessment, and left only the post-merge production rollout milestone open.
