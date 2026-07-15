@@ -33,14 +33,16 @@ async fn e2e_graphql_crud_book() -> Result<()> {
     // Create author first
     let author_name = format!("Test Author for CRUD {}", uuid::Uuid::new_v4());
     let create_author_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} eventSetId }} }}"#,
         author_name
     );
     let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
     let data = response.get("data").context("data field must exist")?;
     let author_result = data
         .get("createAuthor")
-        .context("createAuthor field must exist")?;
+        .context("createAuthor field must exist")?
+        .get("author")
+        .context("author field must exist")?;
     let author_id = author_result
         .get("id")
         .context("id field must exist")?
@@ -77,13 +79,16 @@ async fn e2e_graphql_crud_book() -> Result<()> {
                 format: E_BOOK
                 store: KINDLE
             }}) {{
-                id
-                title
-                read
-                owned
-                priority
-                createdAt
-                updatedAt
+                book {{
+                    id
+                    title
+                    read
+                    owned
+                    priority
+                    createdAt
+                    updatedAt
+                }}
+                eventSetId
             }}
         }}
         "#,
@@ -93,7 +98,9 @@ async fn e2e_graphql_crud_book() -> Result<()> {
     let data = response.get("data").context("data field must exist")?;
     let create_result = data
         .get("createBook")
-        .context("createBook field must exist")?;
+        .context("createBook field must exist")?
+        .get("book")
+        .context("book field must exist")?;
     let book_id = create_result
         .get("id")
         .context("id field must exist")?
@@ -115,10 +122,13 @@ async fn e2e_graphql_crud_book() -> Result<()> {
                 format: PRINTED
                 store: KINDLE
             }}) {{
-                id
-                title
-                read
-                priority
+                book {{
+                    id
+                    title
+                    read
+                    priority
+                }}
+                eventSetId
             }}
         }}
         "#,
@@ -128,7 +138,9 @@ async fn e2e_graphql_crud_book() -> Result<()> {
     let data = response.get("data").context("data field must exist")?;
     let update_result = data
         .get("updateBook")
-        .context("updateBook field must exist")?;
+        .context("updateBook field must exist")?
+        .get("book")
+        .context("book field must exist")?;
     assert_eq!(
         update_result
             .get("title")
@@ -224,14 +236,16 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
     // Create author first
     let author_name = format!("Test Author for BookByID {}", uuid::Uuid::new_v4());
     let create_author_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} eventSetId }} }}"#,
         author_name
     );
     let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
     let data = response.get("data").context("data field must exist")?;
     let author_result = data
         .get("createAuthor")
-        .context("createAuthor field must exist")?;
+        .context("createAuthor field must exist")?
+        .get("author")
+        .context("author field must exist")?;
     let author_id = author_result
         .get("id")
         .context("id field must exist")?
@@ -252,8 +266,11 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
                 format: E_BOOK
                 store: KINDLE
             }}) {{
-                id
-                title
+                book {{
+                    id
+                    title
+                }}
+                eventSetId
             }}
         }}
         "#,
@@ -263,7 +280,9 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
     let data = response.get("data").context("data field must exist")?;
     let create_result = data
         .get("createBook")
-        .context("createBook field must exist")?;
+        .context("createBook field must exist")?
+        .get("book")
+        .context("book field must exist")?;
     let book_id = create_result
         .get("id")
         .context("id field must exist")?
@@ -325,7 +344,7 @@ async fn e2e_graphql_create_book_without_auth() -> Result<()> {
                 format: E_BOOK
                 store: KINDLE
             }) {
-                id
+                book { id }
             }
         }
     "#;
@@ -352,7 +371,7 @@ async fn e2e_graphql_update_nonexistent_book_returns_error() -> Result<()> {
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }}) {{ id title }}
+            }}) {{ book {{ id title }} eventSetId }}
         }}
         "#,
         nonexistent_id
@@ -367,7 +386,10 @@ async fn e2e_graphql_update_nonexistent_book_returns_error() -> Result<()> {
 async fn e2e_graphql_delete_nonexistent_book_returns_error() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
     let nonexistent_id = uuid::Uuid::new_v4().to_string();
-    let query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, nonexistent_id);
+    let query = format!(
+        r#"mutation {{ deleteBook(bookId: "{}") {{ bookId }} }}"#,
+        nonexistent_id
+    );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
     assert_graphql_errors(&response, "deleteBook for a non-existent book");
     Ok(())
@@ -431,7 +453,7 @@ async fn e2e_graphql_books_authors_are_user_isolated() -> Result<()> {
                 priority: 1
                 format: PRINTED
                 store: KINDLE
-            }}) {{ id }}
+            }}) {{ book {{ id }} eventSetId }}
         }}
         "#,
         book_id
@@ -439,18 +461,24 @@ async fn e2e_graphql_books_authors_are_user_isolated() -> Result<()> {
     let (_, response) = graphql_request(&update_book_query, Some(&other_token)).await?;
     assert_graphql_errors(&response, "other user's updateBook");
 
-    let delete_book_query = format!(r#"mutation {{ deleteBook(bookId: "{}") }}"#, book_id);
+    let delete_book_query = format!(
+        r#"mutation {{ deleteBook(bookId: "{}") {{ bookId }} }}"#,
+        book_id
+    );
     let (_, response) = graphql_request(&delete_book_query, Some(&other_token)).await?;
     assert_graphql_errors(&response, "other user's deleteBook");
 
     let update_author_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Hijacked Author" }}) {{ id }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Hijacked Author" }}) {{ author {{ id }} eventSetId }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&update_author_query, Some(&other_token)).await?;
     assert_graphql_errors(&response, "other user's updateAuthor");
 
-    let delete_author_query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
+    let delete_author_query = format!(
+        r#"mutation {{ deleteAuthor(authorId: "{}") {{ authorId }} }}"#,
+        author_id
+    );
     let (_, response) = graphql_request(&delete_author_query, Some(&other_token)).await?;
     assert_graphql_errors(&response, "other user's deleteAuthor");
 
@@ -480,7 +508,7 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     let (_, response) = graphql_request(
-        r#"mutation { createAuthor(authorData: { name: "" }) { id } }"#,
+        r#"mutation { createAuthor(authorData: { name: "" }) { author { id } } }"#,
         Some(&token),
     )
     .await?;
@@ -498,7 +526,7 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }) { id }
+            }) { book { id } eventSetId }
         }
         "#,
         r#"
@@ -512,7 +540,7 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }) { id }
+            }) { book { id } eventSetId }
         }
         "#,
         r#"
@@ -526,7 +554,7 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
                 priority: 101
                 format: E_BOOK
                 store: KINDLE
-            }) { id }
+            }) { book { id } eventSetId }
         }
         "#,
     ];

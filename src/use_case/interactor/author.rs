@@ -8,10 +8,16 @@ use crate::{
             event::EventSetOperation,
             user::UserId,
         },
-        repository::{author_repository::AuthorRepository, transaction::TransactionManager},
+        repository::{
+            author_repository::AuthorRepository,
+            transaction::{TransactionEventSet, TransactionManager},
+        },
     },
     use_case::{
-        dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
+        dto::{
+            author::{CreateAuthorDto, UpdateAuthorDto},
+            mutation::{AuthorMutationResultDto, DeleteAuthorResultDto, MutationResultDto},
+        },
         error::UseCaseError,
         traits::author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
     },
@@ -41,7 +47,7 @@ where
         &self,
         user_id: &str,
         author_data: CreateAuthorDto,
-    ) -> Result<AuthorDto, UseCaseError> {
+    ) -> Result<AuthorMutationResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let uuid = Uuid::new_v4();
         let author_id = AuthorId::new(uuid);
@@ -53,9 +59,10 @@ where
             .begin(&user_id, EventSetOperation::CreateAuthor)
             .await?;
         self.author_repository.create(&mut tx, &author).await?;
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(author.into())
+        Ok(MutationResultDto::new(author.into(), event_set_id))
     }
 }
 
@@ -83,7 +90,7 @@ where
         &self,
         user_id: &str,
         author_data: UpdateAuthorDto,
-    ) -> Result<AuthorDto, UseCaseError> {
+    ) -> Result<AuthorMutationResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let author_id = AuthorId::try_from(author_data.id.as_str())?;
         let author_name = AuthorName::new(author_data.name)?;
@@ -110,9 +117,10 @@ where
         author.update(AuthorUpdate { name: author_name });
 
         self.author_repository.update(&mut tx, &author).await?;
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(author.into())
+        Ok(MutationResultDto::new(author.into(), event_set_id))
     }
 }
 
@@ -136,8 +144,13 @@ where
     TM: TransactionManager,
     AR: AuthorRepository<Transaction = TM::Transaction>,
 {
-    async fn delete(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError> {
+    async fn delete(
+        &self,
+        user_id: &str,
+        author_id: &str,
+    ) -> Result<DeleteAuthorResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
+        let author_id_value = author_id.to_string();
         let author_id = AuthorId::try_from(author_id)?;
 
         let mut tx = self
@@ -145,9 +158,10 @@ where
             .begin(&user_id, EventSetOperation::DeleteAuthor)
             .await?;
         self.author_repository.delete(&mut tx, &author_id).await?;
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(())
+        Ok(MutationResultDto::new(author_id_value, event_set_id))
     }
 }
 

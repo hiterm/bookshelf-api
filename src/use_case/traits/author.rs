@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use mockall::automock;
 
 use crate::use_case::{
-    dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
+    dto::{
+        author::{CreateAuthorDto, UpdateAuthorDto},
+        mutation::{AuthorMutationResultDto, DeleteAuthorResultDto},
+    },
     error::UseCaseError,
 };
 
@@ -13,7 +16,7 @@ pub trait CreateAuthorUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         author_data: CreateAuthorDto,
-    ) -> Result<AuthorDto, UseCaseError>;
+    ) -> Result<AuthorMutationResultDto, UseCaseError>;
 }
 
 #[automock]
@@ -23,11 +26,15 @@ pub trait UpdateAuthorUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         author_data: UpdateAuthorDto,
-    ) -> Result<AuthorDto, UseCaseError>;
+    ) -> Result<AuthorMutationResultDto, UseCaseError>;
 }
 
 #[automock]
 #[async_trait]
 pub trait DeleteAuthorUseCase: Send + Sync + 'static {
-    async fn delete(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError>;
+    async fn delete(
+        &self,
+        user_id: &str,
+        author_id: &str,
+    ) -> Result<DeleteAuthorResultDto, UseCaseError>;
 }

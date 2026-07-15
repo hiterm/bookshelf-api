@@ -15,12 +15,18 @@ use crate::{
         },
         error::DomainError,
         repository::{
-            author_repository::AuthorRepository, book_repository::BookRepository,
-            transaction::TransactionManager,
+            author_repository::AuthorRepository,
+            book_repository::BookRepository,
+            transaction::{TransactionEventSet, TransactionManager},
         },
     },
     use_case::{
-        dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, TimeInfo, UpdateBookDto},
+        dto::{
+            book::{BookDto, CreateBookDto, ImportBookEntryDto, TimeInfo, UpdateBookDto},
+            mutation::{
+                BookMutationResultDto, DeleteBookResultDto, ImportBooksResultDto, MutationResultDto,
+            },
+        },
         error::UseCaseError,
         traits::book::{
             CreateBookUseCase, DeleteBookUseCase, ImportBooksUseCase, UpdateBookUseCase,
@@ -70,7 +76,7 @@ where
         &self,
         user_id: &str,
         book_data: CreateBookDto,
-    ) -> Result<BookDto, UseCaseError> {
+    ) -> Result<BookMutationResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let uuid = Uuid::new_v4();
         let time_info = TimeInfo::new(OffsetDateTime::now_utc(), OffsetDateTime::now_utc());
@@ -81,9 +87,10 @@ where
             .begin(&user_id, EventSetOperation::CreateBook)
             .await?;
         self.book_repository.create(&mut tx, &book).await?;
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(book.into())
+        Ok(MutationResultDto::new(book.into(), event_set_id))
     }
 }
 
@@ -111,7 +118,7 @@ where
         &self,
         user_id: &str,
         book_data: UpdateBookDto,
-    ) -> Result<BookDto, UseCaseError> {
+    ) -> Result<BookMutationResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let UpdateBookDto {
             id,
@@ -169,9 +176,10 @@ where
         book.update(update, OffsetDateTime::now_utc());
 
         self.book_repository.update(&mut tx, &book).await?;
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(book.into())
+        Ok(MutationResultDto::new(book.into(), event_set_id))
     }
 }
 
@@ -195,8 +203,13 @@ where
     TM: TransactionManager,
     BR: BookRepository<Transaction = TM::Transaction>,
 {
-    async fn delete(&self, user_id: &str, book_id: &str) -> Result<(), UseCaseError> {
+    async fn delete(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<DeleteBookResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
+        let book_id_value = book_id.to_string();
         let book_id = BookId::try_from(book_id)?;
 
         let mut tx = self
@@ -204,9 +217,10 @@ where
             .begin(&user_id, EventSetOperation::DeleteBook)
             .await?;
         self.book_repository.delete(&mut tx, &book_id).await?;
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(())
+        Ok(MutationResultDto::new(book_id_value, event_set_id))
     }
 }
 
@@ -237,7 +251,7 @@ where
         &self,
         user_id: &str,
         books: Vec<ImportBookEntryDto>,
-    ) -> Result<Vec<BookDto>, UseCaseError> {
+    ) -> Result<ImportBooksResultDto, UseCaseError> {
         if books.is_empty() {
             return Err(UseCaseError::Validation(
                 "books cannot be empty".to_string(),
@@ -343,9 +357,13 @@ where
             result_books.push(book);
         }
 
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(result_books.into_iter().map(BookDto::from).collect())
+        Ok(MutationResultDto::new(
+            result_books.into_iter().map(BookDto::from).collect(),
+            event_set_id,
+        ))
     }
 }
 

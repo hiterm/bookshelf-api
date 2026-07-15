@@ -436,3 +436,89 @@ impl From<EventSetDetailDto> for EventSetDetail {
         }
     }
 }
+
+#[derive(SimpleObject)]
+pub struct BookMutationPayload {
+    pub book: Book,
+    pub event_set_id: ID,
+    pub id: String,
+    pub title: String,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl BookMutationPayload {
+    pub fn new(book: Book, event_set_id: ID) -> Self {
+        Self {
+            id: book.id.clone(),
+            title: book.title.clone(),
+            isbn: book.isbn.clone(),
+            read: book.read,
+            owned: book.owned,
+            priority: book.priority,
+            format: book.format,
+            store: book.store,
+            created_at: book.created_at,
+            updated_at: book.updated_at,
+            book,
+            event_set_id,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct AuthorMutationPayload {
+    pub author: Author,
+    pub event_set_id: ID,
+    pub id: ID,
+    pub name: String,
+}
+
+impl AuthorMutationPayload {
+    pub fn new(author: Author, event_set_id: ID) -> Self {
+        Self {
+            id: author.id.clone(),
+            name: author.name.clone(),
+            author,
+            event_set_id,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct DeleteBookPayload {
+    pub book_id: ID,
+    pub event_set_id: ID,
+    pub id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct DeleteAuthorPayload {
+    pub author_id: ID,
+    pub event_set_id: ID,
+    pub id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct ImportBooksPayload {
+    pub books: Vec<Book>,
+    pub event_set_id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct RestoreBookPayload {
+    pub book: Option<Book>,
+    pub event_set_id: ID,
+}
+
+#[derive(SimpleObject)]
+pub struct RestoreAuthorPayload {
+    pub author: Option<Author>,
+    pub event_set_id: ID,
+}

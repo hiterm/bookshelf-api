@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::domain::{
     entity::{event::EventSetOperation, user::UserId},
     error::DomainError,
-    repository::transaction::TransactionManager,
+    repository::transaction::{TransactionEventSet, TransactionManager},
 };
 
 /// A PostgreSQL transaction carrying the `event_set` id generated when the
@@ -19,9 +19,15 @@ pub struct PgTransaction {
     user_id: UserId,
 }
 
+impl TransactionEventSet for PgTransaction {
+    fn event_set_id(&self) -> Uuid {
+        self.event_set_id
+    }
+}
+
 impl PgTransaction {
     pub fn event_set_id(&self) -> Uuid {
-        self.event_set_id
+        <Self as TransactionEventSet>::event_set_id(self)
     }
 
     /// Returns the user passed to `begin`, which is the single source of

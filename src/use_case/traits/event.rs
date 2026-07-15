@@ -3,9 +3,8 @@ use mockall::automock;
 
 use crate::use_case::{
     dto::{
-        author::AuthorDto,
-        book::BookDto,
         event::{AuthorEventDto, BookEventDto},
+        mutation::{RestoreAuthorResultDto, RestoreBookResultDto},
     },
     error::UseCaseError,
 };
@@ -29,7 +28,11 @@ pub trait ListAuthorEventsUseCase: Send + Sync + 'static {
 #[automock]
 #[async_trait]
 pub trait RestoreBookUseCase: Send + Sync + 'static {
-    async fn restore(&self, user_id: &str, event_id: i64) -> Result<Option<BookDto>, UseCaseError>;
+    async fn restore(
+        &self,
+        user_id: &str,
+        event_id: i64,
+    ) -> Result<RestoreBookResultDto, UseCaseError>;
 }
 
 #[automock]
@@ -39,5 +42,5 @@ pub trait RestoreAuthorUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         event_id: i64,
-    ) -> Result<Option<AuthorDto>, UseCaseError>;
+    ) -> Result<RestoreAuthorResultDto, UseCaseError>;
 }

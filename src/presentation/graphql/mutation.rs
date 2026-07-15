@@ -8,8 +8,9 @@ use crate::{
 };
 
 use super::object::{
-    Author, Book, CreateAuthorInput, CreateBookInput, ImportBookInput, UpdateAuthorInput,
-    UpdateBookInput, User,
+    Author, AuthorMutationPayload, Book, BookMutationPayload, CreateAuthorInput, CreateBookInput,
+    DeleteAuthorPayload, DeleteBookPayload, ImportBookInput, ImportBooksPayload,
+    RestoreAuthorPayload, RestoreBookPayload, UpdateAuthorInput, UpdateBookInput, User,
 };
 
 pub struct Mutation<MUC> {
@@ -37,86 +38,110 @@ where
         &self,
         ctx: &Context<'_>,
         book_data: CreateBookInput,
-    ) -> Result<Book, PresentationalError> {
+    ) -> Result<BookMutationPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let book = self
             .mutation_use_case
             .create_book(&claims.sub, book_data.into())
             .await?;
 
-        Ok(book.into())
+        Ok(BookMutationPayload::new(
+            book.value.into(),
+            ID(book.event_set_id),
+        ))
     }
 
     async fn update_book(
         &self,
         ctx: &Context<'_>,
         book_data: UpdateBookInput,
-    ) -> Result<Book, PresentationalError> {
+    ) -> Result<BookMutationPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let book = self
             .mutation_use_case
             .update_book(&claims.sub, book_data.into())
             .await?;
 
-        Ok(book.into())
+        Ok(BookMutationPayload::new(
+            book.value.into(),
+            ID(book.event_set_id),
+        ))
     }
 
     async fn delete_book(
         &self,
         ctx: &Context<'_>,
         book_id: ID,
-    ) -> Result<String, PresentationalError> {
+    ) -> Result<DeleteBookPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
-        self.mutation_use_case
+        let result = self
+            .mutation_use_case
             .delete_book(&claims.sub, book_id.as_str())
             .await?;
 
-        Ok(book_id.to_string())
+        let book_id = ID(result.value);
+        Ok(DeleteBookPayload {
+            book_id: book_id.clone(),
+            id: book_id,
+            event_set_id: ID(result.event_set_id),
+        })
     }
 
     async fn create_author(
         &self,
         ctx: &Context<'_>,
         author_data: CreateAuthorInput,
-    ) -> Result<Author, PresentationalError> {
+    ) -> Result<AuthorMutationPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let author = self
             .mutation_use_case
             .create_author(&claims.sub, author_data.into())
             .await?;
-        Ok(author.into())
+        Ok(AuthorMutationPayload::new(
+            author.value.into(),
+            ID(author.event_set_id),
+        ))
     }
 
     async fn update_author(
         &self,
         ctx: &Context<'_>,
         author_data: UpdateAuthorInput,
-    ) -> Result<Author, PresentationalError> {
+    ) -> Result<AuthorMutationPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let author = self
             .mutation_use_case
             .update_author(&claims.sub, author_data.into())
             .await?;
-        Ok(author.into())
+        Ok(AuthorMutationPayload::new(
+            author.value.into(),
+            ID(author.event_set_id),
+        ))
     }
 
     async fn delete_author(
         &self,
         ctx: &Context<'_>,
         author_id: ID,
-    ) -> Result<String, PresentationalError> {
+    ) -> Result<DeleteAuthorPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
-        self.mutation_use_case
+        let result = self
+            .mutation_use_case
             .delete_author(&claims.sub, author_id.as_str())
             .await?;
-        Ok(author_id.to_string())
+        let author_id = ID(result.value);
+        Ok(DeleteAuthorPayload {
+            author_id: author_id.clone(),
+            id: author_id,
+            event_set_id: ID(result.event_set_id),
+        })
     }
 
     async fn restore_book(
         &self,
         ctx: &Context<'_>,
         event_id: ID,
-    ) -> Result<Option<Book>, PresentationalError> {
+    ) -> Result<RestoreBookPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let eid: i64 = event_id.parse().map_err(|_| {
             PresentationalError::OtherError(std::sync::Arc::new(anyhow::anyhow!(
@@ -127,14 +152,17 @@ where
             .mutation_use_case
             .restore_book(&claims.sub, eid)
             .await?;
-        Ok(book.map(Book::from))
+        Ok(RestoreBookPayload {
+            book: book.value.map(Book::from),
+            event_set_id: ID(book.event_set_id),
+        })
     }
 
     async fn restore_author(
         &self,
         ctx: &Context<'_>,
         event_id: ID,
-    ) -> Result<Option<Author>, PresentationalError> {
+    ) -> Result<RestoreAuthorPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let eid: i64 = event_id.parse().map_err(|_| {
             PresentationalError::OtherError(std::sync::Arc::new(anyhow::anyhow!(
@@ -145,7 +173,10 @@ where
             .mutation_use_case
             .restore_author(&claims.sub, eid)
             .await?;
-        Ok(author.map(Author::from))
+        Ok(RestoreAuthorPayload {
+            author: author.value.map(Author::from),
+            event_set_id: ID(author.event_set_id),
+        })
     }
 
     /// Imports multiple books. Creates authors if they do not exist.
@@ -153,13 +184,16 @@ where
         &self,
         ctx: &Context<'_>,
         books: Vec<ImportBookInput>,
-    ) -> Result<Vec<Book>, PresentationalError> {
+    ) -> Result<ImportBooksPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let books = self
             .mutation_use_case
             .import_books(&claims.sub, books.into_iter().map(Into::into).collect())
             .await?;
-        Ok(books.into_iter().map(Book::from).collect())
+        Ok(ImportBooksPayload {
+            books: books.value.into_iter().map(Book::from).collect(),
+            event_set_id: ID(books.event_set_id),
+        })
     }
 }
 

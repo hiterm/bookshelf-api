@@ -44,7 +44,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
     let random_name = format!("Test Author {}", uuid::Uuid::new_v4());
 
     let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ id name }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id name }} eventSetId }} }}"#,
         random_name
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
@@ -52,7 +52,9 @@ async fn e2e_graphql_create_author() -> Result<()> {
     let data = response.get("data").context("data field must exist")?;
     let create_result = data
         .get("createAuthor")
-        .context("createAuthor field must exist")?;
+        .context("createAuthor field must exist")?
+        .get("author")
+        .context("author field must exist")?;
     let author_id = create_result
         .get("id")
         .context("id field must exist")?
@@ -119,7 +121,10 @@ async fn e2e_graphql_delete_author_with_associated_books_fails() -> Result<()> {
     let book_id = create_test_book("Book Blocking Author Delete", &author_id, &token).await?;
 
     // Attempt to delete the author — must fail
-    let delete_author_query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
+    let delete_author_query = format!(
+        r#"mutation {{ deleteAuthor(authorId: "{}") {{ authorId }} }}"#,
+        author_id
+    );
     let (_, response) = graphql_request(&delete_author_query, Some(&token)).await?;
     assert!(
         response.get("errors").is_some(),
@@ -155,7 +160,7 @@ async fn e2e_graphql_update_author() -> Result<()> {
     // Update author name while the author has an associated book
     let updated_name = format!("Author After Update {}", uuid::Uuid::new_v4());
     let update_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ id name }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ author {{ id name }} eventSetId }} }}"#,
         author_id, updated_name
     );
     let (_, response) = graphql_request(&update_query, Some(&token)).await?;
@@ -163,7 +168,7 @@ async fn e2e_graphql_update_author() -> Result<()> {
         response.get("errors").is_none(),
         "updateAuthor should not return errors"
     );
-    let update_result = &response["data"]["updateAuthor"];
+    let update_result = &response["data"]["updateAuthor"]["author"];
     assert_eq!(
         update_result["id"].as_str(),
         Some(author_id.as_str()),
@@ -197,7 +202,7 @@ async fn e2e_graphql_update_nonexistent_author_returns_error() -> Result<()> {
 
     let nonexistent_id = uuid::Uuid::new_v4().to_string();
     let query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Ghost" }}) {{ id name }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Ghost" }}) {{ author {{ id name }} eventSetId }} }}"#,
         nonexistent_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
@@ -215,7 +220,7 @@ async fn e2e_graphql_delete_nonexistent_author_returns_error() -> Result<()> {
 
     let nonexistent_id = uuid::Uuid::new_v4().to_string();
     let query = format!(
-        r#"mutation {{ deleteAuthor(authorId: "{}") }}"#,
+        r#"mutation {{ deleteAuthor(authorId: "{}") {{ authorId }} }}"#,
         nonexistent_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;

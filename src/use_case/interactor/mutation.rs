@@ -2,8 +2,13 @@ use async_trait::async_trait;
 
 use crate::use_case::{
     dto::{
-        author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto},
-        book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto},
+        author::{CreateAuthorDto, UpdateAuthorDto},
+        book::{CreateBookDto, ImportBookEntryDto, UpdateBookDto},
+        mutation::{
+            AuthorMutationResultDto, BookMutationResultDto, DeleteAuthorResultDto,
+            DeleteBookResultDto, ImportBooksResultDto, RestoreAuthorResultDto,
+            RestoreBookResultDto,
+        },
         user::UserDto,
     },
     error::UseCaseError,
@@ -87,7 +92,7 @@ where
         &self,
         user_id: &str,
         book_data: CreateBookDto,
-    ) -> Result<BookDto, UseCaseError> {
+    ) -> Result<BookMutationResultDto, UseCaseError> {
         let book = self.create_book_use_case.create(user_id, book_data).await?;
         Ok(book)
     }
@@ -96,21 +101,25 @@ where
         &self,
         user_id: &str,
         book_data: UpdateBookDto,
-    ) -> Result<BookDto, UseCaseError> {
+    ) -> Result<BookMutationResultDto, UseCaseError> {
         let book = self.update_book_use_case.update(user_id, book_data).await?;
         Ok(book)
     }
 
-    async fn delete_book(&self, user_id: &str, book_id: &str) -> Result<(), UseCaseError> {
-        self.delete_book_use_case.delete(user_id, book_id).await?;
-        Ok(())
+    async fn delete_book(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<DeleteBookResultDto, UseCaseError> {
+        let result = self.delete_book_use_case.delete(user_id, book_id).await?;
+        Ok(result)
     }
 
     async fn create_author(
         &self,
         user_id: &str,
         author_data: CreateAuthorDto,
-    ) -> Result<AuthorDto, UseCaseError> {
+    ) -> Result<AuthorMutationResultDto, UseCaseError> {
         let author = self
             .create_author_use_case
             .create(user_id, author_data)
@@ -122,7 +131,7 @@ where
         &self,
         user_id: &str,
         author_data: UpdateAuthorDto,
-    ) -> Result<AuthorDto, UseCaseError> {
+    ) -> Result<AuthorMutationResultDto, UseCaseError> {
         let author = self
             .update_author_use_case
             .update(user_id, author_data)
@@ -130,18 +139,23 @@ where
         Ok(author)
     }
 
-    async fn delete_author(&self, user_id: &str, author_id: &str) -> Result<(), UseCaseError> {
-        self.delete_author_use_case
+    async fn delete_author(
+        &self,
+        user_id: &str,
+        author_id: &str,
+    ) -> Result<DeleteAuthorResultDto, UseCaseError> {
+        let result = self
+            .delete_author_use_case
             .delete(user_id, author_id)
             .await?;
-        Ok(())
+        Ok(result)
     }
 
     async fn restore_book(
         &self,
         user_id: &str,
         event_id: i64,
-    ) -> Result<Option<BookDto>, UseCaseError> {
+    ) -> Result<RestoreBookResultDto, UseCaseError> {
         self.restore_book_use_case.restore(user_id, event_id).await
     }
 
@@ -149,7 +163,7 @@ where
         &self,
         user_id: &str,
         event_id: i64,
-    ) -> Result<Option<AuthorDto>, UseCaseError> {
+    ) -> Result<RestoreAuthorResultDto, UseCaseError> {
         self.restore_author_use_case
             .restore(user_id, event_id)
             .await
@@ -159,7 +173,7 @@ where
         &self,
         user_id: &str,
         books: Vec<ImportBookEntryDto>,
-    ) -> Result<Vec<BookDto>, UseCaseError> {
+    ) -> Result<ImportBooksResultDto, UseCaseError> {
         self.import_books_use_case.import(user_id, books).await
     }
 }
@@ -169,6 +183,7 @@ mod tests {
     use mockall::predicate::{always, eq};
 
     use crate::common::types::{BookFormat, BookStore};
+    use crate::use_case::dto::mutation::MutationResultDto;
     use crate::use_case::error::UseCaseError;
     use crate::use_case::{
         dto::{
@@ -346,7 +361,12 @@ mod tests {
         mock_create_book
             .expect_create()
             .with(always(), always())
-            .returning(move |_, _| Ok(make_book_dto(&book_id)));
+            .returning(move |_, _| {
+                Ok(MutationResultDto::new(
+                    make_book_dto(&book_id),
+                    "event-set".to_string(),
+                ))
+            });
 
         let interactor = InteractorBuilder::new()
             .with_create_book(mock_create_book)
@@ -381,7 +401,12 @@ mod tests {
         mock_update_book
             .expect_update()
             .with(always(), always())
-            .returning(move |_, _| Ok(make_book_dto(&book_id)));
+            .returning(move |_, _| {
+                Ok(MutationResultDto::new(
+                    make_book_dto(&book_id),
+                    "event-set".to_string(),
+                ))
+            });
 
         let interactor = InteractorBuilder::new()
             .with_update_book(mock_update_book)
@@ -414,7 +439,12 @@ mod tests {
         mock_delete_book
             .expect_delete()
             .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| {
+                Ok(MutationResultDto::new(
+                    "deleted-id".to_string(),
+                    "event-set".to_string(),
+                ))
+            });
 
         let interactor = InteractorBuilder::new()
             .with_delete_book(mock_delete_book)
@@ -437,10 +467,13 @@ mod tests {
             .expect_create()
             .with(always(), always())
             .returning(|_, data| {
-                Ok(AuthorDto {
-                    id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
-                    name: data.name.clone(),
-                })
+                Ok(MutationResultDto::new(
+                    AuthorDto {
+                        id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                        name: data.name.clone(),
+                    },
+                    "event-set".to_string(),
+                ))
             });
 
         let interactor = InteractorBuilder::new()
@@ -465,10 +498,13 @@ mod tests {
             .expect_update()
             .with(always(), always())
             .returning(|_, data| {
-                Ok(AuthorDto {
-                    id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
-                    name: data.name.clone(),
-                })
+                Ok(MutationResultDto::new(
+                    AuthorDto {
+                        id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                        name: data.name.clone(),
+                    },
+                    "event-set".to_string(),
+                ))
             });
 
         let interactor = InteractorBuilder::new()
@@ -495,7 +531,12 @@ mod tests {
         mock_delete_author
             .expect_delete()
             .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| {
+                Ok(MutationResultDto::new(
+                    "deleted-id".to_string(),
+                    "event-set".to_string(),
+                ))
+            });
 
         let interactor = InteractorBuilder::new()
             .with_delete_author(mock_delete_author)
@@ -521,7 +562,12 @@ mod tests {
         mock_restore_book
             .expect_restore()
             .with(always(), always())
-            .returning(move |_, _| Ok(Some(make_book_dto(&book_id))));
+            .returning(move |_, _| {
+                Ok(MutationResultDto::new(
+                    Some(make_book_dto(&book_id)),
+                    "event-set".to_string(),
+                ))
+            });
 
         let interactor = InteractorBuilder::new()
             .with_restore_book(mock_restore_book)
@@ -532,7 +578,7 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().unwrap().id, expected_id);
+        assert_eq!(result.unwrap().value.unwrap().id, expected_id);
     }
 
     #[tokio::test]
@@ -542,7 +588,7 @@ mod tests {
         mock_restore_book
             .expect_restore()
             .with(always(), always())
-            .returning(|_, _| Ok(None));
+            .returning(|_, _| Ok(MutationResultDto::new(None, "event-set".to_string())));
 
         let interactor = InteractorBuilder::new()
             .with_restore_book(mock_restore_book)
@@ -564,10 +610,13 @@ mod tests {
             .expect_restore()
             .with(always(), always())
             .returning(|_, _| {
-                Ok(Some(AuthorDto {
-                    id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
-                    name: "Test Author".to_string(),
-                }))
+                Ok(MutationResultDto::new(
+                    Some(AuthorDto {
+                        id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                        name: "Test Author".to_string(),
+                    }),
+                    "event-set".to_string(),
+                ))
             });
 
         let interactor = InteractorBuilder::new()
@@ -579,7 +628,7 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().unwrap().name, "Test Author");
+        assert_eq!(result.unwrap().value.unwrap().name, "Test Author");
     }
 
     #[tokio::test]
@@ -589,7 +638,7 @@ mod tests {
         mock_restore_author
             .expect_restore()
             .with(always(), always())
-            .returning(|_, _| Ok(None));
+            .returning(|_, _| Ok(MutationResultDto::new(None, "event-set".to_string())));
 
         let interactor = InteractorBuilder::new()
             .with_restore_author(mock_restore_author)
@@ -610,7 +659,7 @@ mod tests {
         mock_restore_book
             .expect_restore()
             .with(eq("user1"), eq(42_i64))
-            .returning(|_, _| Ok(None));
+            .returning(|_, _| Ok(MutationResultDto::new(None, "event-set".to_string())));
 
         let interactor = InteractorBuilder::new()
             .with_restore_book(mock_restore_book)
@@ -656,7 +705,7 @@ mod tests {
         mock_restore_author
             .expect_restore()
             .with(eq("user1"), eq(99_i64))
-            .returning(|_, _| Ok(None));
+            .returning(|_, _| Ok(MutationResultDto::new(None, "event-set".to_string())));
 
         let interactor = InteractorBuilder::new()
             .with_restore_author(mock_restore_author)
@@ -705,7 +754,12 @@ mod tests {
         mock_import_books
             .expect_import()
             .with(eq("user1"), always())
-            .returning(move |_, _| Ok(vec![make_book_dto(&book_id)]));
+            .returning(move |_, _| {
+                Ok(MutationResultDto::new(
+                    vec![make_book_dto(&book_id)],
+                    "event-set".to_string(),
+                ))
+            });
 
         let interactor = InteractorBuilder::new()
             .with_import_books(mock_import_books)
