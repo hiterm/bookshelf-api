@@ -24,11 +24,7 @@ async fn e2e_book_events_records_create_operation() -> Result<()> {
         book_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "bookEvents should not return errors: {:?}",
-        response.get("errors")
-    );
+    assert_no_graphql_errors(&response, "bookEvents");
 
     let entries = response["data"]["bookEvents"]
         .as_array()
@@ -112,29 +108,19 @@ async fn e2e_book_events_records_update_operation() -> Result<()> {
     let book_id = create_test_book("Original Title", &author_id, &token).await?;
 
     // Update the book
-    let update_query = format!(
-        r#"
-        mutation {{
-            updateBook(bookData: {{
-                id: "{}"
-                title: "Updated Title"
-                authorIds: ["{}"]
-                isbn: ""
-                read: false
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ id title }}
-        }}
-        "#,
-        book_id, author_id
-    );
-    let (_, response) = graphql_request(&update_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "updateBook should not return errors"
-    );
+    update_test_book(
+        &book_id,
+        "Updated Title",
+        &author_id,
+        "",
+        false,
+        false,
+        50,
+        "E_BOOK",
+        "KINDLE",
+        &token,
+    )
+    .await?;
 
     let query = format!(
         r#"{{ bookEvents(bookId: "{}") {{
@@ -262,11 +248,7 @@ async fn e2e_author_events_records_create_operation() -> Result<()> {
         author_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "authorEvents should not return errors: {:?}",
-        response.get("errors")
-    );
+    assert_no_graphql_errors(&response, "authorEvents");
 
     let entries = response["data"]["authorEvents"]
         .as_array()
@@ -326,10 +308,7 @@ async fn e2e_author_events_records_update_operation() -> Result<()> {
         author_id, updated_name
     );
     let (_, response) = graphql_request(&update_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "updateAuthor should not return errors"
-    );
+    assert_no_graphql_errors(&response, "updateAuthor");
 
     let query = format!(
         r#"{{ authorEvents(authorId: "{}") {{

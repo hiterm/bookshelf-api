@@ -30,25 +30,19 @@ async fn e2e_restore_book_reverts_to_snapshot() -> Result<()> {
         .to_owned();
 
     // Update the book
-    let update_query = format!(
-        r#"
-        mutation {{
-            updateBook(bookData: {{
-                id: "{}"
-                title: "After Update"
-                authorIds: ["{}"]
-                isbn: ""
-                read: true
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ id title }}
-        }}
-        "#,
-        book_id, author_id
-    );
-    graphql_request(&update_query, Some(&token)).await?;
+    update_test_book(
+        &book_id,
+        "After Update",
+        &author_id,
+        "",
+        true,
+        false,
+        50,
+        "E_BOOK",
+        "KINDLE",
+        &token,
+    )
+    .await?;
 
     // Verify current title is "After Update"
     let book_query = format!(r#"{{ book(id: "{}") {{ title read }} }}"#, book_id);
@@ -65,11 +59,7 @@ async fn e2e_restore_book_reverts_to_snapshot() -> Result<()> {
         create_event_id
     );
     let (_, response) = graphql_request(&restore_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "restoreBook should not return errors: {:?}",
-        response.get("errors")
-    );
+    assert_no_graphql_errors(&response, "restoreBook");
     assert_eq!(
         response["data"]["restoreBook"]["title"].as_str(),
         Some("Before Restore"),
@@ -124,10 +114,7 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
         author_id, updated_name
     );
     let (_, update_response) = graphql_request(&update_query, Some(&token)).await?;
-    assert!(
-        update_response.get("errors").is_none(),
-        "updateAuthor should not return errors"
-    );
+    assert_no_graphql_errors(&update_response, "updateAuthor");
     assert_eq!(
         update_response["data"]["updateAuthor"]["name"].as_str(),
         Some(updated_name.as_str()),
@@ -140,11 +127,7 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
         create_event_id
     );
     let (_, response) = graphql_request(&restore_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "restoreAuthor should not return errors: {:?}",
-        response.get("errors")
-    );
+    assert_no_graphql_errors(&response, "restoreAuthor");
     assert_eq!(
         response["data"]["restoreAuthor"]["name"].as_str(),
         Some(original_name.as_str()),
@@ -304,6 +287,8 @@ async fn e2e_restore_mutations_reject_invalid_or_missing_event_ids() -> Result<(
         r#"mutation { restoreAuthor(eventId: "not-an-int") { id } }"#,
         r#"mutation { restoreBook(eventId: "999999999") { id } }"#,
         r#"mutation { restoreAuthor(eventId: "999999999") { id } }"#,
+        r#"mutation { restoreBook { id } }"#,
+        r#"mutation { restoreAuthor { id } }"#,
     ];
 
     for query in invalid_queries {

@@ -25,6 +25,12 @@ where
 {
     async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
+        if self.user_repository.find_by_id(&user_id).await?.is_some() {
+            return Err(UseCaseError::Conflict(format!(
+                r#"user "{}" already exists"#,
+                user_id.as_str()
+            )));
+        }
         let user = DomainUser::new(user_id);
         self.user_repository.create(&user).await?;
         Ok(UserDto::new(user.id.into_string()))
@@ -47,6 +53,10 @@ mod tests {
     async fn register_user_success() {
         // Given
         let mut user_repository = MockUserRepository::new();
+        user_repository
+            .expect_find_by_id()
+            .with(always())
+            .returning(|_| Ok(None));
         user_repository
             .expect_create()
             .with(always())
@@ -73,5 +83,23 @@ mod tests {
 
         // Then
         assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn register_user_fails_when_user_already_exists() {
+        // Given
+        let mut user_repository = MockUserRepository::new();
+        user_repository
+            .expect_find_by_id()
+            .with(always())
+            .returning(|id| Ok(Some(crate::domain::entity::user::User::new(id.clone()))));
+
+        let interactor = RegisterUserInteractor::new(user_repository);
+
+        // When
+        let result = interactor.register_user("user1").await;
+
+        // Then
+        assert!(matches!(result, Err(UseCaseError::Conflict(_))));
     }
 }

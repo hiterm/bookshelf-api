@@ -101,34 +101,19 @@ async fn e2e_graphql_crud_book() -> Result<()> {
         .context("id must be string")?;
 
     // Update book
-    let update_query = format!(
-        r#"
-        mutation {{
-            updateBook(bookData: {{
-                id: "{}"
-                title: "Updated Test Book"
-                authorIds: ["{}"]
-                isbn: "9783161484100"
-                read: true
-                owned: true
-                priority: 2
-                format: PRINTED
-                store: KINDLE
-            }}) {{
-                id
-                title
-                read
-                priority
-            }}
-        }}
-        "#,
-        book_id, author_id
-    );
-    let (_, response) = graphql_request(&update_query, Some(&token)).await?;
-    let data = response.get("data").context("data field must exist")?;
-    let update_result = data
-        .get("updateBook")
-        .context("updateBook field must exist")?;
+    let update_result = update_test_book(
+        book_id,
+        "Updated Test Book",
+        author_id,
+        "9783161484100",
+        true,
+        true,
+        2,
+        "PRINTED",
+        "KINDLE",
+        &token,
+    )
+    .await?;
     assert_eq!(
         update_result
             .get("title")
@@ -564,7 +549,3 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
 
     Ok(())
 }
-
-// ============================================
-// Change History E2E Tests
-// ============================================

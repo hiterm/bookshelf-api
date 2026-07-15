@@ -121,9 +121,9 @@ async fn e2e_graphql_delete_author_with_associated_books_fails() -> Result<()> {
     // Attempt to delete the author — must fail
     let delete_author_query = format!(r#"mutation {{ deleteAuthor(authorId: "{}") }}"#, author_id);
     let (_, response) = graphql_request(&delete_author_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_some(),
-        "deleteAuthor should return errors when author has associated books"
+    assert_graphql_errors(
+        &response,
+        "deleteAuthor should return errors when author has associated books",
     );
 
     // Verify the author still exists
@@ -159,10 +159,7 @@ async fn e2e_graphql_update_author() -> Result<()> {
         author_id, updated_name
     );
     let (_, response) = graphql_request(&update_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "updateAuthor should not return errors"
-    );
+    assert_no_graphql_errors(&response, "updateAuthor should not return errors");
     let update_result = &response["data"]["updateAuthor"];
     assert_eq!(
         update_result["id"].as_str(),
@@ -201,9 +198,9 @@ async fn e2e_graphql_update_nonexistent_author_returns_error() -> Result<()> {
         nonexistent_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_some(),
-        "updateAuthor should return errors for a non-existent author"
+    assert_graphql_errors(
+        &response,
+        "updateAuthor should return errors for a non-existent author",
     );
     Ok(())
 }
@@ -219,9 +216,9 @@ async fn e2e_graphql_delete_nonexistent_author_returns_error() -> Result<()> {
         nonexistent_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_some(),
-        "deleteAuthor should return errors for a non-existent author"
+    assert_graphql_errors(
+        &response,
+        "deleteAuthor should return errors for a non-existent author",
     );
     Ok(())
 }

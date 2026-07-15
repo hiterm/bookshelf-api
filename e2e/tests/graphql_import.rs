@@ -48,11 +48,7 @@ async fn e2e_import_books() -> Result<()> {
         }
     "#;
     let (_, response) = graphql_request(import_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "importBooks should not return errors: {:?}",
-        response.get("errors")
-    );
+    assert_no_graphql_errors(&response, "importBooks");
 
     let imported_books = response["data"]["importBooks"]
         .as_array()
@@ -97,31 +93,8 @@ async fn e2e_import_books() -> Result<()> {
     );
     assert_ne!(book_one_id, book_two_id, "book ids should be distinct");
 
-    // Locate the single event set produced by the import via eventSets, then
-    // inspect it directly. This replaces the old workaround of comparing the
-    // eventSetId across separate per-book bookEvents queries.
-    let (_, response) = graphql_request(r#"{ eventSets { id operation } }"#, Some(&token)).await?;
-    let event_sets = response["data"]["eventSets"]
-        .as_array()
-        .context("eventSets should be an array")?;
-    let import_set_id = event_sets
-        .iter()
-        .find(|s| s["operation"].as_str() == Some("import_books"))
-        .and_then(|s| s["id"].as_str())
-        .context("there should be an import_books event set")?;
-
     // The shared event set groups both book creates and the new author create.
-    let event_set_query = format!(
-        r#"{{ eventSet(id: "{}") {{
-            operation
-            bookEvents {{ bookId operation }}
-            authorEvents {{ name operation }}
-        }} }}"#,
-        import_set_id
-    );
-    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
-    let event_set = &response["data"]["eventSet"];
-    assert!(!event_set.is_null(), "import event set should be found");
+    let event_set = find_event_set_by_operation("import_books", &token).await?;
     assert_eq!(
         event_set["operation"].as_str(),
         Some("import_books"),
@@ -286,11 +259,7 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         "#
     );
     let (_, response) = graphql_request(&import_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "bulk importBooks should not return errors: {:?}",
-        response.get("errors")
-    );
+    assert_no_graphql_errors(&response, "bulk importBooks");
 
     let imported_books = response["data"]["importBooks"]
         .as_array()
@@ -324,26 +293,7 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         }));
     }
 
-    let (_, response) = graphql_request(r#"{ eventSets { id operation } }"#, Some(&token)).await?;
-    let event_sets = response["data"]["eventSets"]
-        .as_array()
-        .context("eventSets should be an array")?;
-    let import_set_id = event_sets
-        .iter()
-        .find(|s| s["operation"].as_str() == Some("import_books"))
-        .and_then(|s| s["id"].as_str())
-        .context("there should be an import_books event set")?;
-
-    let event_set_query = format!(
-        r#"{{ eventSet(id: "{}") {{
-            operation
-            bookEvents {{ bookId operation }}
-            authorEvents {{ name operation }}
-        }} }}"#,
-        import_set_id
-    );
-    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
-    let event_set = &response["data"]["eventSet"];
+    let event_set = find_event_set_by_operation("import_books", &token).await?;
     assert_eq!(event_set["operation"].as_str(), Some("import_books"));
     let grouped_book_events = event_set["bookEvents"]
         .as_array()
@@ -628,27 +578,16 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
         .as_str()
         .context("shared author id should be a string")?;
 
-    let import_set_id = response["data"]["eventSets"]
-        .as_array()
-        .context("eventSets should be an array")?
-        .iter()
-        .find(|set| set["operation"].as_str() == Some("import_books"))
-        .and_then(|set| set["id"].as_str())
-        .context("there should be an import_books event set")?;
-    let event_set_query = format!(
-        r#"{{ eventSet(id: "{}") {{ bookEvents {{ bookId operation }} authorEvents {{ name operation }} }} }}"#,
-        import_set_id
-    );
-    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
+    let event_set = find_event_set_by_operation("import_books", &token).await?;
     assert_eq!(
-        response["data"]["eventSet"]["bookEvents"]
+        event_set["bookEvents"]
             .as_array()
             .context("bookEvents should be an array")?
             .len(),
         titles.len(),
         "each imported book should have a create event"
     );
-    let author_events = response["data"]["eventSet"]["authorEvents"]
+    let author_events = event_set["authorEvents"]
         .as_array()
         .context("authorEvents should be an array")?;
     assert_eq!(
@@ -676,11 +615,14 @@ async fn e2e_import_books_empty_returns_error() -> Result<()> {
 
     let import_query = r#"mutation { importBooks(books: []) { id } }"#;
     let (_, response) = graphql_request(import_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_some(),
-        "importBooks with empty list should return errors: {:?}",
-        response.get("errors")
-    );
+    assert_graphql_errors(&response, "importBooks with empty list");
+    let error_message = response["errors"]
+        .as_array()
+        .and_then(|errors| errors.first())
+        .and_then(|error| error.get("message"))
+        .and_then(|message| message.as_str())
+        .context("importBooks empty error should include a message")?;
+    assert_eq!(error_message, "books cannot be empty");
 
     Ok(())
 }

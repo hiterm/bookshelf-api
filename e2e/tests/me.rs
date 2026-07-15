@@ -164,7 +164,3 @@ async fn e2e_me_endpoint_response_contains_required_fields() -> Result<()> {
     assert!(!id.is_empty(), "Response 'id' field must not be empty");
     Ok(())
 }
-
-// ============================================
-// GraphQL E2E Tests
-// ============================================
