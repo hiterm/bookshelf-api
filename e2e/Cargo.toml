@@ -1,6 +1,6 @@
 [package]
 name = "bookshelf-e2e"
-version = "2.7.3"
+version = "2.8.0"
 edition = "2024"
 
 [lib]
