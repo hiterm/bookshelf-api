@@ -4,6 +4,22 @@
     "config:best-practices",
   ],
   "minimumReleaseAge": "3 days",
+  "customManagers": [
+    {
+      // Use the Docker image as the source of truth so the toolchain is only
+      // updated after the matching trixie image is available.
+      "customType": "regex",
+      "managerFilePatterns": ["/^rust-toolchain\\.toml$/"],
+      "matchStrings": [
+        "channel\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\"",
+      ],
+      "depNameTemplate": "rust",
+      "packageNameTemplate": "rust",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker",
+      "extractVersionTemplate": "^(?<version>\\d+\\.\\d+\\.\\d+)-trixie$",
+    },
+  ],
   "packageRules": [
     {
       // Group minor/patch updates by manager (e.g. npm, github-actions).
@@ -28,11 +44,23 @@
       "enabled": false
     },
     {
-      // Keep rust-toolchain.toml and Dockerfile rust base image in sync
+      // The custom manager above replaces the built-in toolchain update.
       "matchDepNames": ["rust"],
-      "matchManagers": ["rust-toolchain", "dockerfile"],
+      "matchManagers": ["rust-toolchain"],
+      "enabled": false,
+    },
+    {
+      // Keep rust-toolchain.toml and Dockerfile rust base image in sync.
+      "matchDepNames": ["rust"],
+      "matchManagers": ["custom.regex", "dockerfile"],
       "minimumReleaseAge": null,
-      "groupName": "rust version"
+      "groupName": "rust version",
+    },
+    {
+      // rust-toolchain.toml cannot store a Docker image digest.
+      "matchDepNames": ["rust"],
+      "matchManagers": ["custom.regex"],
+      "pinDigests": false,
     },
   ],
   "reviewers": ["hiterm"],
