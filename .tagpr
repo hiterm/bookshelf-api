@@ -3,7 +3,7 @@
 	versionFile = rendercom/Dockerfile
 	vPrefix = false
 	changelog = true
-	postVersionCommand = cargo set-version "${TAGPR_NEXT_VERSION}"
+	postVersionCommand = cargo set-version --workspace "${TAGPR_NEXT_VERSION}"
 	release = true
 	majorLabels = bump-major
 	minorLabels = bump-minor
