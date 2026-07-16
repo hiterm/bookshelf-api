@@ -14,6 +14,7 @@ jobs:
     permissions:
       actions: write
       contents: write
+      issues: read
       pull-requests: write
     outputs:
       release_tag: ${{ steps.release_tag.outputs.tag }}
