@@ -19,8 +19,6 @@ type AuthorEventEntry {
 type AuthorMutationPayload {
 	author: Author!
 	eventSetId: ID!
-	id: ID!
-	name: String!
 }
 
 type Book {
@@ -65,16 +63,6 @@ enum BookFormat {
 type BookMutationPayload {
 	book: Book!
 	eventSetId: ID!
-	id: String!
-	title: String!
-	isbn: String!
-	read: Boolean!
-	owned: Boolean!
-	priority: Int!
-	format: BookFormat!
-	store: BookStore!
-	createdAt: Int!
-	updatedAt: Int!
 }
 
 enum BookStore {
@@ -100,13 +88,11 @@ input CreateBookInput {
 type DeleteAuthorPayload {
 	authorId: ID!
 	eventSetId: ID!
-	id: ID!
 }
 
 type DeleteBookPayload {
 	bookId: ID!
 	eventSetId: ID!
-	id: ID!
 }
 
 type EventSetDetail {
