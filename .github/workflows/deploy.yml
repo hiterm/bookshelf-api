@@ -1,8 +1,12 @@
 name: Deploy to Render
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Exact semantic-version Git tag to build and deploy
+        required: true
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -23,6 +27,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_tag }}
 
       - name: Check out bookshelf frontend
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -36,8 +41,8 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Cache
-        # cache-poisoning: GHA cache is repo-scoped and this workflow only triggers on
-        # release events, so cache poisoning by external actors is not a realistic risk.
+        # cache-poisoning: this reusable workflow is called only by the release workflow
+        # running from protected main, so external actors cannot choose the cache contents.
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 # zizmor: ignore[cache-poisoning]
         id: cache
         with:
@@ -55,8 +60,8 @@ jobs:
               "app-target": "/app/target"
             }
           skip-extraction: ${{ steps.cache.outputs.cache-hit }}
-        # cache-poisoning: GHA cache is repo-scoped and this workflow only triggers on
-        # release events, so cache poisoning by external actors is not a realistic risk.
+        # cache-poisoning: this reusable workflow is called only by the release workflow
+        # running from protected main, so external actors cannot choose the cache contents.
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           package_json_file: bookshelf-src/package.json
@@ -82,6 +87,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: type=raw,value=${{ inputs.release_tag }}
+          flavor: latest=false
 
       - name: Build and test Docker image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0

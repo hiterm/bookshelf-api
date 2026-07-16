@@ -82,4 +82,8 @@ cargo run --bin gen_schema
 
 ## Deploy to production
 
-Publish a new release.
+Review the Release pull request maintained by
+[tagpr](https://github.com/Songmu/tagpr), confirm that `release-pr-ci` has
+succeeded, and merge it. The merge creates the matching Git tag and GitHub
+Release, tests and publishes that exact version to GHCR, and deploys it to
+Render.
