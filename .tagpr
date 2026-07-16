@@ -1,9 +1,9 @@
 [tagpr]
 	releaseBranch = main
-	versionFile = Cargo.toml,e2e/Cargo.toml,rendercom/Dockerfile
+	versionFile = rendercom/Dockerfile
 	vPrefix = false
 	changelog = true
-	postVersionCommand = cargo check --workspace
+	postVersionCommand = cargo set-version "${TAGPR_NEXT_VERSION}"
 	release = true
 	majorLabels = bump-major
 	minorLabels = bump-minor
