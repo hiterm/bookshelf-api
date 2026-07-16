@@ -1,6 +1,7 @@
 type Author {
 	id: ID!
 	name: String!
+	yomi: String!
 }
 
 type AuthorEventEntry {
@@ -253,4 +254,3 @@ schema {
 	query: Query
 	mutation: Mutation
 }
-

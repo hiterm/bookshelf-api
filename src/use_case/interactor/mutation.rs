@@ -471,6 +471,7 @@ mod tests {
                     AuthorDto {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: data.name.clone(),
+                        yomi: String::new(),
                     },
                     "event-set".to_string(),
                 ))
@@ -502,6 +503,7 @@ mod tests {
                     AuthorDto {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: data.name.clone(),
+                        yomi: String::new(),
                     },
                     "event-set".to_string(),
                 ))
@@ -614,6 +616,7 @@ mod tests {
                     Some(AuthorDto {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: "Test Author".to_string(),
+                        yomi: String::new(),
                     }),
                     "event-set".to_string(),
                 ))

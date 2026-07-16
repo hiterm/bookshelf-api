@@ -22,6 +22,7 @@ use crate::infrastructure::transaction::PgTransaction;
 struct AuthorRow {
     id: Uuid,
     name: String,
+    yomi: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -176,7 +177,7 @@ impl AuthorRepository for PgAuthorRepository {
                         let row = row?;
                         let author_id = AuthorId::new(row.id);
                         let author_name = AuthorName::new(row.name)?;
-                        let author = Author::new(author_id, author_name)?;
+                        let author = Author::new_with_yomi(author_id, author_name, row.yomi)?;
                         Ok(author)
                     },
                 )
@@ -419,7 +420,7 @@ impl AuthorRepository for PgAuthorRepository {
                 let row = row?;
                 let author_id = AuthorId::new(row.id);
                 let author_name = AuthorName::new(row.name)?;
-                let author = Author::new(author_id.clone(), author_name)?;
+                let author = Author::new_with_yomi(author_id.clone(), author_name, row.yomi)?;
                 Ok((author_id, author))
             },
         )
@@ -448,7 +449,7 @@ where
     row.map(|row| -> Result<Author, DomainError> {
         let author_id: AuthorId = row.id.into();
         let author_name = AuthorName::new(row.name)?;
-        Author::new(author_id, author_name)
+        Author::new_with_yomi(author_id, author_name, row.yomi)
     })
     .transpose()
 }

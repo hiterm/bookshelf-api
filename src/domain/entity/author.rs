@@ -61,12 +61,15 @@ pub struct Author {
     id: AuthorId,
     #[getset(get = "pub")]
     name: AuthorName,
+    #[getset(get = "pub")]
+    yomi: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DestructureAuthor {
     pub id: AuthorId,
     pub name: AuthorName,
+    pub yomi: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,7 +79,15 @@ pub struct AuthorUpdate {
 
 impl Author {
     pub fn new(id: AuthorId, name: AuthorName) -> Result<Author, DomainError> {
-        Ok(Author { id, name })
+        Self::new_with_yomi(id, name, String::new())
+    }
+
+    pub fn new_with_yomi(
+        id: AuthorId,
+        name: AuthorName,
+        yomi: String,
+    ) -> Result<Author, DomainError> {
+        Ok(Author { id, name, yomi })
     }
 
     pub fn update(&mut self, update: AuthorUpdate) {
@@ -87,6 +98,7 @@ impl Author {
         DestructureAuthor {
             id: self.id,
             name: self.name,
+            yomi: self.yomi,
         }
     }
 }

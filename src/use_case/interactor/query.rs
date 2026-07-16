@@ -444,6 +444,7 @@ mod tests {
         let expected = Some(AuthorDto {
             id: author_id.to_owned(),
             name: author_name.to_owned(),
+            yomi: String::new(),
         });
 
         assert_eq!(actual, expected);
@@ -640,6 +641,7 @@ mod tests {
             AuthorDto {
                 id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                 name: "author1".to_string(),
+                yomi: String::new(),
             }
         );
     }
@@ -686,6 +688,7 @@ mod tests {
             &AuthorDto {
                 id: author_id_str.to_string(),
                 name: "author1".to_string(),
+                yomi: String::new(),
             }
         );
     }

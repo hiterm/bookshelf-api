@@ -12,7 +12,7 @@ async fn e2e_graphql_authors() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     // The authors list is user-scoped, so a fresh user starts empty.
-    let query = r#"{ authors { id name } }"#;
+    let query = r#"{ authors { id name yomi } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
     let authors = response["data"]["authors"]
         .as_array()
@@ -30,6 +30,7 @@ async fn e2e_graphql_authors() -> Result<()> {
     assert_eq!(authors.len(), 1, "should list exactly the created author");
     assert_eq!(authors[0]["id"].as_str(), Some(author_id.as_str()));
     assert_eq!(authors[0]["name"].as_str(), Some(author_name.as_str()));
+    assert_eq!(authors[0]["yomi"].as_str(), Some(""));
 
     delete_test_author(&author_id, &token).await?;
     Ok(())
@@ -44,7 +45,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
     let random_name = format!("Test Author {}", uuid::Uuid::new_v4());
 
     let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id name }} eventSetId }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id name yomi }} eventSetId }} }}"#,
         random_name
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
@@ -67,9 +68,10 @@ async fn e2e_graphql_create_author() -> Result<()> {
             .as_str(),
         Some(random_name.as_str())
     );
+    assert_eq!(create_result["yomi"].as_str(), Some(""));
 
     // Verify author was created by fetching it
-    let author_query = format!(r#"{{ author(id: "{}") {{ id name }} }}"#, author_id);
+    let author_query = format!(r#"{{ author(id: "{}") {{ id name yomi }} }}"#, author_id);
     let (_, response) = graphql_request(&author_query, Some(&token)).await?;
     let data = response.get("data").context("data field must exist")?;
     let author = data.get("author").context("author field must exist")?;
@@ -83,6 +85,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
         author_name_from_query, random_name,
         "author name should match"
     );
+    assert_eq!(author["yomi"].as_str(), Some(""));
 
     delete_test_author(author_id, &token).await?;
     Ok(())

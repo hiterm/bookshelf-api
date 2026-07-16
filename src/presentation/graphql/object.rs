@@ -238,18 +238,23 @@ impl From<UpdateBookInput> for UpdateBookDto {
 pub struct Author {
     pub id: ID,
     pub name: String,
+    pub yomi: String,
 }
 
 impl Author {
-    pub fn new(id: String, name: String) -> Self {
-        Self { id: ID(id), name }
+    pub fn new(id: String, name: String, yomi: String) -> Self {
+        Self {
+            id: ID(id),
+            name,
+            yomi,
+        }
     }
 }
 
 impl From<AuthorDto> for Author {
     fn from(author: AuthorDto) -> Self {
-        let AuthorDto { id, name } = author;
-        Author::new(id, name)
+        let AuthorDto { id, name, yomi } = author;
+        Author::new(id, name, yomi)
     }
 }
 
