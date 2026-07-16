@@ -325,20 +325,25 @@ impl AuthorRepository for PgAuthorRepository {
 
         match author {
             Some(author) => {
-                let result = sqlx::query("UPDATE author SET name=$2 WHERE id=$1 AND user_id=$3")
-                    .bind(author.id().to_uuid())
-                    .bind(author.name().as_str())
-                    .bind(user_id.as_str())
-                    .execute(tx.as_mut())
-                    .await?;
-
-                if result.rows_affected() == 0 {
-                    sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
+                let result =
+                    sqlx::query("UPDATE author SET name=$2, yomi=$3 WHERE id=$1 AND user_id=$4")
                         .bind(author.id().to_uuid())
-                        .bind(user_id.as_str())
                         .bind(author.name().as_str())
+                        .bind(author.yomi())
+                        .bind(user_id.as_str())
                         .execute(tx.as_mut())
                         .await?;
+
+                if result.rows_affected() == 0 {
+                    sqlx::query(
+                        "INSERT INTO author (id, user_id, name, yomi) VALUES ($1, $2, $3, $4)",
+                    )
+                    .bind(author.id().to_uuid())
+                    .bind(user_id.as_str())
+                    .bind(author.name().as_str())
+                    .bind(author.yomi())
+                    .execute(tx.as_mut())
+                    .await?;
                 }
 
                 let snapshot: AuthorSnapshotRow = sqlx::query_as(
@@ -533,6 +538,21 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::DeleteAuthor).await?;
         author_repository.delete(&mut tx, author_id).await?;
+        tm.commit(tx).await
+    }
+
+    async fn restore_author(
+        pool: &PgPool,
+        author_repository: &PgAuthorRepository,
+        user_id: &UserId,
+        source_event_id: i64,
+        author: Author,
+    ) -> Result<(), DomainError> {
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(user_id, EventSetOperation::RestoreAuthor).await?;
+        author_repository
+            .restore(&mut tx, source_event_id, Some(author))
+            .await?;
         tm.commit(tx).await
     }
 
@@ -985,6 +1005,57 @@ mod tests {
             .fetch_one(&pool)
             .await?;
         assert_eq!(es_count.0, 2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn restore_persists_yomi_and_records_it(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
+        let author = Author::new(author_id.clone(), AuthorName::new("original".to_owned())?)?;
+        create_author(&pool, &author_repository, &user_id, &author).await?;
+
+        let (source_event_id,): (i64,) = sqlx::query_as(
+            "SELECT event_id FROM author_event WHERE user_id = $1 AND operation = 'create'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        let restored = Author::new_with_yomi(
+            author_id.clone(),
+            AuthorName::new("restored".to_owned())?,
+            "れすとあ".to_owned(),
+        )?;
+
+        restore_author(
+            &pool,
+            &author_repository,
+            &user_id,
+            source_event_id,
+            restored,
+        )
+        .await?;
+
+        let live = author_repository
+            .find_by_id(&user_id, &author_id)
+            .await?
+            .expect("restored author should exist");
+        assert_eq!(live.name().as_str(), "restored");
+        assert_eq!(live.yomi(), "れすとあ");
+
+        let (event_name, event_yomi): (String, String) = sqlx::query_as(
+            "SELECT name, yomi FROM author_event
+             WHERE user_id = $1 AND operation = 'restore'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(event_name, "restored");
+        assert_eq!(event_yomi, "れすとあ");
 
         Ok(())
     }
