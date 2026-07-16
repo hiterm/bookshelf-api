@@ -22,6 +22,7 @@ type AuthorMutationPayload {
 	eventSetId: ID!
 	id: ID!
 	name: String!
+	yomi: String!
 }
 
 type Book {
@@ -85,6 +86,7 @@ enum BookStore {
 
 input CreateAuthorInput {
 	name: String!
+	yomi: String
 }
 
 input CreateBookInput {
@@ -224,6 +226,7 @@ type RestoreBookPayload {
 input UpdateAuthorInput {
 	id: ID!
 	name: String!
+	yomi: String
 }
 
 input UpdateBookInput {

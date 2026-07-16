@@ -20,22 +20,28 @@ impl From<Author> for AuthorDto {
 
 pub struct CreateAuthorDto {
     pub name: String,
+    pub yomi: Option<String>,
 }
 
 impl CreateAuthorDto {
     pub fn new(name: String) -> Self {
-        Self { name }
+        Self { name, yomi: None }
     }
 }
 
 pub struct UpdateAuthorDto {
     pub id: String,
     pub name: String,
+    pub yomi: Option<String>,
 }
 
 impl UpdateAuthorDto {
     pub fn new(id: String, name: String) -> Self {
-        Self { id, name }
+        Self {
+            id,
+            name,
+            yomi: None,
+        }
     }
 }
 

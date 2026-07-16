@@ -261,17 +261,21 @@ impl From<AuthorDto> for Author {
 #[derive(InputObject)]
 pub struct CreateAuthorInput {
     pub name: String,
+    pub yomi: Option<String>,
 }
 
 impl CreateAuthorInput {
     pub fn new(name: String) -> Self {
-        Self { name }
+        Self { name, yomi: None }
     }
 }
 
 impl From<CreateAuthorInput> for CreateAuthorDto {
     fn from(val: CreateAuthorInput) -> Self {
-        CreateAuthorDto::new(val.name)
+        CreateAuthorDto {
+            name: val.name,
+            yomi: val.yomi,
+        }
     }
 }
 
@@ -279,11 +283,16 @@ impl From<CreateAuthorInput> for CreateAuthorDto {
 pub struct UpdateAuthorInput {
     pub id: ID,
     pub name: String,
+    pub yomi: Option<String>,
 }
 
 impl From<UpdateAuthorInput> for UpdateAuthorDto {
     fn from(val: UpdateAuthorInput) -> Self {
-        UpdateAuthorDto::new(val.id.to_string(), val.name)
+        UpdateAuthorDto {
+            id: val.id.to_string(),
+            name: val.name,
+            yomi: val.yomi,
+        }
     }
 }
 
@@ -483,6 +492,7 @@ pub struct AuthorMutationPayload {
     pub event_set_id: ID,
     pub id: ID,
     pub name: String,
+    pub yomi: String,
 }
 
 impl AuthorMutationPayload {
@@ -490,6 +500,7 @@ impl AuthorMutationPayload {
         Self {
             id: author.id.clone(),
             name: author.name.clone(),
+            yomi: author.yomi.clone(),
             author,
             event_set_id,
         }

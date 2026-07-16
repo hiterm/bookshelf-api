@@ -514,6 +514,13 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
     .await?;
     assert_graphql_errors(&response, "createAuthor with an empty name");
 
+    let (_, response) = graphql_request(
+        r#"mutation { createAuthor(authorData: { name: "Invalid Yomi", yomi: "カタカナ" }) { author { id } } }"#,
+        Some(&token),
+    )
+    .await?;
+    assert_graphql_errors(&response, "createAuthor with invalid yomi");
+
     let invalid_book_queries = [
         r#"
         mutation {

@@ -60,10 +60,11 @@ impl AuthorRepository for PgAuthorRepository {
 
     async fn create(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError> {
         let user_id = tx.user_id().clone();
-        sqlx::query("INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)")
+        sqlx::query("INSERT INTO author (id, user_id, name, yomi) VALUES ($1, $2, $3, $4)")
             .bind(author.id().to_uuid())
             .bind(user_id.as_str())
             .bind(author.name().as_str())
+            .bind(author.yomi())
             .execute(tx.as_mut())
             .await?;
 
@@ -190,9 +191,11 @@ impl AuthorRepository for PgAuthorRepository {
     async fn update(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError> {
         let user_id = tx.user_id().clone();
         let result = sqlx::query(
-            "UPDATE author SET name = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
+            "UPDATE author SET name = $1, yomi = $2, updated_at = now()
+             WHERE id = $3 AND user_id = $4",
         )
         .bind(author.name().as_str())
+        .bind(author.yomi())
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
         .execute(tx.as_mut())
@@ -214,7 +217,7 @@ impl AuthorRepository for PgAuthorRepository {
             }
         }
 
-        // Fetch post-update state (yomi and timestamps are DB-managed)
+        // Fetch post-update state and DB-managed timestamps.
         let snap: AuthorSnapshotRow = sqlx::query_as(
             "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
         )
@@ -950,7 +953,11 @@ mod tests {
 
         let user_id = prepare_user(&user_repository, "user1").await?;
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?;
+        let author = Author::new_with_yomi(
+            author_id.clone(),
+            AuthorName::new("author1".to_owned())?,
+            "おーさー1".to_owned(),
+        )?;
 
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
@@ -961,13 +968,14 @@ mod tests {
                 .await?;
         assert_eq!(es_op, "create_author");
 
-        let (ae_op, ae_name): (String, String) =
-            sqlx::query_as("SELECT operation, name FROM author_event WHERE user_id = $1")
+        let (ae_op, ae_name, ae_yomi): (String, String, String) =
+            sqlx::query_as("SELECT operation, name, yomi FROM author_event WHERE user_id = $1")
                 .bind(user_id.as_str())
                 .fetch_one(&pool)
                 .await?;
         assert_eq!(ae_op, "create");
         assert_eq!(ae_name, "author1");
+        assert_eq!(ae_yomi, "おーさー1");
 
         Ok(())
     }
@@ -979,14 +987,22 @@ mod tests {
 
         let user_id = prepare_user(&user_repository, "user1").await?;
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("original".to_owned())?)?;
+        let author = Author::new_with_yomi(
+            author_id.clone(),
+            AuthorName::new("original".to_owned())?,
+            "おりじなる".to_owned(),
+        )?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
-        let updated = Author::new(author_id.clone(), AuthorName::new("updated".to_owned())?)?;
+        let updated = Author::new_with_yomi(
+            author_id.clone(),
+            AuthorName::new("updated".to_owned())?,
+            "あっぷでーと2".to_owned(),
+        )?;
         update_author(&pool, &author_repository, &user_id, &updated).await?;
 
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT operation, name FROM author_event WHERE user_id = $1
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            "SELECT operation, name, yomi FROM author_event WHERE user_id = $1
              ORDER BY changed_at ASC",
         )
         .bind(user_id.as_str())
@@ -996,9 +1012,11 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].0, "create");
         assert_eq!(rows[0].1, "original");
+        assert_eq!(rows[0].2, "おりじなる");
         // Post-state: update event records the new name
         assert_eq!(rows[1].0, "update");
         assert_eq!(rows[1].1, "updated");
+        assert_eq!(rows[1].2, "あっぷでーと2");
 
         let es_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
             .bind(user_id.as_str())
