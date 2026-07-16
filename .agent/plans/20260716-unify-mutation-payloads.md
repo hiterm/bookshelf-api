@@ -12,17 +12,17 @@ GraphQL mutations currently expose each changed entity twice: once through the c
   - [x] plan updated
 - [x] (2026-07-16) Milestone 2: Remove aliases, add schema-focused tests, and regenerate `schema.graphql`.
   - [x] plan updated
-- [ ] Milestone 3: Run schema freshness, formatting, clippy, and unit tests, then commit and publish the API PR (completed: schema freshness, formatting, clippy, and 140 unit tests pass; remaining: commit and publish).
-  - [ ] plan updated
-- [ ] Milestone 4: Confirm cross-repository compatibility with the migrated frontend (completed: candidate SDL accepts all migrated mutation documents; remaining: full frontend typecheck is blocked by the candidate schema's unrelated `Author.yomi` requirement).
-  - [ ] plan updated
+- [x] (2026-07-16) Milestone 3: Run schema freshness, formatting, clippy, and unit tests, then commit and publish API draft PR #284.
+  - [x] plan updated
+- [x] (2026-07-17) Milestone 4: Confirm cross-repository compatibility by generating frontend types from the alias-free candidate SDL and passing the full frontend typecheck.
+  - [x] plan updated
 
 ## Surprises & Discoveries
 
-- Observation: The candidate schema makes `Author.yomi` required relative to the released frontend schema, independently of this mutation payload change.
-  Evidence: Candidate-SDL GraphQL Codegen succeeds for every migrated mutation, while frontend typecheck reports only existing fixtures and mappings that omit `yomi`.
 - Observation: Browser E2E cannot launch on the current host because `libnspr4.so` is absent and installing OS dependencies requires an unavailable sudo password.
   Evidence: Playwright stops in `browserType.launch` before executing application steps; API schema tests and frontend unit/type checks are unaffected.
+- Observation: PR #284 was initially based on the unmerged PR #282 branch and therefore included unrelated `Author.yomi` changes.
+  Evidence: Rebasing commits after `1587f01` onto `origin/main` removes PR #282 files; candidate-schema frontend generation and full typecheck then pass.
 
 ## Decision Log
 
@@ -35,7 +35,7 @@ GraphQL mutations currently expose each changed entity twice: once through the c
 
 ## Outcomes & Retrospective
 
-The payload structs and resolvers now expose one canonical entity representation, the checked-in SDL is regenerated, and a schema-focused test fixes the exact allowed field sets. Schema freshness, formatting, clippy, and all 140 unit tests pass. Publication remains in progress.
+The payload structs and resolvers now expose one canonical entity representation, the checked-in SDL is regenerated, and a schema-focused test fixes the exact allowed field sets. Schema freshness, formatting, clippy, all 140 unit tests, and candidate-schema frontend type checking pass. Draft PR #284 publishes only the mutation payload change and documents the required frontend-first release order.
 
 ## Context and Orientation
 
@@ -65,4 +65,4 @@ The client portion is tracked in `bookshelf/.agent/plans/20260716-unify-mutation
 
 No new dependencies or endpoints are permitted. `BookMutationPayload` must expose only `book` and `eventSetId`; `AuthorMutationPayload` only `author` and `eventSetId`; delete payloads expose the entity-specific ID and `eventSetId`.
 
-Plan revision note (2026-07-16): Recorded successful schema freshness, formatting, clippy, and full unit-test validation after completing the API implementation.
+Plan revision note (2026-07-17): Removed stale findings caused by the accidental PR #282 base, recorded the clean rebase onto `origin/main`, and completed candidate-schema frontend validation.

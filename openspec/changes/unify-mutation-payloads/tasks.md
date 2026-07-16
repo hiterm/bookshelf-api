@@ -38,7 +38,7 @@
 
 ## 6. Verify integration and rollout
 
-- [ ] 6.1 Generate frontend types from the alias-free candidate API schema and rerun frontend type checking
+- [x] 6.1 Generate frontend types from the alias-free candidate API schema and rerun frontend type checking
 - [ ] 6.2 Run the cross-repository integration suite when its environment is available
 - [ ] 6.3 Deploy or release the migrated frontend before the alias-free API
 - [ ] 6.4 Confirm create, update, and delete flows after both versions are deployed and document any external-client follow-up
