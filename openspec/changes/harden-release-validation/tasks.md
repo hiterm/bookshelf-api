@@ -3,6 +3,7 @@
 - [x] 1.1 Serialize release workflow runs with the non-cancelling `release` concurrency group.
 - [x] 1.2 Record all three release PR statuses as pending before dispatch and update dispatch-owned statuses to error after retry exhaustion.
 - [x] 1.3 Dispatch CI and E2E validation independently with the release PR ref and head SHA.
+- [x] 1.4 Pin dispatched CI and E2E checkout refs to the immutable release PR head SHA.
 
 ## 2. Release PR E2E Reporting
 

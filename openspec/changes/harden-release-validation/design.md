@@ -25,15 +25,15 @@ The release path spans three workflows: `release.yml` coordinates release PR val
 
 ### Report three commit statuses independently
 
-Immediately after tagpr returns a release pull request, `release.yml` writes `pending` for `release-pr-ci`, `release-pr-api-e2e`, and `release-pr-frontend-integration` against its head SHA. CI and E2E are dispatched separately with the release PR ref and head SHA. Each dispatched workflow owns the terminal status for its context.
+Immediately after tagpr returns a release pull request, `release.yml` writes `pending` for `release-pr-ci`, `release-pr-api-e2e`, and `release-pr-frontend-integration` against its head SHA. CI and E2E are dispatched separately with that immutable head SHA as both the checkout ref and status target. Each dispatched workflow owns the terminal status for its context.
 
 If a dispatch cannot be created after retries, the coordinator writes `error` only for the contexts owned by that dispatch. This distinguishes infrastructure/dispatch failure from a completed validation failure. A successful job reports `success`, a failed job reports `failure`, and cancellation or another non-test terminal result reports `error`.
 
 Alternative considered: expose workflow check runs only. This leaves a delay before checks appear and does not provide stable, explicit status contexts immediately after the release PR is updated.
 
-### Dispatch E2E against the release PR ref
+### Dispatch E2E against the release PR head SHA
 
-`e2e.yml` accepts `ref` and `release_pr_head_sha` through `workflow_dispatch`. Both API E2E and `Integration tests (bookshelf frontend)` check out that ref, run independently, and use always-running reporter jobs to update their own status contexts. Existing push behavior remains intact.
+`e2e.yml` accepts `ref` and `release_pr_head_sha` through `workflow_dispatch`. The coordinator supplies the same immutable release PR head SHA for both inputs. Both API E2E and `Integration tests (bookshelf frontend)` check out that SHA, run independently, and use always-running reporter jobs to update their own status contexts. This prevents a later tagpr branch update from changing the source under test while statuses are reported to an older commit. Existing push behavior remains intact.
 
 Alternative considered: add both tests to `ci.yml`. Keeping E2E dispatch separate preserves job ownership and makes the two compatibility signals independently observable.
 

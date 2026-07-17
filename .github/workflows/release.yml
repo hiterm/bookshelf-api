@@ -45,7 +45,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          ref=$(jq -er '.head.ref' <<<"${PULL_REQUEST}")
           head_sha=$(jq -er '.head.sha' <<<"${PULL_REQUEST}")
           pull_request_url=$(jq -er '.html_url' <<<"${PULL_REQUEST}")
 
@@ -68,7 +67,7 @@ jobs:
             for attempt in {1..5}; do
               if gh workflow run "${workflow}" \
                 --ref main \
-                -f ref="${ref}" \
+                -f ref="${head_sha}" \
                 -f release_pr_head_sha="${head_sha}"; then
                 return 0
               fi

@@ -24,11 +24,11 @@ The release coordinator SHALL create `release-pr-ci`, `release-pr-api-e2e`, and 
 - **THEN** its owning context is updated to `error`
 
 ### Requirement: Release PR E2E dispatch
-The E2E workflow SHALL be dispatchable against a supplied release pull request ref and SHALL report API E2E and `Integration tests (bookshelf frontend)` as separate status contexts on the supplied head SHA.
+The E2E workflow SHALL be dispatchable against a supplied immutable release pull request head SHA and SHALL report API E2E and `Integration tests (bookshelf frontend)` as separate status contexts on that same SHA.
 
 #### Scenario: E2E workflow is dispatched for a release PR
-- **WHEN** the release coordinator supplies a release PR ref and head SHA
-- **THEN** both E2E jobs check out that ref and independently report `release-pr-api-e2e` and `release-pr-frontend-integration`
+- **WHEN** the release coordinator supplies a release PR head SHA
+- **THEN** both E2E jobs check out that SHA and independently report `release-pr-api-e2e` and `release-pr-frontend-integration` to the same SHA
 
 ### Requirement: API E2E gates release publication
 The deployment workflow MUST run API E2E against a release Docker image with PostgreSQL and the API-side JWKS server before publishing the image.
