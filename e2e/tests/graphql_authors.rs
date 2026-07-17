@@ -46,7 +46,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
     let yomi = "てすと・おーさー1";
 
     let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} yomi eventSetId }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} eventSetId }} }}"#,
         random_name, yomi
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
@@ -70,7 +70,6 @@ async fn e2e_graphql_create_author() -> Result<()> {
         Some(random_name.as_str())
     );
     assert_eq!(create_result["yomi"].as_str(), Some(yomi));
-    assert_eq!(data["createAuthor"]["yomi"].as_str(), Some(yomi));
 
     // Verify author was created by fetching it
     let author_query = format!(r#"{{ author(id: "{}") {{ id name yomi }} }}"#, author_id);
@@ -166,7 +165,7 @@ async fn e2e_graphql_update_author() -> Result<()> {
     let updated_name = format!("Author After Update {}", uuid::Uuid::new_v4());
     let updated_yomi = "こうしんご2";
     let update_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} yomi eventSetId }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} eventSetId }} }}"#,
         author_id, updated_name, updated_yomi
     );
     let (_, response) = graphql_request(&update_query, Some(&token)).await?;
@@ -186,10 +185,6 @@ async fn e2e_graphql_update_author() -> Result<()> {
         "updated author name should match"
     );
     assert_eq!(update_result["yomi"].as_str(), Some(updated_yomi));
-    assert_eq!(
-        response["data"]["updateAuthor"]["yomi"].as_str(),
-        Some(updated_yomi)
-    );
 
     // Omitting yomi preserves the current value.
     let preserved_name = format!("Author Preserving Yomi {}", uuid::Uuid::new_v4());
