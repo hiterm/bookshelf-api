@@ -89,8 +89,8 @@ psql(DATA_URL, `
     ('b0000000-0000-0000-0000-000000000001', 'user_beta',  'Book B1', 'ISBN-B1', false, false, 0, 'Unknown', 'Unknown');
 
   INSERT INTO author (id, user_id, name, yomi) VALUES
-    ('a1000000-0000-0000-0000-000000000001', 'user_alpha', 'Author A', 'authora'),
-    ('b1000000-0000-0000-0000-000000000001', 'user_beta',  'Author B', 'authorb');
+    ('a1000000-0000-0000-0000-000000000001', 'user_alpha', 'Author A', 'おーさーえー'),
+    ('b1000000-0000-0000-0000-000000000001', 'user_beta',  'Author B', 'おーさーびー');
 
   -- user_alpha Book A1 and A2 both written by Author A
   INSERT INTO book_author (user_id, book_id, author_id) VALUES
@@ -232,7 +232,7 @@ test('author_event.name matches source author', () => {
 test('author_event.yomi matches source author', () => {
   assertEqual(
     queryOne(DATA_URL, "SELECT yomi FROM author_event WHERE author_id = 'a1000000-0000-0000-0000-000000000001'"),
-    'authora', 'Author A yomi',
+    'おーさーえー', 'Author A yomi',
   );
 });
 
