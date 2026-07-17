@@ -188,7 +188,7 @@ jobs:
         run: diff schema.graphql /tmp/schema.graphql.generated
 
   release-pr-status:
-    name: Release PR CI status
+    name: Report release PR CI status
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
     needs: [test, test-image-building, fmt, clippy, migration-test, check-schema]
     runs-on: ubuntu-latest

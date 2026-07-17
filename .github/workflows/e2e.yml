@@ -251,7 +251,7 @@ jobs:
         working-directory: bookshelf-src
 
   release-pr-api-e2e-status:
-    name: Release PR API E2E status
+    name: Report release PR API E2E status
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
     needs: e2e
     runs-on: ubuntu-latest
@@ -288,7 +288,7 @@ jobs:
             -f target_url="${RUN_URL}"
 
   release-pr-frontend-integration-status:
-    name: Release PR frontend integration status
+    name: Report release PR frontend integration status
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
     needs: test-integration-bookshelf
     runs-on: ubuntu-latest
