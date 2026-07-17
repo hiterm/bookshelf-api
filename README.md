@@ -83,7 +83,23 @@ cargo run --bin gen_schema
 ## Deploy to production
 
 Review the Release pull request maintained by
-[tagpr](https://github.com/Songmu/tagpr), confirm that `release-pr-ci` has
-succeeded, and merge it. The merge creates the matching Git tag and GitHub
-Release, tests and publishes that exact version to GHCR, and deploys it to
-Render.
+[tagpr](https://github.com/Songmu/tagpr). Each update immediately creates three
+informational commit statuses:
+
+- `release-pr-ci` reports the Rust, image-build, migration, and schema checks.
+- `release-pr-api-e2e` reports the API E2E suite.
+- `release-pr-frontend-integration` reports compatibility with the Bookshelf
+  frontend `main` branch.
+
+These statuses are not configured as branch-protection required checks. Confirm
+their results before merging the release pull request.
+
+The merge creates the matching Git tag and GitHub Release. The release workflow
+builds the Docker image once and runs API E2E against that image. API E2E is a
+release gate: if it fails, the image is not pushed to GHCR and Render deployment
+does not start. After API E2E succeeds, the exact validated image is pushed
+without rebuilding it.
+
+Render deployment and `Integration tests (bookshelf frontend)` then run
+independently. A frontend integration failure makes the release workflow fail
+but does not stop or cancel image publication or Render deployment.

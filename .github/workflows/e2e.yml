@@ -1,6 +1,20 @@
 name: E2E tests
 
-on: [push]
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to validate
+        required: true
+        type: string
+      release_pr_head_sha:
+        description: Release pull request head SHA to receive E2E statuses
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   e2e:
@@ -8,12 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
       - uses: ./.github/actions/setup-rust-toolchain
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Start Postgres service
@@ -79,12 +92,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: hiterm/bookshelf
@@ -237,3 +249,77 @@ jobs:
       - name: Run e2e-integration tests
         run: pnpm run test:integration
         working-directory: bookshelf-src
+
+  release-pr-api-e2e-status:
+    name: Release PR API E2E status
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    needs: e2e
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Report API E2E status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.release_pr_head_sha }}
+          REPOSITORY: ${{ github.repository }}
+          RESULT: ${{ needs.e2e.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          state=error
+          description="Release PR API E2E ended without a result"
+
+          case "${RESULT}" in
+            success)
+              state=success
+              description="Release PR API E2E passed"
+              ;;
+            failure)
+              state=failure
+              description="Release PR API E2E failed"
+              ;;
+          esac
+
+          gh api --method POST \
+            "repos/${REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state="${state}" \
+            -f context=release-pr-api-e2e \
+            -f description="${description}" \
+            -f target_url="${RUN_URL}"
+
+  release-pr-frontend-integration-status:
+    name: Release PR frontend integration status
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    needs: test-integration-bookshelf
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Report frontend integration status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.release_pr_head_sha }}
+          REPOSITORY: ${{ github.repository }}
+          RESULT: ${{ needs.test-integration-bookshelf.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          state=error
+          description="Release PR frontend integration ended without a result"
+
+          case "${RESULT}" in
+            success)
+              state=success
+              description="Release PR frontend integration passed"
+              ;;
+            failure)
+              state=failure
+              description="Release PR frontend integration failed"
+              ;;
+          esac
+
+          gh api --method POST \
+            "repos/${REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state="${state}" \
+            -f context=release-pr-frontend-integration \
+            -f description="${description}" \
+            -f target_url="${RUN_URL}"

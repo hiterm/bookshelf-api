@@ -203,11 +203,14 @@ jobs:
           RESULTS: ${{ join(needs.*.result, ',') }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          state=failure
-          description="Release PR validation failed"
+          state=error
+          description="Release PR validation ended without a result"
           if [[ "${RESULTS}" == "success,success,success,success,success,success" ]]; then
             state=success
             description="Release PR validation passed"
+          elif [[ ",${RESULTS}," == *,failure,* ]]; then
+            state=failure
+            description="Release PR validation failed"
           fi
 
           gh api --method POST \

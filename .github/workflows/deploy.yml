@@ -15,27 +15,19 @@ env:
 permissions: {}
 
 jobs:
-  push_to_registry:
-    name: Push Docker image
+  validate_image:
+    name: Validate release image
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-
+    env:
+      DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
     steps:
-      - name: Check out the repo
+      - name: Check out the release
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
           ref: ${{ inputs.release_tag }}
-
-      - name: Check out bookshelf frontend
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          repository: hiterm/bookshelf
-          ref: main
-          path: bookshelf-src
-          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -51,7 +43,7 @@ jobs:
             app-target
           key: cache-${{ hashFiles('Dockerfile') }}
 
-      - name: inject cache into docker
+      - name: Inject cache into Docker
         uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
           cache-map: |
@@ -62,43 +54,20 @@ jobs:
           skip-extraction: ${{ steps.cache.outputs.cache-hit }}
         # cache-poisoning: this reusable workflow is called only by the release workflow
         # running from protected main, so external actors cannot choose the cache contents.
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-        with:
-          package_json_file: bookshelf-src/package.json
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 # zizmor: ignore[cache-poisoning]
-        with:
-          node-version: "24"
-          cache: "pnpm"
-          cache-dependency-path: bookshelf-src/pnpm-lock.yaml
 
-      - uses: ./.github/actions/setup-rust-toolchain
-
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1 # zizmor: ignore[cache-poisoning]
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: type=raw,value=${{ inputs.release_tag }}
-          flavor: latest=false
-
-      - name: Build and test Docker image
+      - name: Build release Docker image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: false
           load: true
-          tags: bookshelf-api:test
+          tags: bookshelf-api:release
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - uses: ./.github/actions/setup-rust-toolchain
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1 # zizmor: ignore[cache-poisoning]
 
       - name: Start PostgreSQL
         run: sudo systemctl start postgresql.service
@@ -106,7 +75,9 @@ jobs:
       - name: Wait for PostgreSQL
         run: |
           for _ in {1..30}; do
-            if pg_isready; then exit 0; fi
+            if pg_isready; then
+              exit 0
+            fi
             sleep 1
           done
           echo "::error::Postgres did not become ready in time" >&2
@@ -122,30 +93,35 @@ jobs:
       - name: Create DB
         run: sudo -u postgres createdb --owner=bookshelf bookshelf
 
-      - name: Start JWKS server
+      - name: Start API JWKS server
         run: |
-          node bookshelf-src/e2e-integration/jwks-server.mjs > /tmp/jwks.log 2>&1 &
-          for _ in {1..30}; do
+          cargo run --locked -p bookshelf-e2e \
+            --bin bookshelf-jwks-server > "${RUNNER_TEMP}/jwks.log" 2>&1 &
+          for _ in {1..600}; do
             if curl -fs http://localhost:9999/.well-known/jwks.json > /dev/null; then
-              echo "JWKS server ready"; exit 0
+              echo "JWKS server is ready"
+              exit 0
             fi
             sleep 1
           done
-          cat /tmp/jwks.log; exit 1
+          echo "::error::JWKS server did not become ready in time"
+          cat "${RUNNER_TEMP}/jwks.log"
+          exit 1
 
-      - name: Start bookshelf-api
+      - name: Start release container
         run: |
           docker run -d --name bookshelf-api --network=host \
             -e PORT=8080 \
-            -e DATABASE_URL=postgres://bookshelf:password@localhost:5432/bookshelf \
-            -e ALLOWED_ORIGINS=http://localhost:4173 \
+            -e DATABASE_URL="${DATABASE_URL}" \
+            -e ALLOWED_ORIGINS=http://localhost:8080 \
             -e JWT_AUDIENCE=test-audience \
             -e JWT_DOMAIN=test-issuer.local \
             -e JWKS_URL=http://localhost:9999/.well-known/jwks.json \
-            bookshelf-api:test
+            bookshelf-api:release
           for _ in {1..60}; do
             if curl -fs http://localhost:8080/health > /dev/null; then
-              echo "API ready"; exit 0
+              echo "API is ready"
+              exit 0
             fi
             sleep 1
           done
@@ -153,39 +129,201 @@ jobs:
           docker logs bookshelf-api
           exit 1
 
-      - name: Install pnpm dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Run API E2E tests
+        env:
+          TEST_SERVER_URL: http://localhost:8080
+        run: cargo test -p bookshelf-e2e --locked -- --test-threads=1
+
+      - name: Export validated image
+        run: |
+          image_id=$(docker image inspect bookshelf-api:release --format '{{.Id}}')
+          echo "${image_id}" | tee "${RUNNER_TEMP}/validated-image-id"
+          docker save bookshelf-api:release |
+            zstd --threads=0 -o "${RUNNER_TEMP}/validated-image.tar.zst"
+
+      - name: Upload validated image
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: validated-release-image
+          path: |
+            ${{ runner.temp }}/validated-image-id
+            ${{ runner.temp }}/validated-image.tar.zst
+          compression-level: 0
+          retention-days: 1
+
+  push_to_registry:
+    name: Push validated image
+    needs: validate_image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download validated image
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: validated-release-image
+          path: ${{ runner.temp }}/validated-release-image
+
+      - name: Load and verify validated image
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          artifact_dir="${RUNNER_TEMP}/validated-release-image"
+          zstd --decompress --stdout "${artifact_dir}/validated-image.tar.zst" |
+            docker load
+
+          expected_id=$(cat "${artifact_dir}/validated-image-id")
+          loaded_id=$(docker image inspect bookshelf-api:release --format '{{.Id}}')
+          if [[ "${loaded_id}" != "${expected_id}" ]]; then
+            echo "::error::Loaded image ${loaded_id} does not match validated image ${expected_id}"
+            exit 1
+          fi
+
+          release_image="${REGISTRY}/${IMAGE_NAME}:${RELEASE_TAG}"
+          docker tag bookshelf-api:release "${release_image}"
+          echo "Validated image ID: ${loaded_id}"
+          echo "Release image: ${release_image}"
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push validated image
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: docker push "${REGISTRY}/${IMAGE_NAME}:${RELEASE_TAG}"
+
+  # secrets-outside-env: this trusted release job passes the Render hook through
+  # the step environment and does not require a GitHub Environment.
+  deploy: # zizmor: ignore[secrets-outside-env]
+    name: Deploy
+    needs: push_to_registry
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Trigger Render deployment
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: curl --fail-with-body "${RENDER_DEPLOY_HOOK}"
+
+  test-integration-bookshelf:
+    name: Integration tests (bookshelf frontend)
+    needs: push_to_registry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
+    steps:
+      - name: Check out bookshelf frontend
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: hiterm/bookshelf
+          ref: main
+          path: bookshelf-src
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          package_json_file: bookshelf-src/package.json
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: bookshelf-src/pnpm-lock.yaml
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bookshelf-src/pnpm-lock.yaml') }}
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull validated image
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: docker pull "${REGISTRY}/${IMAGE_NAME}:${RELEASE_TAG}"
+
+      - name: Prepare frontend integration tests
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run generate
+          pnpm exec playwright install --with-deps chromium
         working-directory: bookshelf-src
 
-      - name: Generate GraphQL types
-        run: pnpm run generate
-        working-directory: bookshelf-src
+      - name: Start PostgreSQL
+        run: sudo systemctl start postgresql.service
 
-      - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
-        working-directory: bookshelf-src
+      - name: Wait for PostgreSQL
+        run: |
+          for _ in {1..30}; do
+            if pg_isready; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Postgres did not become ready in time" >&2
+          exit 1
+
+      - name: Create DB user
+        run: |
+          sudo -u postgres psql \
+            --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" \
+            --command="\du" \
+            postgres
+
+      - name: Create DB
+        run: sudo -u postgres createdb --owner=bookshelf bookshelf
+
+      - name: Start frontend JWKS server
+        run: |
+          node bookshelf-src/e2e-integration/jwks-server.mjs \
+            > "${RUNNER_TEMP}/jwks.log" 2>&1 &
+          for _ in {1..30}; do
+            if curl -fs http://localhost:9999/.well-known/jwks.json > /dev/null; then
+              echo "JWKS server is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "${RUNNER_TEMP}/jwks.log"
+          exit 1
+
+      - name: Start release container
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          docker run -d --name bookshelf-api --network=host \
+            -e PORT=8080 \
+            -e DATABASE_URL="${DATABASE_URL}" \
+            -e ALLOWED_ORIGINS=http://localhost:4173 \
+            -e JWT_AUDIENCE=test-audience \
+            -e JWT_DOMAIN=test-issuer.local \
+            -e JWKS_URL=http://localhost:9999/.well-known/jwks.json \
+            "${REGISTRY}/${IMAGE_NAME}:${RELEASE_TAG}"
+          for _ in {1..60}; do
+            if curl -fs http://localhost:8080/health > /dev/null; then
+              echo "API is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become ready in time"
+          docker logs bookshelf-api
+          exit 1
 
       - name: Run e2e-integration tests
         run: pnpm run test:integration
         working-directory: bookshelf-src
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-  # secrets-outside-env: RENDER_DEPLOY_HOOK is safely passed via env: block in the step.
-  # A GitHub Environment is not required here.
-  deploy: # zizmor: ignore[secrets-outside-env]
-    name: Deploy
-    runs-on: ubuntu-latest
-    needs: push_to_registry
-    permissions: {}
-    steps:
-      - env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-        run: curl "${RENDER_DEPLOY_HOOK}"
