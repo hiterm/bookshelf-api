@@ -58,7 +58,7 @@ pub struct AuthorName {
 impl_string_value_object!(AuthorName);
 
 static AUTHOR_YOMI_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[\p{Hiragana}0-9０-９ー・ 　-]*$")
+    Regex::new(r"^[\p{Hiragana}0-9０-９ー・ 　-]*\z")
         .expect("AUTHOR_YOMI_REGEX is a hardcoded valid pattern")
 });
 
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn author_yomi_rejects_unsupported_characters() {
-        for yomi in ["山田太郎", "ヤマダ", "yamada", "やまだ!"] {
+        for yomi in ["山田太郎", "ヤマダ", "yamada", "やまだ!", "やまだ\n"] {
             assert!(validate_author_yomi(yomi.to_string()).is_err(), "{yomi}");
         }
     }
