@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::{
     domain::{
         entity::{
-            author::{Author, AuthorId, AuthorName},
+            author::{Author, AuthorId, AuthorName, validate_author_yomi},
             book::{Book, BookId},
             event::{EventOperation, EventSetOperation},
             user::UserId,
@@ -249,6 +249,7 @@ where
                 let yomi = event.yomi.ok_or_else(|| {
                     UseCaseError::Validation("author_event yomi is null".to_string())
                 })?;
+                let yomi = validate_author_yomi(yomi)?;
                 let author_name = AuthorName::new(name)?;
                 let author = Author::new_with_yomi(event.author_id, author_name, yomi)?;
 
@@ -587,6 +588,26 @@ mod tests {
         let restored = result.unwrap().value.unwrap();
         assert_eq!(restored.name, "Old Name");
         assert_eq!(restored.yomi, "おーるど");
+    }
+
+    #[tokio::test]
+    async fn restore_author_rejects_invalid_yomi() {
+        let author_uuid = Uuid::new_v4();
+        let mut event = make_author_event(author_uuid);
+        event.yomi = Some("オールド".to_string());
+
+        let mut history_repo = MockAuthorEventRepository::new();
+        history_repo
+            .expect_find_by_event_id()
+            .with(always(), eq(2i64))
+            .returning(move |_, _| Ok(Some(event.clone())));
+
+        let author_repo = MockAuthorRepository::new();
+        let interactor =
+            RestoreAuthorInteractor::new(author_repo, history_repo, MockTransactionManager::new());
+        let result = interactor.restore("user1", 2).await;
+
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
     }
 
     #[tokio::test]

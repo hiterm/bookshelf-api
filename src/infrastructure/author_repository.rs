@@ -165,7 +165,14 @@ impl AuthorRepository for PgAuthorRepository {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<Option<Author>, DomainError> {
-        find_author_by_id_with_executor(tx.as_mut(), user_id, author_id).await
+        let row: Option<AuthorRow> =
+            sqlx::query_as("SELECT * FROM author WHERE id = $1 AND user_id = $2 FOR UPDATE")
+                .bind(author_id.to_uuid())
+                .bind(user_id.as_str())
+                .fetch_optional(tx.as_mut())
+                .await?;
+
+        author_from_optional_row(row)
     }
 
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError> {
@@ -454,6 +461,10 @@ where
             .fetch_optional(executor)
             .await?;
 
+    author_from_optional_row(row)
+}
+
+fn author_from_optional_row(row: Option<AuthorRow>) -> Result<Option<Author>, DomainError> {
     row.map(|row| -> Result<Author, DomainError> {
         let author_id: AuthorId = row.id.into();
         let author_name = AuthorName::new(row.name)?;
