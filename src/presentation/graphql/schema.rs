@@ -67,4 +67,18 @@ mod tests {
         let json = serde_json::to_value(&res).unwrap();
         assert_eq!(json["data"]["author"]["name"], author_name);
     }
+
+    #[test]
+    fn mutation_payloads_expose_only_canonical_fields() {
+        let query = Query::new(MockQueryUseCase::new());
+        let mutation = Mutation::new(MockMutationUseCase::new());
+        let sdl = build_schema(query, mutation).sdl();
+
+        assert!(sdl.contains("type BookMutationPayload {\n\tbook: Book!\n\teventSetId: ID!\n}"));
+        assert!(
+            sdl.contains("type AuthorMutationPayload {\n\tauthor: Author!\n\teventSetId: ID!\n}")
+        );
+        assert!(sdl.contains("type DeleteBookPayload {\n\tbookId: ID!\n\teventSetId: ID!\n}"));
+        assert!(sdl.contains("type DeleteAuthorPayload {\n\tauthorId: ID!\n\teventSetId: ID!\n}"));
+    }
 }

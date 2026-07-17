@@ -79,10 +79,8 @@ where
             .delete_book(&claims.sub, book_id.as_str())
             .await?;
 
-        let book_id = ID(result.value);
         Ok(DeleteBookPayload {
-            book_id: book_id.clone(),
-            id: book_id,
+            book_id: ID(result.value),
             event_set_id: ID(result.event_set_id),
         })
     }
@@ -129,10 +127,8 @@ where
             .mutation_use_case
             .delete_author(&claims.sub, author_id.as_str())
             .await?;
-        let author_id = ID(result.value);
         Ok(DeleteAuthorPayload {
-            author_id: author_id.clone(),
-            id: author_id,
+            author_id: ID(result.value),
             event_set_id: ID(result.event_set_id),
         })
     }
