@@ -101,11 +101,20 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     let original_name = format!("Restore Author Original {}", uuid::Uuid::new_v4());
-    let author_id = create_test_author(&original_name, &token).await?;
+    let original_yomi = "ふくげん・おりじなる1";
+    let create_query = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}", yomi: "{}" }}) {{ author {{ id }} }} }}"#,
+        original_name, original_yomi
+    );
+    let (_, response) = graphql_request(&create_query, Some(&token)).await?;
+    let author_id = response["data"]["createAuthor"]["author"]["id"]
+        .as_str()
+        .context("created author id should be a string")?
+        .to_owned();
 
     // Capture the create event's event_id
     let history_query = format!(
-        r#"{{ authorEvents(authorId: "{}") {{ eventId operation name }} }}"#,
+        r#"{{ authorEvents(authorId: "{}") {{ eventId operation name yomi }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&history_query, Some(&token)).await?;
@@ -119,9 +128,10 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
 
     // Update the author
     let updated_name = format!("Restore Author Updated {}", uuid::Uuid::new_v4());
+    let updated_yomi = "ふくげん・こうしん2";
     let update_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ author {{ id name }} eventSetId }} }}"#,
-        author_id, updated_name
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} eventSetId }} }}"#,
+        author_id, updated_name, updated_yomi
     );
     let (_, update_response) = graphql_request(&update_query, Some(&token)).await?;
     assert!(
@@ -136,7 +146,7 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
 
     // Restore to the create event state
     let restore_query = format!(
-        r#"mutation {{ restoreAuthor(eventId: "{}") {{ author {{ id name }} eventSetId }} }}"#,
+        r#"mutation {{ restoreAuthor(eventId: "{}") {{ author {{ id name yomi }} eventSetId }} }}"#,
         create_event_id
     );
     let (_, response) = graphql_request(&restore_query, Some(&token)).await?;
@@ -150,14 +160,24 @@ async fn e2e_restore_author_reverts_to_snapshot() -> Result<()> {
         Some(original_name.as_str()),
         "restored author should have create-event name"
     );
+    assert_eq!(
+        response["data"]["restoreAuthor"]["author"]["yomi"].as_str(),
+        Some(original_yomi),
+        "restored author should have create-event yomi"
+    );
 
     // Verify DB reflects the restored state
-    let author_query = format!(r#"{{ author(id: "{}") {{ name }} }}"#, author_id);
+    let author_query = format!(r#"{{ author(id: "{}") {{ name yomi }} }}"#, author_id);
     let (_, response) = graphql_request(&author_query, Some(&token)).await?;
     assert_eq!(
         response["data"]["author"]["name"].as_str(),
         Some(original_name.as_str()),
         "author in DB should reflect restored name"
+    );
+    assert_eq!(
+        response["data"]["author"]["yomi"].as_str(),
+        Some(original_yomi),
+        "author in DB should reflect restored yomi"
     );
 
     delete_test_author(&author_id, &token).await?;

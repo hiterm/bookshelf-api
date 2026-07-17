@@ -238,35 +238,44 @@ impl From<UpdateBookInput> for UpdateBookDto {
 pub struct Author {
     pub id: ID,
     pub name: String,
+    pub yomi: String,
 }
 
 impl Author {
-    pub fn new(id: String, name: String) -> Self {
-        Self { id: ID(id), name }
+    pub fn new(id: String, name: String, yomi: String) -> Self {
+        Self {
+            id: ID(id),
+            name,
+            yomi,
+        }
     }
 }
 
 impl From<AuthorDto> for Author {
     fn from(author: AuthorDto) -> Self {
-        let AuthorDto { id, name } = author;
-        Author::new(id, name)
+        let AuthorDto { id, name, yomi } = author;
+        Author::new(id, name, yomi)
     }
 }
 
 #[derive(InputObject)]
 pub struct CreateAuthorInput {
     pub name: String,
+    pub yomi: Option<String>,
 }
 
 impl CreateAuthorInput {
     pub fn new(name: String) -> Self {
-        Self { name }
+        Self { name, yomi: None }
     }
 }
 
 impl From<CreateAuthorInput> for CreateAuthorDto {
     fn from(val: CreateAuthorInput) -> Self {
-        CreateAuthorDto::new(val.name)
+        CreateAuthorDto {
+            name: val.name,
+            yomi: val.yomi,
+        }
     }
 }
 
@@ -274,11 +283,16 @@ impl From<CreateAuthorInput> for CreateAuthorDto {
 pub struct UpdateAuthorInput {
     pub id: ID,
     pub name: String,
+    pub yomi: Option<String>,
 }
 
 impl From<UpdateAuthorInput> for UpdateAuthorDto {
     fn from(val: UpdateAuthorInput) -> Self {
-        UpdateAuthorDto::new(val.id.to_string(), val.name)
+        UpdateAuthorDto {
+            id: val.id.to_string(),
+            name: val.name,
+            yomi: val.yomi,
+        }
     }
 }
 

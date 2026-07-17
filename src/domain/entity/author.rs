@@ -1,6 +1,8 @@
 use std::fmt::Display;
+use std::sync::LazyLock;
 
 use getset::Getters;
+use regex::Regex;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -55,38 +57,69 @@ pub struct AuthorName {
 
 impl_string_value_object!(AuthorName);
 
+static AUTHOR_YOMI_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[\p{Hiragana}0-9０-９ー・ 　-]*\z")
+        .expect("AUTHOR_YOMI_REGEX is a hardcoded valid pattern")
+});
+
+pub fn validate_author_yomi(yomi: String) -> Result<String, DomainError> {
+    if AUTHOR_YOMI_REGEX.is_match(&yomi) {
+        Ok(yomi)
+    } else {
+        Err(DomainError::Validation(
+            "author yomi contains unsupported characters".to_string(),
+        ))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Getters)]
 pub struct Author {
     #[getset(get = "pub")]
     id: AuthorId,
     #[getset(get = "pub")]
     name: AuthorName,
+    #[getset(get = "pub")]
+    yomi: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DestructureAuthor {
     pub id: AuthorId,
     pub name: AuthorName,
+    pub yomi: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorUpdate {
     pub name: AuthorName,
+    pub yomi: Option<String>,
 }
 
 impl Author {
     pub fn new(id: AuthorId, name: AuthorName) -> Result<Author, DomainError> {
-        Ok(Author { id, name })
+        Self::new_with_yomi(id, name, String::new())
+    }
+
+    pub fn new_with_yomi(
+        id: AuthorId,
+        name: AuthorName,
+        yomi: String,
+    ) -> Result<Author, DomainError> {
+        Ok(Author { id, name, yomi })
     }
 
     pub fn update(&mut self, update: AuthorUpdate) {
         self.name = update.name;
+        if let Some(yomi) = update.yomi {
+            self.yomi = yomi;
+        }
     }
 
     pub fn destructure(self) -> DestructureAuthor {
         DestructureAuthor {
             id: self.id,
             name: self.name,
+            yomi: self.yomi,
         }
     }
 }
@@ -94,7 +127,7 @@ impl Author {
 #[cfg(test)]
 mod tests {
     use crate::domain::{
-        entity::author::{Author, AuthorId, AuthorName, AuthorUpdate},
+        entity::author::{Author, AuthorId, AuthorName, AuthorUpdate, validate_author_yomi},
         error::DomainError,
     };
 
@@ -115,6 +148,7 @@ mod tests {
 
         author.update(AuthorUpdate {
             name: AuthorName::new(String::from("author2")).unwrap(),
+            yomi: None,
         });
 
         assert_eq!(author.name().as_str(), "author2");
@@ -131,5 +165,19 @@ mod tests {
             AuthorName::new(String::from("")),
             Err(DomainError::Validation(_))
         ));
+    }
+
+    #[test]
+    fn author_yomi_accepts_supported_characters_and_empty_string() {
+        for yomi in ["", "やまだ たろう", "じぇーん・どー", "だい２-3"] {
+            assert!(validate_author_yomi(yomi.to_string()).is_ok(), "{yomi}");
+        }
+    }
+
+    #[test]
+    fn author_yomi_rejects_unsupported_characters() {
+        for yomi in ["山田太郎", "ヤマダ", "yamada", "やまだ!", "やまだ\n"] {
+            assert!(validate_author_yomi(yomi.to_string()).is_err(), "{yomi}");
+        }
     }
 }

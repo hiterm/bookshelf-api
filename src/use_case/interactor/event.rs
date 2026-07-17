@@ -246,8 +246,11 @@ where
                 let name = event.name.ok_or_else(|| {
                     UseCaseError::Validation("author_event name is null".to_string())
                 })?;
+                let yomi = event.yomi.ok_or_else(|| {
+                    UseCaseError::Validation("author_event yomi is null".to_string())
+                })?;
                 let author_name = AuthorName::new(name)?;
-                let author = Author::new(event.author_id, author_name)?;
+                let author = Author::new_with_yomi(event.author_id, author_name, yomi)?;
 
                 let dto = AuthorDto::from(author.clone());
                 let mut tx = self
@@ -368,7 +371,7 @@ mod tests {
             operation: EventOperation::Update,
             author_id: AuthorId::new(author_id),
             name: Some("Old Name".to_string()),
-            yomi: Some("".to_string()),
+            yomi: Some("おーるど".to_string()),
             author_created_at: Some(OffsetDateTime::now_utc()),
             author_updated_at: Some(OffsetDateTime::now_utc()),
             changed_at: OffsetDateTime::now_utc(),
@@ -568,7 +571,12 @@ mod tests {
         let mut author_repo = MockAuthorRepository::new();
         author_repo
             .expect_restore()
-            .with(always(), eq(2i64), always())
+            .withf(|_, event_id, author| {
+                *event_id == 2
+                    && author
+                        .as_ref()
+                        .is_some_and(|author| author.yomi() == "おーるど")
+            })
             .returning(|_, _, _| Ok(()));
 
         let interactor =
@@ -576,7 +584,39 @@ mod tests {
         let result = interactor.restore("user1", 2).await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().value.unwrap().name, "Old Name");
+        let restored = result.unwrap().value.unwrap();
+        assert_eq!(restored.name, "Old Name");
+        assert_eq!(restored.yomi, "おーるど");
+    }
+
+    #[tokio::test]
+    async fn restore_author_preserves_legacy_yomi() {
+        let author_uuid = Uuid::new_v4();
+        let mut event = make_author_event(author_uuid);
+        event.yomi = Some("authora".to_string());
+
+        let mut history_repo = MockAuthorEventRepository::new();
+        history_repo
+            .expect_find_by_event_id()
+            .with(always(), eq(2i64))
+            .returning(move |_, _| Ok(Some(event.clone())));
+
+        let mut author_repo = MockAuthorRepository::new();
+        author_repo
+            .expect_restore()
+            .withf(|_, event_id, author| {
+                *event_id == 2
+                    && author
+                        .as_ref()
+                        .is_some_and(|author| author.yomi() == "authora")
+            })
+            .returning(|_, _, _| Ok(()));
+
+        let interactor =
+            RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
+        let result = interactor.restore("user1", 2).await;
+
+        assert_eq!(result.unwrap().value.unwrap().yomi, "authora");
     }
 
     #[tokio::test]

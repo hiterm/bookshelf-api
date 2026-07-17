@@ -4,36 +4,44 @@ use crate::domain::entity::author::{Author, DestructureAuthor};
 pub struct AuthorDto {
     pub id: String,
     pub name: String,
+    pub yomi: String,
 }
 
 impl From<Author> for AuthorDto {
     fn from(author: Author) -> Self {
-        let DestructureAuthor { id, name } = author.destructure();
+        let DestructureAuthor { id, name, yomi } = author.destructure();
         AuthorDto {
             id: id.to_string(),
             name: name.into_string(),
+            yomi,
         }
     }
 }
 
 pub struct CreateAuthorDto {
     pub name: String,
+    pub yomi: Option<String>,
 }
 
 impl CreateAuthorDto {
     pub fn new(name: String) -> Self {
-        Self { name }
+        Self { name, yomi: None }
     }
 }
 
 pub struct UpdateAuthorDto {
     pub id: String,
     pub name: String,
+    pub yomi: Option<String>,
 }
 
 impl UpdateAuthorDto {
     pub fn new(id: String, name: String) -> Self {
-        Self { id, name }
+        Self {
+            id,
+            name,
+            yomi: None,
+        }
     }
 }
 
@@ -62,6 +70,7 @@ mod tests {
             AuthorDto {
                 id: author_id_str.to_string(),
                 name: "Test Author".to_string(),
+                yomi: String::new(),
             }
         );
     }

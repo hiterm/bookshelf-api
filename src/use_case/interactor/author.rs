@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::{
     domain::{
         entity::{
-            author::{Author, AuthorId, AuthorName, AuthorUpdate},
+            author::{Author, AuthorId, AuthorName, AuthorUpdate, validate_author_yomi},
             event::EventSetOperation,
             user::UserId,
         },
@@ -52,7 +52,8 @@ where
         let uuid = Uuid::new_v4();
         let author_id = AuthorId::new(uuid);
         let author_name = AuthorName::new(author_data.name)?;
-        let author = Author::new(author_id, author_name)?;
+        let yomi = validate_author_yomi(author_data.yomi.unwrap_or_default())?;
+        let author = Author::new_with_yomi(author_id, author_name, yomi)?;
 
         let mut tx = self
             .transaction_manager
@@ -94,6 +95,7 @@ where
         let user_id = UserId::new(user_id.to_string())?;
         let author_id = AuthorId::try_from(author_data.id.as_str())?;
         let author_name = AuthorName::new(author_data.name)?;
+        let yomi = author_data.yomi.map(validate_author_yomi).transpose()?;
 
         let mut tx = self
             .transaction_manager
@@ -114,7 +116,10 @@ where
             }
         };
 
-        author.update(AuthorUpdate { name: author_name });
+        author.update(AuthorUpdate {
+            name: author_name,
+            yomi,
+        });
 
         self.author_repository.update(&mut tx, &author).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
@@ -206,7 +211,8 @@ mod tests {
             .returning(|_, _| Ok(()));
 
         let interactor = CreateAuthorInteractor::new(author_repository, make_transaction_manager());
-        let author_data = CreateAuthorDto::new("Test Author".to_string());
+        let mut author_data = CreateAuthorDto::new("Test Author".to_string());
+        author_data.yomi = Some("てすと・おーさー1".to_string());
 
         // When
         let result = interactor.create("user1", author_data).await;
@@ -215,6 +221,7 @@ mod tests {
         assert!(result.is_ok());
         let dto = result.unwrap();
         assert_eq!(dto.name, "Test Author");
+        assert_eq!(dto.yomi, "てすと・おーさー1");
     }
 
     #[tokio::test]
@@ -248,13 +255,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_author_fails_with_invalid_yomi() {
+        let author_repository = MockAuthorRepository::new();
+        let interactor =
+            CreateAuthorInteractor::new(author_repository, MockTransactionManager::new());
+        let mut author_data = CreateAuthorDto::new("Test Author".to_string());
+        author_data.yomi = Some("テスト".to_string());
+
+        let result = interactor.create("user1", author_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
     async fn update_author_success() {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
 
-        let existing_author = Author::new(
+        let existing_author = Author::new_with_yomi(
             AuthorId::try_from(author_id_str).unwrap(),
             AuthorName::new("Old Name".to_string()).unwrap(),
+            "もとのよみ".to_string(),
         )
         .unwrap();
 
@@ -276,7 +297,54 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().name, "New Name");
+        let updated = result.unwrap();
+        assert_eq!(updated.name, "New Name");
+        assert_eq!(updated.yomi, "もとのよみ");
+    }
+
+    #[tokio::test]
+    async fn update_author_changes_yomi_when_provided() {
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let existing_author = Author::new_with_yomi(
+            AuthorId::try_from(author_id_str).unwrap(),
+            AuthorName::new("Old Name".to_string()).unwrap(),
+            "もとのよみ".to_string(),
+        )
+        .unwrap();
+
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_by_id_with_tx()
+            .return_once(move |_, _, _| Ok(Some(existing_author)));
+        author_repository
+            .expect_update()
+            .withf(|_, author| author.yomi() == "")
+            .returning(|_, _| Ok(()));
+
+        let interactor = UpdateAuthorInteractor::new(author_repository, make_transaction_manager());
+        let mut author_data =
+            UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
+        author_data.yomi = Some(String::new());
+
+        let result = interactor.update("user1", author_data).await.unwrap();
+
+        assert_eq!(result.yomi, "");
+    }
+
+    #[tokio::test]
+    async fn update_author_fails_with_invalid_yomi() {
+        let author_repository = MockAuthorRepository::new();
+        let interactor =
+            UpdateAuthorInteractor::new(author_repository, MockTransactionManager::new());
+        let mut author_data = UpdateAuthorDto::new(
+            "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+            "New Name".to_string(),
+        );
+        author_data.yomi = Some("New Name".to_string());
+
+        let result = interactor.update("user1", author_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
     }
 
     #[tokio::test]

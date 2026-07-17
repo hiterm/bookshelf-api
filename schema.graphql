@@ -1,6 +1,7 @@
 type Author {
 	id: ID!
 	name: String!
+	yomi: String!
 }
 
 type AuthorEventEntry {
@@ -72,6 +73,7 @@ enum BookStore {
 
 input CreateAuthorInput {
 	name: String!
+	yomi: String
 }
 
 input CreateBookInput {
@@ -209,6 +211,7 @@ type RestoreBookPayload {
 input UpdateAuthorInput {
 	id: ID!
 	name: String!
+	yomi: String
 }
 
 input UpdateBookInput {

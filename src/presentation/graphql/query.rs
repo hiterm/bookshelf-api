@@ -60,7 +60,7 @@ where
             .query_use_case
             .find_author_by_id(&claims.sub, id.as_str())
             .await?;
-        Ok(author.map(|author| Author::new(author.id, author.name)))
+        Ok(author.map(Author::from))
     }
 
     async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>, PresentationalError> {

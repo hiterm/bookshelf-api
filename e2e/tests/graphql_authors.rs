@@ -12,7 +12,7 @@ async fn e2e_graphql_authors() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     // The authors list is user-scoped, so a fresh user starts empty.
-    let query = r#"{ authors { id name } }"#;
+    let query = r#"{ authors { id name yomi } }"#;
     let (_, response) = graphql_request(query, Some(&token)).await?;
     let authors = response["data"]["authors"]
         .as_array()
@@ -30,6 +30,7 @@ async fn e2e_graphql_authors() -> Result<()> {
     assert_eq!(authors.len(), 1, "should list exactly the created author");
     assert_eq!(authors[0]["id"].as_str(), Some(author_id.as_str()));
     assert_eq!(authors[0]["name"].as_str(), Some(author_name.as_str()));
+    assert_eq!(authors[0]["yomi"].as_str(), Some(""));
 
     delete_test_author(&author_id, &token).await?;
     Ok(())
@@ -42,10 +43,11 @@ async fn e2e_graphql_create_author() -> Result<()> {
 
     // Use a random name to keep the author unique across runs.
     let random_name = format!("Test Author {}", uuid::Uuid::new_v4());
+    let yomi = "てすと・おーさー1";
 
     let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id name }} eventSetId }} }}"#,
-        random_name
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} eventSetId }} }}"#,
+        random_name, yomi
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
 
@@ -67,9 +69,10 @@ async fn e2e_graphql_create_author() -> Result<()> {
             .as_str(),
         Some(random_name.as_str())
     );
+    assert_eq!(create_result["yomi"].as_str(), Some(yomi));
 
     // Verify author was created by fetching it
-    let author_query = format!(r#"{{ author(id: "{}") {{ id name }} }}"#, author_id);
+    let author_query = format!(r#"{{ author(id: "{}") {{ id name yomi }} }}"#, author_id);
     let (_, response) = graphql_request(&author_query, Some(&token)).await?;
     let data = response.get("data").context("data field must exist")?;
     let author = data.get("author").context("author field must exist")?;
@@ -83,6 +86,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
         author_name_from_query, random_name,
         "author name should match"
     );
+    assert_eq!(author["yomi"].as_str(), Some(yomi));
 
     delete_test_author(author_id, &token).await?;
     Ok(())
@@ -159,9 +163,10 @@ async fn e2e_graphql_update_author() -> Result<()> {
 
     // Update author name while the author has an associated book
     let updated_name = format!("Author After Update {}", uuid::Uuid::new_v4());
+    let updated_yomi = "こうしんご2";
     let update_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ author {{ id name }} eventSetId }} }}"#,
-        author_id, updated_name
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} eventSetId }} }}"#,
+        author_id, updated_name, updated_yomi
     );
     let (_, response) = graphql_request(&update_query, Some(&token)).await?;
     assert!(
@@ -179,13 +184,37 @@ async fn e2e_graphql_update_author() -> Result<()> {
         Some(updated_name.as_str()),
         "updated author name should match"
     );
+    assert_eq!(update_result["yomi"].as_str(), Some(updated_yomi));
+
+    // Omitting yomi preserves the current value.
+    let preserved_name = format!("Author Preserving Yomi {}", uuid::Uuid::new_v4());
+    let preserve_query = format!(
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ author {{ yomi }} }} }}"#,
+        author_id, preserved_name
+    );
+    let (_, response) = graphql_request(&preserve_query, Some(&token)).await?;
+    assert_eq!(
+        response["data"]["updateAuthor"]["author"]["yomi"].as_str(),
+        Some(updated_yomi)
+    );
+
+    // An explicit empty string clears yomi.
+    let clear_query = format!(
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "" }}) {{ author {{ yomi }} }} }}"#,
+        author_id, preserved_name
+    );
+    let (_, response) = graphql_request(&clear_query, Some(&token)).await?;
+    assert_eq!(
+        response["data"]["updateAuthor"]["author"]["yomi"].as_str(),
+        Some("")
+    );
 
     // Verify update by fetching the author
     let query = format!(r#"{{ author(id: "{}") {{ id name }} }}"#, author_id);
     let (_, response) = graphql_request(&query, Some(&token)).await?;
     assert_eq!(
         response["data"]["author"]["name"].as_str(),
-        Some(updated_name.as_str()),
+        Some(preserved_name.as_str()),
         "author name should reflect the update"
     );
 
