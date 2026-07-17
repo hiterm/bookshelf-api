@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::{
     domain::{
         entity::{
-            author::{Author, AuthorId, AuthorName, validate_author_yomi},
+            author::{Author, AuthorId, AuthorName},
             book::{Book, BookId},
             event::{EventOperation, EventSetOperation},
             user::UserId,
@@ -249,7 +249,6 @@ where
                 let yomi = event.yomi.ok_or_else(|| {
                     UseCaseError::Validation("author_event yomi is null".to_string())
                 })?;
-                let yomi = validate_author_yomi(yomi)?;
                 let author_name = AuthorName::new(name)?;
                 let author = Author::new_with_yomi(event.author_id, author_name, yomi)?;
 
@@ -591,10 +590,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_author_rejects_invalid_yomi() {
+    async fn restore_author_preserves_legacy_yomi() {
         let author_uuid = Uuid::new_v4();
         let mut event = make_author_event(author_uuid);
-        event.yomi = Some("オールド".to_string());
+        event.yomi = Some("authora".to_string());
 
         let mut history_repo = MockAuthorEventRepository::new();
         history_repo
@@ -602,12 +601,22 @@ mod tests {
             .with(always(), eq(2i64))
             .returning(move |_, _| Ok(Some(event.clone())));
 
-        let author_repo = MockAuthorRepository::new();
+        let mut author_repo = MockAuthorRepository::new();
+        author_repo
+            .expect_restore()
+            .withf(|_, event_id, author| {
+                *event_id == 2
+                    && author
+                        .as_ref()
+                        .is_some_and(|author| author.yomi() == "authora")
+            })
+            .returning(|_, _, _| Ok(()));
+
         let interactor =
-            RestoreAuthorInteractor::new(author_repo, history_repo, MockTransactionManager::new());
+            RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
         let result = interactor.restore("user1", 2).await;
 
-        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+        assert_eq!(result.unwrap().value.unwrap().yomi, "authora");
     }
 
     #[tokio::test]
