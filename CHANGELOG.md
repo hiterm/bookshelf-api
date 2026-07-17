@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.9.0](https://github.com/hiterm/bookshelf-api/compare/2.8.2...2.9.0) - 2026-07-17
+
+### Other Changes
+- Use cargo set-version in tagpr by @hiterm in https://github.com/hiterm/bookshelf-api/pull/279
+- Sync Rust versions in Renovate by @hiterm in https://github.com/hiterm/bookshelf-api/pull/281
+- Document Codex gh sandbox behavior by @hiterm in https://github.com/hiterm/bookshelf-api/pull/283
+- Unify mutation payloads by @hiterm in https://github.com/hiterm/bookshelf-api/pull/284
+
 ## [2.8.2](https://github.com/hiterm/bookshelf-api/compare/2.8.1...2.8.2) - 2026-07-16
 
 ### Other Changes
