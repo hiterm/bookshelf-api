@@ -34,6 +34,8 @@ jobs:
       - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - run: sudo -u postgres createdb --owner=bookshelf bookshelf
       - run: cargo test --all-features --locked
+      - name: Test release tag validation
+        run: .github/scripts/test-validate-release-tag.sh
 
   test-image-building:
     name: Test Image Building
