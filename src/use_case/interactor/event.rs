@@ -590,6 +590,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restore_author_preserves_legacy_yomi() {
+        let author_uuid = Uuid::new_v4();
+        let mut event = make_author_event(author_uuid);
+        event.yomi = Some("authora".to_string());
+
+        let mut history_repo = MockAuthorEventRepository::new();
+        history_repo
+            .expect_find_by_event_id()
+            .with(always(), eq(2i64))
+            .returning(move |_, _| Ok(Some(event.clone())));
+
+        let mut author_repo = MockAuthorRepository::new();
+        author_repo
+            .expect_restore()
+            .withf(|_, event_id, author| {
+                *event_id == 2
+                    && author
+                        .as_ref()
+                        .is_some_and(|author| author.yomi() == "authora")
+            })
+            .returning(|_, _, _| Ok(()));
+
+        let interactor =
+            RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
+        let result = interactor.restore("user1", 2).await;
+
+        assert_eq!(result.unwrap().value.unwrap().yomi, "authora");
+    }
+
+    #[tokio::test]
     async fn restore_author_delete_event_deletes_author() {
         let author_uuid = Uuid::new_v4();
         let event = make_author_delete_event(author_uuid);
