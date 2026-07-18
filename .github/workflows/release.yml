@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:
@@ -16,6 +20,7 @@ jobs:
       contents: write
       issues: read
       pull-requests: write
+      statuses: write
     outputs:
       release_tag: ${{ steps.release_tag.outputs.tag }}
     steps:
@@ -38,24 +43,69 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PULL_REQUEST: ${{ steps.tagpr.outputs.pull_request }}
         run: |
-          ref=$(jq -er '.head.ref' <<<"${PULL_REQUEST}")
+          set -euo pipefail
+
           head_sha=$(jq -er '.head.sha' <<<"${PULL_REQUEST}")
+          pull_request_url=$(jq -er '.html_url' <<<"${PULL_REQUEST}")
 
-          for attempt in {1..5}; do
-            if gh workflow run ci.yml \
-              --ref main \
-              -f ref="${ref}" \
-              -f release_pr_head_sha="${head_sha}"; then
-              exit 0
-            fi
+          report_status() {
+            local context=$1
+            local state=$2
+            local description=$3
 
-            if [[ "${attempt}" -lt 5 ]]; then
-              sleep $((attempt * 2))
-            fi
-          done
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              -f state="${state}" \
+              -f context="${context}" \
+              -f description="${description}" \
+              -f target_url="${pull_request_url}"
+          }
 
-          echo "::error::Could not dispatch release pull request CI after 5 attempts"
-          exit 1
+          dispatch_workflow() {
+            local workflow=$1
+
+            for attempt in {1..5}; do
+              if gh workflow run "${workflow}" \
+                --ref main \
+                -f ref="${head_sha}" \
+                -f release_pr_head_sha="${head_sha}"; then
+                return 0
+              fi
+
+              if [[ "${attempt}" -lt 5 ]]; then
+                sleep $((attempt * 2))
+              fi
+            done
+
+            return 1
+          }
+
+          report_status release-pr-ci pending "Release PR CI is queued"
+          report_status release-pr-api-e2e pending "Release PR API E2E is queued"
+          report_status release-pr-frontend-integration pending \
+            "Release PR frontend integration is queued"
+
+          dispatch_failed=0
+
+          if ! dispatch_workflow ci.yml; then
+            report_status release-pr-ci error \
+              "Could not dispatch release PR CI"
+            echo "::error::Could not dispatch release pull request CI after 5 attempts"
+            dispatch_failed=1
+          fi
+
+          if ! dispatch_workflow e2e.yml; then
+            report_status release-pr-api-e2e error \
+              "Could not dispatch release PR API E2E"
+            report_status release-pr-frontend-integration error \
+              "Could not dispatch release PR frontend integration"
+            echo "::error::Could not dispatch release pull request E2E after 5 attempts"
+            dispatch_failed=1
+          fi
+
+          if [[ "${dispatch_failed}" -ne 0 ]]; then
+            exit 1
+          fi
       - name: Determine release tag
         id: release_tag
         env:
@@ -67,9 +117,8 @@ jobs:
             tag=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$' | sort -V | tail -n 1)
           fi
 
-          if [[ -n "${tag}" ]] && [[ ! "${tag}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::tagpr returned a non-SemVer tag: ${tag}"
-            exit 1
+          if [[ -n "${tag}" ]]; then
+            .github/scripts/validate-release-tag.sh "${tag}"
           fi
 
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"

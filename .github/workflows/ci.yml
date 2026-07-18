@@ -34,6 +34,8 @@ jobs:
       - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - run: sudo -u postgres createdb --owner=bookshelf bookshelf
       - run: cargo test --all-features --locked
+      - name: Test release tag validation
+        run: .github/scripts/test-validate-release-tag.sh
 
   test-image-building:
     name: Test Image Building
@@ -188,7 +190,7 @@ jobs:
         run: diff schema.graphql /tmp/schema.graphql.generated
 
   release-pr-status:
-    name: Release PR CI status
+    name: Report release PR CI status
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
     needs: [test, test-image-building, fmt, clippy, migration-test, check-schema]
     runs-on: ubuntu-latest
@@ -203,11 +205,14 @@ jobs:
           RESULTS: ${{ join(needs.*.result, ',') }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          state=failure
-          description="Release PR validation failed"
+          state=error
+          description="Release PR validation ended without a result"
           if [[ "${RESULTS}" == "success,success,success,success,success,success" ]]; then
             state=success
             description="Release PR validation passed"
+          elif [[ ",${RESULTS}," == *,failure,* ]]; then
+            state=failure
+            description="Release PR validation failed"
           fi
 
           gh api --method POST \
