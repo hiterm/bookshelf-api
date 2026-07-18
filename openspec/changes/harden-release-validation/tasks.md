@@ -16,6 +16,7 @@
 - [x] 3.2 Transfer the validated image to the publication job, verify its identity, and push it to GHCR without rebuilding.
 - [x] 3.3 Run Render deployment and frontend integration against the published image as independent jobs so frontend failure does not gate deployment.
 - [x] 3.4 Rename the misleading Docker build step to reflect its actual responsibility.
+- [x] 3.5 Preserve generated release OCI labels on the image before validation and publication.
 
 ## 4. Documentation
 
@@ -26,6 +27,7 @@
 - [x] 5.1 Run `actionlint` and resolve workflow syntax, expression, dispatch input, and `needs` dependency findings.
 - [x] 5.2 Run `zizmor .` and resolve GitHub Actions permission and secret-usage findings.
 - [x] 5.3 Run `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, and `cargo test --locked` in order.
+- [x] 5.4 Add a regression test for release image metadata wiring.
 
 ## 6. Live Release Verification
 

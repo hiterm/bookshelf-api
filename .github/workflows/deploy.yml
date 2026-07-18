@@ -55,6 +55,14 @@ jobs:
         # cache-poisoning: this reusable workflow is called only by the release workflow
         # running from protected main, so external actors cannot choose the cache contents.
 
+      - name: Extract release image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: type=raw,value=${{ inputs.release_tag }}
+          flavor: latest=false
+
       - name: Build release Docker image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
@@ -62,6 +70,7 @@ jobs:
           push: false
           load: true
           tags: bookshelf-api:release
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

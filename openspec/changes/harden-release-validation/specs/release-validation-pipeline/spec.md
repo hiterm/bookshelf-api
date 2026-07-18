@@ -46,7 +46,8 @@ The deployment workflow SHALL build the release image once and SHALL push the sa
 
 #### Scenario: Validated image is published
 - **WHEN** the publication job receives the validated image
-- **THEN** it verifies the image identity, applies release metadata, and pushes it without invoking another image build
+- **THEN** it verifies the image identity and pushes it without invoking another image build
+- **AND** the published image retains the release OCI labels applied before validation
 
 ### Requirement: Frontend compatibility does not gate deployment
 After successful image publication, the workflow SHALL run Render deployment and `Integration tests (bookshelf frontend)` as independent jobs, and a frontend integration failure SHALL fail the workflow without stopping or cancelling deployment.

@@ -39,7 +39,7 @@ Alternative considered: add both tests to `ci.yml`. Keeping E2E dispatch separat
 
 ### Build, validate, transfer, and push one image
 
-The deployment workflow builds a locally loaded release image once. It starts PostgreSQL and the API-side JWKS server, starts the release container, and runs the Rust API E2E suite against it. Only after success is the image saved as a workflow artifact. A downstream publication job loads that artifact, tags it with release metadata, and pushes it to GHCR. The image ID/digest is recorded before transfer and checked after loading so publication cannot silently substitute a rebuild.
+The deployment workflow generates the release OCI metadata and builds a locally loaded release image with those labels once. It starts PostgreSQL and the API-side JWKS server, starts the release container, and runs the Rust API E2E suite against it. Only after success is the image saved as a workflow artifact. A downstream publication job loads that artifact, applies the release tag, and pushes it to GHCR. The image ID/digest is recorded before transfer and checked after loading so publication cannot silently substitute a rebuild or drop the validated image metadata.
 
 Alternative considered: use a second cache-assisted `build-push-action` invocation. Even with cache hits, that is a second build and does not make artifact identity explicit.
 
