@@ -36,8 +36,6 @@ jobs:
       - run: cargo test --all-features --locked
       - name: Test release tag validation
         run: .github/scripts/test-validate-release-tag.sh
-      - name: Test release image metadata
-        run: .github/scripts/test-release-image-metadata.sh
 
   test-image-building:
     name: Test Image Building

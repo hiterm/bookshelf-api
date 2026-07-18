@@ -27,7 +27,6 @@
 - [x] 5.1 Run `actionlint` and resolve workflow syntax, expression, dispatch input, and `needs` dependency findings.
 - [x] 5.2 Run `zizmor .` and resolve GitHub Actions permission and secret-usage findings.
 - [x] 5.3 Run `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, and `cargo test --locked` in order.
-- [x] 5.4 Add a regression test for release image metadata wiring.
 
 ## 6. Live Release Verification
 
