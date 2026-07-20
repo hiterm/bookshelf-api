@@ -156,10 +156,21 @@ jobs:
             fi
             if [ "${status}" -eq 0 ]; then
               step_start=$(date +%s)
-              pnpm run generate
+              cp ../schema.graphql src/graphql/schema.graphql
+              status=$?
+              if [ "${status}" -eq 0 ]; then
+                pnpm run generate:without-fetch
+                status=$?
+              fi
+              step_end=$(date +%s)
+              printf 'Frontend GraphQL generation: %ss (status %s)\n' "$((step_end - step_start))" "${status}" >>"${frontend_timing}"
+            fi
+            if [ "${status}" -eq 0 ]; then
+              step_start=$(date +%s)
+              pnpm run typecheck
               status=$?
               step_end=$(date +%s)
-              printf 'Frontend generate: %ss (status %s)\n' "$((step_end - step_start))" "${status}" >>"${frontend_timing}"
+              printf 'Frontend typecheck: %ss (status %s)\n' "$((step_end - step_start))" "${status}" >>"${frontend_timing}"
             fi
             if [ "${status}" -eq 0 ]; then
               step_start=$(date +%s)
