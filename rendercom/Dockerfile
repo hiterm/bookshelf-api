@@ -1,1 +1,1 @@
-FROM ghcr.io/hiterm/bookshelf-api:2.10.0
+FROM ghcr.io/hiterm/bookshelf-api:2.10.1
