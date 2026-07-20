@@ -159,15 +159,7 @@ jobs:
               cp ../schema.graphql src/graphql/schema.graphql
               status=$?
               if [ "${status}" -eq 0 ]; then
-                pnpm exec graphql-codegen --config codegen.yml
-                status=$?
-              fi
-              if [ "${status}" -eq 0 ]; then
-                pnpm exec msw init
-                status=$?
-              fi
-              if [ "${status}" -eq 0 ]; then
-                pnpm exec tsr generate
+                pnpm run generate:without-fetch
                 status=$?
               fi
               step_end=$(date +%s)
