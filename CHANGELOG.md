@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.10.1](https://github.com/hiterm/bookshelf-api/compare/2.10.0...2.10.1) - 2026-07-20
+
+### Other Changes
+- Skip release PR validation after tagging by @hiterm in https://github.com/hiterm/bookshelf-api/pull/291
+- Update GitHub Artifact Actions (major) by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/288
+
 ## [2.10.0](https://github.com/hiterm/bookshelf-api/compare/2.9.0...2.10.0) - 2026-07-20
 
 ### Other Changes
