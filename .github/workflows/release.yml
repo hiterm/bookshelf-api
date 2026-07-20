@@ -38,7 +38,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Validate release pull request
-        if: ${{ steps.tagpr.outputs.pull_request != '' }}
+        if: ${{ steps.tagpr.outputs.pull_request != '' && steps.tagpr.outputs.tag == '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PULL_REQUEST: ${{ steps.tagpr.outputs.pull_request }}
