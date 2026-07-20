@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/hiterm/bookshelf-api/compare/2.9.0...2.10.0) - 2026-07-20
+
+### Other Changes
+- Expose author yomi in GraphQL by @hiterm in https://github.com/hiterm/bookshelf-api/pull/282
+- Harden release validation by @hiterm in https://github.com/hiterm/bookshelf-api/pull/286
+- Fix release PR head resolution by @hiterm in https://github.com/hiterm/bookshelf-api/pull/289
+
 ## [2.9.0](https://github.com/hiterm/bookshelf-api/compare/2.8.2...2.9.0) - 2026-07-17
 
 ### Other Changes
