@@ -45,8 +45,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          head_sha=$(jq -er '.head.sha' <<<"${PULL_REQUEST}")
+          head_ref=$(jq -er '.head.ref' <<<"${PULL_REQUEST}")
           pull_request_url=$(jq -er '.html_url' <<<"${PULL_REQUEST}")
+          head_sha=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/git/ref/heads/${head_ref}" \
+            --jq '.object.sha')
+
+          if [[ -z "${head_sha}" ]]; then
+            echo "::error::Could not resolve current release pull request HEAD SHA"
+            exit 1
+          fi
 
           report_status() {
             local context=$1
