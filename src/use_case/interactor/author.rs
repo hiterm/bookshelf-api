@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -116,10 +117,13 @@ where
             }
         };
 
-        author.update(AuthorUpdate {
-            name: author_name,
-            yomi,
-        });
+        author.update(
+            AuthorUpdate {
+                name: author_name,
+                yomi,
+            },
+            OffsetDateTime::now_utc(),
+        );
 
         self.author_repository.update(&mut tx, &author).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();

@@ -239,22 +239,38 @@ pub struct Author {
     pub id: ID,
     pub name: String,
     pub yomi: String,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 impl Author {
-    pub fn new(id: String, name: String, yomi: String) -> Self {
+    pub fn new(id: String, name: String, yomi: String, created_at: i64, updated_at: i64) -> Self {
         Self {
             id: ID(id),
             name,
             yomi,
+            created_at,
+            updated_at,
         }
     }
 }
 
 impl From<AuthorDto> for Author {
     fn from(author: AuthorDto) -> Self {
-        let AuthorDto { id, name, yomi } = author;
-        Author::new(id, name, yomi)
+        let AuthorDto {
+            id,
+            name,
+            yomi,
+            created_at,
+            updated_at,
+        } = author;
+        Author::new(
+            id,
+            name,
+            yomi,
+            created_at.unix_timestamp(),
+            updated_at.unix_timestamp(),
+        )
     }
 }
 

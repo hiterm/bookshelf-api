@@ -23,6 +23,8 @@ struct AuthorRow {
     id: Uuid,
     name: String,
     yomi: String,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 #[derive(sqlx::FromRow)]
@@ -60,15 +62,20 @@ impl AuthorRepository for PgAuthorRepository {
 
     async fn create(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError> {
         let user_id = tx.user_id().clone();
-        sqlx::query("INSERT INTO author (id, user_id, name, yomi) VALUES ($1, $2, $3, $4)")
-            .bind(author.id().to_uuid())
-            .bind(user_id.as_str())
-            .bind(author.name().as_str())
-            .bind(author.yomi())
-            .execute(tx.as_mut())
-            .await?;
+        sqlx::query(
+            "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(author.name().as_str())
+        .bind(author.yomi())
+        .bind(author.created_at())
+        .bind(author.updated_at())
+        .execute(tx.as_mut())
+        .await?;
 
-        // Fetch the just-inserted row to get the DB-generated timestamps
+        // Fetch the just-inserted row for the event snapshot.
         let snap: AuthorSnapshotRow = sqlx::query_as(
             "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
         )
@@ -185,7 +192,13 @@ impl AuthorRepository for PgAuthorRepository {
                         let row = row?;
                         let author_id = AuthorId::new(row.id);
                         let author_name = AuthorName::new(row.name)?;
-                        let author = Author::new_with_yomi(author_id, author_name, row.yomi)?;
+                        let author = Author::new_with_timestamps(
+                            author_id,
+                            author_name,
+                            row.yomi,
+                            row.created_at,
+                            row.updated_at,
+                        )?;
                         Ok(author)
                     },
                 )
@@ -198,11 +211,12 @@ impl AuthorRepository for PgAuthorRepository {
     async fn update(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError> {
         let user_id = tx.user_id().clone();
         let result = sqlx::query(
-            "UPDATE author SET name = $1, yomi = $2, updated_at = now()
-             WHERE id = $3 AND user_id = $4",
+            "UPDATE author SET name = $1, yomi = $2, updated_at = $3
+             WHERE id = $4 AND user_id = $5",
         )
         .bind(author.name().as_str())
         .bind(author.yomi())
+        .bind(author.updated_at())
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
         .execute(tx.as_mut())
@@ -335,23 +349,31 @@ impl AuthorRepository for PgAuthorRepository {
 
         match author {
             Some(author) => {
-                let result =
-                    sqlx::query("UPDATE author SET name=$2, yomi=$3 WHERE id=$1 AND user_id=$4")
-                        .bind(author.id().to_uuid())
-                        .bind(author.name().as_str())
-                        .bind(author.yomi())
-                        .bind(user_id.as_str())
-                        .execute(tx.as_mut())
-                        .await?;
+                let result = sqlx::query(
+                    "UPDATE author SET name=$2, yomi=$3, created_at=$4, updated_at=$5
+                         WHERE id=$1 AND user_id=$6",
+                )
+                .bind(author.id().to_uuid())
+                .bind(author.name().as_str())
+                .bind(author.yomi())
+                .bind(author.created_at())
+                .bind(author.updated_at())
+                .bind(user_id.as_str())
+                .execute(tx.as_mut())
+                .await?;
 
                 if result.rows_affected() == 0 {
                     sqlx::query(
-                        "INSERT INTO author (id, user_id, name, yomi) VALUES ($1, $2, $3, $4)",
+                        "INSERT INTO author
+                           (id, user_id, name, yomi, created_at, updated_at)
+                         VALUES ($1, $2, $3, $4, $5, $6)",
                     )
                     .bind(author.id().to_uuid())
                     .bind(user_id.as_str())
                     .bind(author.name().as_str())
                     .bind(author.yomi())
+                    .bind(author.created_at())
+                    .bind(author.updated_at())
                     .execute(tx.as_mut())
                     .await?;
                 }
@@ -435,7 +457,13 @@ impl AuthorRepository for PgAuthorRepository {
                 let row = row?;
                 let author_id = AuthorId::new(row.id);
                 let author_name = AuthorName::new(row.name)?;
-                let author = Author::new_with_yomi(author_id.clone(), author_name, row.yomi)?;
+                let author = Author::new_with_timestamps(
+                    author_id.clone(),
+                    author_name,
+                    row.yomi,
+                    row.created_at,
+                    row.updated_at,
+                )?;
                 Ok((author_id, author))
             },
         )
@@ -468,7 +496,13 @@ fn author_from_optional_row(row: Option<AuthorRow>) -> Result<Option<Author>, Do
     row.map(|row| -> Result<Author, DomainError> {
         let author_id: AuthorId = row.id.into();
         let author_name = AuthorName::new(row.name)?;
-        Author::new_with_yomi(author_id, author_name, row.yomi)
+        Author::new_with_timestamps(
+            author_id,
+            author_name,
+            row.yomi,
+            row.created_at,
+            row.updated_at,
+        )
     })
     .transpose()
 }

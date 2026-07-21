@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 
 use getset::Getters;
 use regex::Regex;
+use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -80,6 +81,10 @@ pub struct Author {
     name: AuthorName,
     #[getset(get = "pub")]
     yomi: String,
+    #[getset(get = "pub")]
+    created_at: OffsetDateTime,
+    #[getset(get = "pub")]
+    updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +92,8 @@ pub struct DestructureAuthor {
     pub id: AuthorId,
     pub name: AuthorName,
     pub yomi: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,14 +112,32 @@ impl Author {
         name: AuthorName,
         yomi: String,
     ) -> Result<Author, DomainError> {
-        Ok(Author { id, name, yomi })
+        let now = OffsetDateTime::now_utc();
+        Self::new_with_timestamps(id, name, yomi, now, now)
     }
 
-    pub fn update(&mut self, update: AuthorUpdate) {
+    pub fn new_with_timestamps(
+        id: AuthorId,
+        name: AuthorName,
+        yomi: String,
+        created_at: OffsetDateTime,
+        updated_at: OffsetDateTime,
+    ) -> Result<Author, DomainError> {
+        Ok(Author {
+            id,
+            name,
+            yomi,
+            created_at,
+            updated_at,
+        })
+    }
+
+    pub fn update(&mut self, update: AuthorUpdate, updated_at: OffsetDateTime) {
         self.name = update.name;
         if let Some(yomi) = update.yomi {
             self.yomi = yomi;
         }
+        self.updated_at = updated_at;
     }
 
     pub fn destructure(self) -> DestructureAuthor {
@@ -120,12 +145,16 @@ impl Author {
             id: self.id,
             name: self.name,
             yomi: self.yomi,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use time::OffsetDateTime;
+
     use crate::domain::{
         entity::author::{Author, AuthorId, AuthorName, AuthorUpdate, validate_author_yomi},
         error::DomainError,
@@ -146,12 +175,17 @@ mod tests {
         )
         .unwrap();
 
-        author.update(AuthorUpdate {
-            name: AuthorName::new(String::from("author2")).unwrap(),
-            yomi: None,
-        });
+        let updated_at = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
+        author.update(
+            AuthorUpdate {
+                name: AuthorName::new(String::from("author2")).unwrap(),
+                yomi: None,
+            },
+            updated_at,
+        );
 
         assert_eq!(author.name().as_str(), "author2");
+        assert_eq!(author.updated_at(), &updated_at);
     }
 
     #[test]
