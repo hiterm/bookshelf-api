@@ -20,3 +20,9 @@
 - [x] 4.2 Expose newly added Author timestamps as GraphQL `DateTime` values
 - [x] 4.3 Regenerate the GraphQL schema and run all local checks
 - [x] 4.4 Push the implementation and verify all PR checks
+
+## 5. Timestamp Behavior Coverage
+
+- [x] 5.1 Verify author create and update interactors assign current timestamps
+- [x] 5.2 Verify author timestamps through GraphQL create, update, and query E2E flows
+- [ ] 5.3 Run all local checks, push the coverage, and verify all PR checks
