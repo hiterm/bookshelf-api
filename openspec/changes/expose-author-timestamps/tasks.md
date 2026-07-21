@@ -13,3 +13,10 @@
 - [x] 3.1 Run formatting, lint, and unit test checks
 - [x] 3.2 Assess whether E2E coverage is needed and report the conclusion to the user
 - [x] 3.3 Normalize Book and Author timestamps to database precision with unit coverage
+
+## 4. DateTime API
+
+- [x] 4.1 Rename the persistence timestamp normalizer to express its intent and subject
+- [x] 4.2 Expose newly added Author timestamps as GraphQL `DateTime` values
+- [x] 4.3 Regenerate the GraphQL schema and run all local checks
+- [ ] 4.4 Push the implementation and verify all PR checks

@@ -70,8 +70,8 @@ mod tests {
         let json = serde_json::to_value(&res).unwrap();
         assert_eq!(json["data"]["author"]["name"], author_name);
         assert_eq!(json["data"]["author"]["yomi"], "おーさーわん");
-        assert_eq!(json["data"]["author"]["createdAt"], 0);
-        assert_eq!(json["data"]["author"]["updatedAt"], 0);
+        assert_eq!(json["data"]["author"]["createdAt"], "1970-01-01T00:00:00Z");
+        assert_eq!(json["data"]["author"]["updatedAt"], "1970-01-01T00:00:00Z");
     }
 
     #[test]

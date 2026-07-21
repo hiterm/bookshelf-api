@@ -74,6 +74,7 @@ dependencies = [
  "static_assertions_next",
  "tempfile",
  "thiserror",
+ "time",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
 use time::OffsetDateTime;
 
 /// Normalizes a timestamp to the microsecond precision used by persistence.
-pub fn truncate_to_microseconds(value: OffsetDateTime) -> OffsetDateTime {
+pub fn normalize_timestamp_for_persistence(value: OffsetDateTime) -> OffsetDateTime {
     let nanosecond = value.nanosecond() / 1_000 * 1_000;
     value
         .replace_nanosecond(nanosecond)
@@ -12,13 +12,13 @@ pub fn truncate_to_microseconds(value: OffsetDateTime) -> OffsetDateTime {
 mod tests {
     use time::macros::datetime;
 
-    use super::truncate_to_microseconds;
+    use super::normalize_timestamp_for_persistence;
 
     #[test]
     fn truncates_submicrosecond_precision() {
         let value = datetime!(2026-07-21 13:44:15.729823647 UTC);
 
-        let actual = truncate_to_microseconds(value);
+        let actual = normalize_timestamp_for_persistence(value);
 
         assert_eq!(actual, datetime!(2026-07-21 13:44:15.729823 UTC));
     }
@@ -27,6 +27,6 @@ mod tests {
     fn preserves_microsecond_precision() {
         let value = datetime!(2026-07-21 13:44:15.729823 UTC);
 
-        assert_eq!(truncate_to_microseconds(value), value);
+        assert_eq!(normalize_timestamp_for_persistence(value), value);
     }
 }

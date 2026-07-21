@@ -8,7 +8,8 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    common::time::truncate_to_microseconds, domain::error::DomainError, impl_string_value_object,
+    common::time::normalize_timestamp_for_persistence, domain::error::DomainError,
+    impl_string_value_object,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -129,8 +130,8 @@ impl Author {
             id,
             name,
             yomi,
-            created_at: truncate_to_microseconds(created_at),
-            updated_at: truncate_to_microseconds(updated_at),
+            created_at: normalize_timestamp_for_persistence(created_at),
+            updated_at: normalize_timestamp_for_persistence(updated_at),
         })
     }
 
@@ -139,7 +140,7 @@ impl Author {
         if let Some(yomi) = update.yomi {
             self.yomi = yomi;
         }
-        self.updated_at = truncate_to_microseconds(updated_at);
+        self.updated_at = normalize_timestamp_for_persistence(updated_at);
     }
 
     pub fn destructure(self) -> DestructureAuthor {

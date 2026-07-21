@@ -2,6 +2,7 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::{ComplexObject, Context, Enum, Json, Result};
 use async_graphql::{ID, InputObject, SimpleObject};
 use serde_json::Value;
+use time::OffsetDateTime;
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::QI;
@@ -239,12 +240,18 @@ pub struct Author {
     pub id: ID,
     pub name: String,
     pub yomi: String,
-    pub created_at: i64,
-    pub updated_at: i64,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 impl Author {
-    pub fn new(id: String, name: String, yomi: String, created_at: i64, updated_at: i64) -> Self {
+    pub fn new(
+        id: String,
+        name: String,
+        yomi: String,
+        created_at: OffsetDateTime,
+        updated_at: OffsetDateTime,
+    ) -> Self {
         Self {
             id: ID(id),
             name,
@@ -264,13 +271,7 @@ impl From<AuthorDto> for Author {
             created_at,
             updated_at,
         } = author;
-        Author::new(
-            id,
-            name,
-            yomi,
-            created_at.unix_timestamp(),
-            updated_at.unix_timestamp(),
-        )
+        Author::new(id, name, yomi, created_at, updated_at)
     }
 }
 

@@ -2,8 +2,8 @@ type Author {
 	id: ID!
 	name: String!
 	yomi: String!
-	createdAt: Int!
-	updatedAt: Int!
+	createdAt: DateTime!
+	updatedAt: DateTime!
 }
 
 type AuthorEventEntry {
@@ -88,6 +88,16 @@ input CreateBookInput {
 	format: BookFormat!
 	store: BookStore!
 }
+
+"""
+A datetime with timezone offset.
+
+The input is a string in RFC3339 format, e.g. "2022-01-12T04:00:19.12345Z"
+or "2022-01-12T04:00:19+03:00". The output is also a string in RFC3339
+format, but it is always normalized to the UTC (Z) offset, e.g.
+"2022-01-12T04:00:19.12345Z".
+"""
+scalar DateTime
 
 type DeleteAuthorPayload {
 	authorId: ID!
@@ -240,6 +250,10 @@ directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
 Directs the executor to skip this field or fragment when the `if` argument is true.
 """
 directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Provides a scalar specification URL for specifying the behavior of custom scalar types.
+"""
+directive @specifiedBy(url: String!) on SCALAR
 schema {
 	query: Query
 	mutation: Mutation

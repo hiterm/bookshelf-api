@@ -7,7 +7,7 @@ use validator::Validate;
 
 use crate::{
     common::{
-        time::truncate_to_microseconds,
+        time::normalize_timestamp_for_persistence,
         types::{BookFormat, BookStore},
     },
     domain::error::DomainError,
@@ -198,8 +198,8 @@ impl Book {
             priority,
             format,
             store,
-            created_at: truncate_to_microseconds(created_at),
-            updated_at: truncate_to_microseconds(updated_at),
+            created_at: normalize_timestamp_for_persistence(created_at),
+            updated_at: normalize_timestamp_for_persistence(updated_at),
         })
     }
 
@@ -212,7 +212,7 @@ impl Book {
         self.priority = update.priority;
         self.format = update.format;
         self.store = update.store;
-        self.updated_at = truncate_to_microseconds(updated_at);
+        self.updated_at = normalize_timestamp_for_persistence(updated_at);
     }
 
     pub fn destructure(self) -> DestructureBook {
