@@ -2,6 +2,8 @@ type Author {
 	id: ID!
 	name: String!
 	yomi: String!
+	createdAt: Int!
+	updatedAt: Int!
 }
 
 type AuthorEventEntry {
