@@ -25,4 +25,4 @@
 
 - [x] 5.1 Verify author create and update interactors assign current timestamps
 - [x] 5.2 Verify author timestamps through GraphQL create, update, and query E2E flows
-- [ ] 5.3 Run all local checks, push the coverage, and verify all PR checks
+- [x] 5.3 Run all local checks, push the coverage, and verify all PR checks
