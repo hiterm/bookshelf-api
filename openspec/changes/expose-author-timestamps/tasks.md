@@ -19,4 +19,4 @@
 - [x] 4.1 Rename the persistence timestamp normalizer to express its intent and subject
 - [x] 4.2 Expose newly added Author timestamps as GraphQL `DateTime` values
 - [x] 4.3 Regenerate the GraphQL schema and run all local checks
-- [ ] 4.4 Push the implementation and verify all PR checks
+- [x] 4.4 Push the implementation and verify all PR checks
