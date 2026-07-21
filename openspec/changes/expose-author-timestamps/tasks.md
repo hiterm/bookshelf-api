@@ -12,3 +12,4 @@
 
 - [x] 3.1 Run formatting, lint, and unit test checks
 - [x] 3.2 Assess whether E2E coverage is needed and report the conclusion to the user
+- [x] 3.3 Normalize Book and Author timestamps to database precision with unit coverage

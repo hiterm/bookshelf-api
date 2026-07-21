@@ -20,6 +20,7 @@ The `author` table already stores non-null `created_at` and `updated_at` values,
 
 - Add `created_at` and `updated_at` to the `Author` aggregate and its destructured form. This matches the established `Book` approach and prevents persistence concerns from leaking directly into presentation code. An alternative was a repository-only wrapper, but that would split the entity representation across types.
 - Have new authors receive a single application-generated UTC timestamp for both fields, while repository reads retain database values. This follows the `Book` construction pattern and makes newly returned mutation payloads immediately complete.
+- Normalize Book and Author timestamps to PostgreSQL's microsecond precision at the domain boundary. This keeps in-memory entities equal to their persisted round trips and avoids entity-specific timestamp behavior.
 - Serialize both values as signed 64-bit Unix seconds named `createdAt` and `updatedAt`, matching the existing GraphQL `Book` API.
 
 ## Risks / Trade-offs

@@ -6,7 +6,10 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    common::types::{BookFormat, BookStore},
+    common::{
+        time::truncate_to_microseconds,
+        types::{BookFormat, BookStore},
+    },
     domain::error::DomainError,
     impl_string_value_object,
 };
@@ -195,8 +198,8 @@ impl Book {
             priority,
             format,
             store,
-            created_at,
-            updated_at,
+            created_at: truncate_to_microseconds(created_at),
+            updated_at: truncate_to_microseconds(updated_at),
         })
     }
 
@@ -209,7 +212,7 @@ impl Book {
         self.priority = update.priority;
         self.format = update.format;
         self.store = update.store;
-        self.updated_at = updated_at;
+        self.updated_at = truncate_to_microseconds(updated_at);
     }
 
     pub fn destructure(self) -> DestructureBook {

@@ -7,7 +7,9 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::{domain::error::DomainError, impl_string_value_object};
+use crate::{
+    common::time::truncate_to_microseconds, domain::error::DomainError, impl_string_value_object,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AuthorId {
@@ -127,8 +129,8 @@ impl Author {
             id,
             name,
             yomi,
-            created_at,
-            updated_at,
+            created_at: truncate_to_microseconds(created_at),
+            updated_at: truncate_to_microseconds(updated_at),
         })
     }
 
@@ -137,7 +139,7 @@ impl Author {
         if let Some(yomi) = update.yomi {
             self.yomi = yomi;
         }
-        self.updated_at = updated_at;
+        self.updated_at = truncate_to_microseconds(updated_at);
     }
 
     pub fn destructure(self) -> DestructureAuthor {
