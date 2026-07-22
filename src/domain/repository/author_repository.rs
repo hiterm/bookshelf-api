@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use mockall::automock;
+use time::OffsetDateTime;
 
 use crate::domain::{
     entity::{
@@ -40,6 +41,7 @@ pub trait AuthorRepository: Send + Sync + 'static {
         &self,
         tx: &mut Self::Transaction,
         name: &AuthorName,
+        created_at: OffsetDateTime,
     ) -> Result<AuthorId, DomainError>;
     async fn update(&self, tx: &mut Self::Transaction, author: &Author) -> Result<(), DomainError>;
     async fn delete(

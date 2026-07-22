@@ -79,7 +79,8 @@ where
     ) -> Result<BookMutationResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let uuid = Uuid::new_v4();
-        let time_info = TimeInfo::new(OffsetDateTime::now_utc(), OffsetDateTime::now_utc());
+        let now = OffsetDateTime::now_utc();
+        let time_info = TimeInfo::new(now, now);
         let book = Book::try_from((uuid, book_data, time_info))?;
 
         let mut tx = self
@@ -313,7 +314,7 @@ where
                 }
                 let author_id = self
                     .author_repository
-                    .find_or_create_by_name(&mut tx, author_name)
+                    .find_or_create_by_name(&mut tx, author_name, now)
                     .await?;
                 name_to_id.insert(key, author_id);
             }
@@ -369,12 +370,17 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use mockall::predicate::always;
     use time::OffsetDateTime;
     use uuid::Uuid;
 
     use crate::{
-        common::types::{BookFormat, BookStore},
+        common::{
+            time::normalize_timestamp_for_persistence,
+            types::{BookFormat, BookStore},
+        },
         domain::{
             entity::{
                 author::AuthorId,
@@ -461,6 +467,7 @@ mod tests {
         let dto = result.unwrap();
         assert_eq!(dto.title, "New Book");
         assert!(dto.owned);
+        assert_eq!(dto.created_at, dto.updated_at);
     }
 
     #[tokio::test]
@@ -703,11 +710,16 @@ mod tests {
         // Given: two books, each with one distinct author. Authors are
         // resolved once each; both books are created.
         let author_uuid = Uuid::new_v4();
+        let author_times = Arc::new(Mutex::new(Vec::new()));
+        let captured_author_times = Arc::clone(&author_times);
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_find_or_create_by_name()
             .times(2)
-            .returning(move |_, _| Ok(AuthorId::new(author_uuid)));
+            .returning(move |_, _, created_at| {
+                captured_author_times.lock().unwrap().push(created_at);
+                Ok(AuthorId::new(author_uuid))
+            });
 
         let mut book_repository = MockBookRepository::new();
         book_repository
@@ -732,6 +744,15 @@ mod tests {
         assert!(result.is_ok());
         let dtos = result.unwrap();
         assert_eq!(dtos.len(), 2);
+        assert_eq!(dtos[0].created_at, dtos[0].updated_at);
+        assert_eq!(dtos[1].created_at, dtos[1].updated_at);
+        assert_eq!(dtos[0].created_at, dtos[1].created_at);
+        let author_times = author_times.lock().unwrap();
+        assert_eq!(author_times[0], author_times[1]);
+        assert_eq!(
+            normalize_timestamp_for_persistence(author_times[0]),
+            dtos[0].created_at
+        );
     }
 
     #[tokio::test]
@@ -744,7 +765,7 @@ mod tests {
         author_repository
             .expect_find_or_create_by_name()
             .times(1)
-            .returning(move |_, _| Ok(AuthorId::new(author_uuid)));
+            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
 
         let mut book_repository = MockBookRepository::new();
         book_repository
@@ -777,7 +798,7 @@ mod tests {
         author_repository
             .expect_find_or_create_by_name()
             .times(1)
-            .returning(move |_, _| Ok(AuthorId::new(author_uuid)));
+            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
 
         let mut book_repository = MockBookRepository::new();
         book_repository

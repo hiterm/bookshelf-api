@@ -54,7 +54,8 @@ where
         let author_id = AuthorId::new(uuid);
         let author_name = AuthorName::new(author_data.name)?;
         let yomi = validate_author_yomi(author_data.yomi.unwrap_or_default())?;
-        let author = Author::new_with_yomi(author_id, author_name, yomi)?;
+        let now = OffsetDateTime::now_utc();
+        let author = Author::new_with_yomi(author_id, author_name, yomi, now)?;
 
         let mut tx = self
             .transaction_manager
@@ -330,6 +331,7 @@ mod tests {
             AuthorId::try_from(author_id_str).unwrap(),
             AuthorName::new("Old Name".to_string()).unwrap(),
             "もとのよみ".to_string(),
+            OffsetDateTime::UNIX_EPOCH,
         )
         .unwrap();
 
