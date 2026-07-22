@@ -773,6 +773,7 @@ mod tests {
         let another_author = Author::new(
             another_author_id.clone(),
             AuthorName::new("another_author1".to_owned())?,
+            OffsetDateTime::UNIX_EPOCH,
         )?;
         create_author(&pool, &author_repository, &user_id, &another_author).await?;
         author_ids.push(another_author_id);
@@ -1045,8 +1046,16 @@ mod tests {
         let author_id1 = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
         let author_id2 = AuthorId::try_from("925aaf96-64c7-44be-85f8-767a20b2c20c")?;
         let author_ids = vec![author_id1.clone(), author_id2.clone()];
-        let author1 = Author::new(author_id1, AuthorName::new("author1".to_owned())?)?;
-        let author2 = Author::new(author_id2, AuthorName::new("author2".to_owned())?)?;
+        let author1 = Author::new(
+            author_id1,
+            AuthorName::new("author1".to_owned())?,
+            OffsetDateTime::UNIX_EPOCH,
+        )?;
+        let author2 = Author::new(
+            author_id2,
+            AuthorName::new("author2".to_owned())?,
+            OffsetDateTime::UNIX_EPOCH,
+        )?;
         create_author(pool, repository, user_id, &author1).await?;
         create_author(pool, repository, user_id, &author2).await?;
 
@@ -1060,7 +1069,11 @@ mod tests {
     ) -> Result<Vec<AuthorId>, DomainError> {
         let author_id1 = AuthorId::try_from("93090e87-b7a1-403c-974c-d74d881e83b9")?;
         let author_ids = vec![author_id1.clone()];
-        let author1 = Author::new(author_id1, AuthorName::new("author3".to_owned())?)?;
+        let author1 = Author::new(
+            author_id1,
+            AuthorName::new("author3".to_owned())?,
+            OffsetDateTime::UNIX_EPOCH,
+        )?;
         create_author(pool, repository, user_id, &author1).await?;
 
         Ok(author_ids)
