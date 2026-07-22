@@ -250,7 +250,19 @@ where
                     UseCaseError::Validation("author_event yomi is null".to_string())
                 })?;
                 let author_name = AuthorName::new(name)?;
-                let author = Author::new_with_yomi(event.author_id, author_name, yomi)?;
+                let created_at = event.author_created_at.ok_or_else(|| {
+                    UseCaseError::Validation("author_event author_created_at is null".to_string())
+                })?;
+                let updated_at = event.author_updated_at.ok_or_else(|| {
+                    UseCaseError::Validation("author_event author_updated_at is null".to_string())
+                })?;
+                let author = Author::new_with_timestamps(
+                    event.author_id,
+                    author_name,
+                    yomi,
+                    created_at,
+                    updated_at,
+                )?;
 
                 let dto = AuthorDto::from(author.clone());
                 let mut tx = self

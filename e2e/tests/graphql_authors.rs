@@ -5,6 +5,22 @@
 use anyhow::{Context, Result};
 use bookshelf_e2e::*;
 use serial_test::serial;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
+fn parse_timestamp(value: &serde_json::Value, field: &str) -> Result<OffsetDateTime> {
+    let value = value
+        .as_str()
+        .with_context(|| format!("{field} should be a string"))?;
+    OffsetDateTime::parse(value, &Rfc3339)
+        .with_context(|| format!("{field} should be an RFC 3339 timestamp"))
+}
+
+fn normalize_timestamp_for_comparison(value: OffsetDateTime) -> OffsetDateTime {
+    let nanosecond = value.nanosecond() / 1_000 * 1_000;
+    value
+        .replace_nanosecond(nanosecond)
+        .expect("truncated nanoseconds are always valid")
+}
 
 #[tokio::test]
 #[serial]
@@ -46,10 +62,12 @@ async fn e2e_graphql_create_author() -> Result<()> {
     let yomi = "てすと・おーさー1";
 
     let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} eventSetId }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}", yomi: "{}" }}) {{ author {{ id name yomi createdAt updatedAt }} eventSetId }} }}"#,
         random_name, yomi
     );
+    let before = normalize_timestamp_for_comparison(OffsetDateTime::now_utc());
     let (_, response) = graphql_request(&query, Some(&token)).await?;
+    let after = normalize_timestamp_for_comparison(OffsetDateTime::now_utc());
 
     let data = response.get("data").context("data field must exist")?;
     let create_result = data
@@ -70,9 +88,17 @@ async fn e2e_graphql_create_author() -> Result<()> {
         Some(random_name.as_str())
     );
     assert_eq!(create_result["yomi"].as_str(), Some(yomi));
+    let created_at = parse_timestamp(&create_result["createdAt"], "createdAt")?;
+    let updated_at = parse_timestamp(&create_result["updatedAt"], "updatedAt")?;
+    assert_eq!(created_at, updated_at);
+    assert!(created_at >= before);
+    assert!(created_at <= after);
 
     // Verify author was created by fetching it
-    let author_query = format!(r#"{{ author(id: "{}") {{ id name yomi }} }}"#, author_id);
+    let author_query = format!(
+        r#"{{ author(id: "{}") {{ id name yomi createdAt updatedAt }} }}"#,
+        author_id
+    );
     let (_, response) = graphql_request(&author_query, Some(&token)).await?;
     let data = response.get("data").context("data field must exist")?;
     let author = data.get("author").context("author field must exist")?;
@@ -87,6 +113,14 @@ async fn e2e_graphql_create_author() -> Result<()> {
         "author name should match"
     );
     assert_eq!(author["yomi"].as_str(), Some(yomi));
+    assert_eq!(
+        parse_timestamp(&author["createdAt"], "createdAt")?,
+        created_at
+    );
+    assert_eq!(
+        parse_timestamp(&author["updatedAt"], "updatedAt")?,
+        updated_at
+    );
 
     delete_test_author(author_id, &token).await?;
     Ok(())
@@ -158,6 +192,15 @@ async fn e2e_graphql_update_author() -> Result<()> {
     let original_name = format!("Author Before Update {}", uuid::Uuid::new_v4());
     let author_id = create_test_author(&original_name, &token).await?;
 
+    let initial_query = format!(
+        r#"{{ author(id: "{}") {{ createdAt updatedAt }} }}"#,
+        author_id
+    );
+    let (_, response) = graphql_request(&initial_query, Some(&token)).await?;
+    let initial_author = &response["data"]["author"];
+    let created_at = parse_timestamp(&initial_author["createdAt"], "createdAt")?;
+    let previous_updated_at = parse_timestamp(&initial_author["updatedAt"], "updatedAt")?;
+
     // Create book associated with the author
     let book_id = create_test_book("Book For Author Update Test", &author_id, &token).await?;
 
@@ -165,10 +208,12 @@ async fn e2e_graphql_update_author() -> Result<()> {
     let updated_name = format!("Author After Update {}", uuid::Uuid::new_v4());
     let updated_yomi = "こうしんご2";
     let update_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "{}" }}) {{ author {{ id name yomi }} eventSetId }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "{}" }}) {{ author {{ id name yomi createdAt updatedAt }} eventSetId }} }}"#,
         author_id, updated_name, updated_yomi
     );
+    let before = normalize_timestamp_for_comparison(OffsetDateTime::now_utc());
     let (_, response) = graphql_request(&update_query, Some(&token)).await?;
+    let after = normalize_timestamp_for_comparison(OffsetDateTime::now_utc());
     assert!(
         response.get("errors").is_none(),
         "updateAuthor should not return errors"
@@ -185,6 +230,14 @@ async fn e2e_graphql_update_author() -> Result<()> {
         "updated author name should match"
     );
     assert_eq!(update_result["yomi"].as_str(), Some(updated_yomi));
+    assert_eq!(
+        parse_timestamp(&update_result["createdAt"], "createdAt")?,
+        created_at
+    );
+    let updated_at = parse_timestamp(&update_result["updatedAt"], "updatedAt")?;
+    assert!(updated_at >= previous_updated_at);
+    assert!(updated_at >= before);
+    assert!(updated_at <= after);
 
     // Omitting yomi preserves the current value.
     let preserved_name = format!("Author Preserving Yomi {}", uuid::Uuid::new_v4());
@@ -210,13 +263,21 @@ async fn e2e_graphql_update_author() -> Result<()> {
     );
 
     // Verify update by fetching the author
-    let query = format!(r#"{{ author(id: "{}") {{ id name }} }}"#, author_id);
+    let query = format!(
+        r#"{{ author(id: "{}") {{ id name createdAt updatedAt }} }}"#,
+        author_id
+    );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
     assert_eq!(
         response["data"]["author"]["name"].as_str(),
         Some(preserved_name.as_str()),
         "author name should reflect the update"
     );
+    assert_eq!(
+        parse_timestamp(&response["data"]["author"]["createdAt"], "createdAt")?,
+        created_at
+    );
+    assert!(parse_timestamp(&response["data"]["author"]["updatedAt"], "updatedAt")? >= updated_at);
 
     // Clean up: delete book first, then author
     delete_test_book(&book_id, &token).await?;

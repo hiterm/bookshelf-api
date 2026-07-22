@@ -199,7 +199,6 @@ mod tests {
     use crate::{
         common::types::{BookFormat, BookStore},
         domain::{
-            self,
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
@@ -221,9 +220,12 @@ mod tests {
     };
 
     fn make_author(id_str: &str, name: &str) -> Author {
-        Author::new(
+        Author::new_with_timestamps(
             AuthorId::try_from(id_str).unwrap(),
             AuthorName::new(name.to_string()).unwrap(),
+            String::new(),
+            OffsetDateTime::UNIX_EPOCH,
+            OffsetDateTime::UNIX_EPOCH,
         )
         .unwrap()
     }
@@ -420,12 +422,7 @@ mod tests {
         author_repository
             .expect_find_by_id()
             .with(always(), always())
-            .returning(move |_, _| {
-                Ok(Some(domain::entity::author::Author::new(
-                    AuthorId::try_from(author_id).unwrap(),
-                    AuthorName::new(author_name.to_string()).unwrap(),
-                )?))
-            });
+            .returning(move |_, _| Ok(Some(make_author(author_id, author_name))));
 
         let query_interactor = QueryInteractor {
             user_repository,
@@ -445,6 +442,8 @@ mod tests {
             id: author_id.to_owned(),
             name: author_name.to_owned(),
             yomi: String::new(),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
         });
 
         assert_eq!(actual, expected);
@@ -642,6 +641,8 @@ mod tests {
                 id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                 name: "author1".to_string(),
                 yomi: String::new(),
+                created_at: OffsetDateTime::UNIX_EPOCH,
+                updated_at: OffsetDateTime::UNIX_EPOCH,
             }
         );
     }
@@ -689,6 +690,8 @@ mod tests {
                 id: author_id_str.to_string(),
                 name: "author1".to_string(),
                 yomi: String::new(),
+                created_at: OffsetDateTime::UNIX_EPOCH,
+                updated_at: OffsetDateTime::UNIX_EPOCH,
             }
         );
     }

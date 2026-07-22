@@ -6,7 +6,10 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    common::types::{BookFormat, BookStore},
+    common::{
+        time::normalize_timestamp_for_persistence,
+        types::{BookFormat, BookStore},
+    },
     domain::error::DomainError,
     impl_string_value_object,
 };
@@ -195,8 +198,8 @@ impl Book {
             priority,
             format,
             store,
-            created_at,
-            updated_at,
+            created_at: normalize_timestamp_for_persistence(created_at),
+            updated_at: normalize_timestamp_for_persistence(updated_at),
         })
     }
 
@@ -209,7 +212,7 @@ impl Book {
         self.priority = update.priority;
         self.format = update.format;
         self.store = update.store;
-        self.updated_at = updated_at;
+        self.updated_at = normalize_timestamp_for_persistence(updated_at);
     }
 
     pub fn destructure(self) -> DestructureBook {

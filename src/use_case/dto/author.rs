@@ -1,19 +1,30 @@
 use crate::domain::entity::author::{Author, DestructureAuthor};
+use time::OffsetDateTime;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct AuthorDto {
     pub id: String,
     pub name: String,
     pub yomi: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 impl From<Author> for AuthorDto {
     fn from(author: Author) -> Self {
-        let DestructureAuthor { id, name, yomi } = author.destructure();
+        let DestructureAuthor {
+            id,
+            name,
+            yomi,
+            created_at,
+            updated_at,
+        } = author.destructure();
         AuthorDto {
             id: id.to_string(),
             name: name.into_string(),
             yomi,
+            created_at,
+            updated_at,
         }
     }
 }
@@ -55,9 +66,13 @@ mod tests {
     fn author_dto_from_author() {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
-        let author = Author::new(
+        let timestamp = time::OffsetDateTime::UNIX_EPOCH;
+        let author = Author::new_with_timestamps(
             AuthorId::try_from(author_id_str).unwrap(),
             AuthorName::new("Test Author".to_string()).unwrap(),
+            String::new(),
+            timestamp,
+            timestamp,
         )
         .unwrap();
 
@@ -71,6 +86,8 @@ mod tests {
                 id: author_id_str.to_string(),
                 name: "Test Author".to_string(),
                 yomi: String::new(),
+                created_at: timestamp,
+                updated_at: timestamp,
             }
         );
     }

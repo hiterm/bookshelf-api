@@ -472,6 +472,8 @@ mod tests {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: data.name.clone(),
                         yomi: String::new(),
+                        created_at: time::OffsetDateTime::UNIX_EPOCH,
+                        updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "event-set".to_string(),
                 ))
@@ -504,6 +506,8 @@ mod tests {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: data.name.clone(),
                         yomi: String::new(),
+                        created_at: time::OffsetDateTime::UNIX_EPOCH,
+                        updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "event-set".to_string(),
                 ))
@@ -617,6 +621,8 @@ mod tests {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: "Test Author".to_string(),
                         yomi: String::new(),
+                        created_at: time::OffsetDateTime::UNIX_EPOCH,
+                        updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     }),
                     "event-set".to_string(),
                 ))

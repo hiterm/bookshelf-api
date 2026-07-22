@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -116,10 +117,13 @@ where
             }
         };
 
-        author.update(AuthorUpdate {
-            name: author_name,
-            yomi,
-        });
+        author.update(
+            AuthorUpdate {
+                name: author_name,
+                yomi,
+            },
+            OffsetDateTime::now_utc(),
+        );
 
         self.author_repository.update(&mut tx, &author).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
@@ -173,8 +177,10 @@ where
 #[cfg(test)]
 mod tests {
     use mockall::predicate::always;
+    use time::OffsetDateTime;
 
     use crate::{
+        common::time::normalize_timestamp_for_persistence,
         domain::{
             entity::author::{Author, AuthorId, AuthorName},
             error::DomainError,
@@ -215,13 +221,18 @@ mod tests {
         author_data.yomi = Some("てすと・おーさー1".to_string());
 
         // When
+        let before = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
         let result = interactor.create("user1", author_data).await;
+        let after = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
 
         // Then
         assert!(result.is_ok());
         let dto = result.unwrap();
         assert_eq!(dto.name, "Test Author");
         assert_eq!(dto.yomi, "てすと・おーさー1");
+        assert_eq!(dto.created_at, dto.updated_at);
+        assert!(dto.created_at >= before);
+        assert!(dto.created_at <= after);
     }
 
     #[tokio::test]
@@ -272,10 +283,14 @@ mod tests {
         // Given
         let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
 
-        let existing_author = Author::new_with_yomi(
+        let created_at = OffsetDateTime::from_unix_timestamp(1_600_000_000).unwrap();
+        let previous_updated_at = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
+        let existing_author = Author::new_with_timestamps(
             AuthorId::try_from(author_id_str).unwrap(),
             AuthorName::new("Old Name".to_string()).unwrap(),
             "もとのよみ".to_string(),
+            created_at,
+            previous_updated_at,
         )
         .unwrap();
 
@@ -293,13 +308,19 @@ mod tests {
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
 
         // When
+        let before = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
         let result = interactor.update("user1", author_data).await;
+        let after = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
 
         // Then
         assert!(result.is_ok());
         let updated = result.unwrap();
         assert_eq!(updated.name, "New Name");
         assert_eq!(updated.yomi, "もとのよみ");
+        assert_eq!(updated.created_at, created_at);
+        assert!(updated.updated_at >= previous_updated_at);
+        assert!(updated.updated_at >= before);
+        assert!(updated.updated_at <= after);
     }
 
     #[tokio::test]

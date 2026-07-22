@@ -1,0 +1,28 @@
+## 1. Domain and Persistence
+
+- [x] 1.1 Add creation and update timestamps to the author entity with unit coverage
+- [x] 1.2 Load and persist author timestamps consistently in the author repository
+
+## 2. API Representation
+
+- [x] 2.1 Carry author timestamps through the use-case DTO
+- [x] 2.2 Expose `createdAt` and `updatedAt` on GraphQL `Author` and update schema tests
+
+## 3. Verification
+
+- [x] 3.1 Run formatting, lint, and unit test checks
+- [x] 3.2 Assess whether E2E coverage is needed and report the conclusion to the user
+- [x] 3.3 Normalize Book and Author timestamps to database precision with unit coverage
+
+## 4. DateTime API
+
+- [x] 4.1 Rename the persistence timestamp normalizer to express its intent and subject
+- [x] 4.2 Expose newly added Author timestamps as GraphQL `DateTime` values
+- [x] 4.3 Regenerate the GraphQL schema and run all local checks
+- [x] 4.4 Push the implementation and verify all PR checks
+
+## 5. Timestamp Behavior Coverage
+
+- [x] 5.1 Verify author create and update interactors assign current timestamps
+- [x] 5.2 Verify author timestamps through GraphQL create, update, and query E2E flows
+- [x] 5.3 Run all local checks, push the coverage, and verify all PR checks

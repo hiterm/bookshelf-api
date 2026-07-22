@@ -74,6 +74,7 @@ dependencies = [
  "static_assertions_next",
  "tempfile",
  "thiserror",
+ "time",
 ]
 
 [[package]]
@@ -398,6 +399,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "time",
  "tokio",
  "uuid",
 ]

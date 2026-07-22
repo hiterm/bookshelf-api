@@ -47,6 +47,8 @@ mod tests {
                     id: author_id.to_string(),
                     name: author_name.to_string(),
                     yomi: "おーさーわん".to_string(),
+                    created_at: time::OffsetDateTime::UNIX_EPOCH,
+                    updated_at: time::OffsetDateTime::UNIX_EPOCH,
                 }))
             });
         let query = Query::new(mock_query_use_case);
@@ -60,7 +62,7 @@ mod tests {
         let res = schema
             .execute(
                 async_graphql::Request::from(
-                    r#"query { author(id: "d065a358-4fa7-4236-ae19-f6f2f9467c35") {id, name, yomi} }"#,
+                    r#"query { author(id: "d065a358-4fa7-4236-ae19-f6f2f9467c35") {id, name, yomi, createdAt, updatedAt} }"#,
                 )
                 .data(claims),
             )
@@ -68,6 +70,8 @@ mod tests {
         let json = serde_json::to_value(&res).unwrap();
         assert_eq!(json["data"]["author"]["name"], author_name);
         assert_eq!(json["data"]["author"]["yomi"], "おーさーわん");
+        assert_eq!(json["data"]["author"]["createdAt"], "1970-01-01T00:00:00Z");
+        assert_eq!(json["data"]["author"]["updatedAt"], "1970-01-01T00:00:00Z");
     }
 
     #[test]
