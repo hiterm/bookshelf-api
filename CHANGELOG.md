@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.11.0](https://github.com/hiterm/bookshelf-api/compare/2.10.1...2.11.0) - 2026-08-13
+
+### Other Changes
+- Validate frontend against PR schema by @hiterm in https://github.com/hiterm/bookshelf-api/pull/290
+- Update actions/setup-node action to v7 by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/285
+- Expose author timestamps in GraphQL by @hiterm in https://github.com/hiterm/bookshelf-api/pull/294
+- Make use cases own entity timestamps by @hiterm in https://github.com/hiterm/bookshelf-api/pull/295
+
 ## [2.10.1](https://github.com/hiterm/bookshelf-api/compare/2.10.0...2.10.1) - 2026-07-20
 
 ### Other Changes
