@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.11.1](https://github.com/hiterm/bookshelf-api/compare/2.11.0...2.11.1) - 2026-08-13
+
+### Other Changes
+- Update rust Docker tag to v1.97.1 by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/266
+
 ## [2.11.0](https://github.com/hiterm/bookshelf-api/compare/2.10.1...2.11.0) - 2026-08-13
 
 ### Other Changes
