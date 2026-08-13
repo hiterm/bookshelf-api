@@ -173,7 +173,11 @@ mod tests {
             &pool,
             &author_repo,
             &user_id,
-            &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
+            &Author::new(
+                author_id.clone(),
+                AuthorName::new("author1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
         // Second event set: create book.
@@ -219,7 +223,11 @@ mod tests {
             &pool,
             &author_repo,
             &user_id,
-            &Author::new(author_id, AuthorName::new("author1".to_owned())?)?,
+            &Author::new(
+                author_id,
+                AuthorName::new("author1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
 
@@ -251,7 +259,11 @@ mod tests {
             &pool,
             &author_repo,
             &user1_id,
-            &Author::new(author_id, AuthorName::new("author1".to_owned())?)?,
+            &Author::new(
+                author_id,
+                AuthorName::new("author1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
 

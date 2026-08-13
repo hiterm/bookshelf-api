@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use time::OffsetDateTime;
 
 use crate::{
     domain::{
@@ -135,6 +136,13 @@ where
             | EventOperation::Update
             | EventOperation::Restore
             | EventOperation::Snapshot => {
+                let restored_at = OffsetDateTime::now_utc();
+                let created_at = event.book_created_at.ok_or_else(|| {
+                    UseCaseError::Validation("book_event book_created_at is null".to_string())
+                })?;
+                event.book_updated_at.ok_or_else(|| {
+                    UseCaseError::Validation("book_event book_updated_at is null".to_string())
+                })?;
                 let book = Book::new(
                     event.book_id,
                     event.title.ok_or_else(|| {
@@ -159,12 +167,8 @@ where
                     event.store.ok_or_else(|| {
                         UseCaseError::Validation("book_event store is null".to_string())
                     })?,
-                    event.book_created_at.ok_or_else(|| {
-                        UseCaseError::Validation("book_event book_created_at is null".to_string())
-                    })?,
-                    event.book_updated_at.ok_or_else(|| {
-                        UseCaseError::Validation("book_event book_updated_at is null".to_string())
-                    })?,
+                    created_at,
+                    restored_at,
                 )?;
 
                 let dto = BookDto::from(book.clone());
@@ -243,6 +247,7 @@ where
             | EventOperation::Update
             | EventOperation::Restore
             | EventOperation::Snapshot => {
+                let restored_at = OffsetDateTime::now_utc();
                 let name = event.name.ok_or_else(|| {
                     UseCaseError::Validation("author_event name is null".to_string())
                 })?;
@@ -253,7 +258,7 @@ where
                 let created_at = event.author_created_at.ok_or_else(|| {
                     UseCaseError::Validation("author_event author_created_at is null".to_string())
                 })?;
-                let updated_at = event.author_updated_at.ok_or_else(|| {
+                event.author_updated_at.ok_or_else(|| {
                     UseCaseError::Validation("author_event author_updated_at is null".to_string())
                 })?;
                 let author = Author::new_with_timestamps(
@@ -261,7 +266,7 @@ where
                     author_name,
                     yomi,
                     created_at,
-                    updated_at,
+                    restored_at,
                 )?;
 
                 let dto = AuthorDto::from(author.clone());
@@ -299,7 +304,10 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        common::types::{BookFormat, BookStore},
+        common::{
+            time::normalize_timestamp_for_persistence,
+            types::{BookFormat, BookStore},
+        },
         domain::{
             entity::{
                 author::AuthorId,
@@ -348,8 +356,8 @@ mod tests {
             priority: Some(Priority::new(50).unwrap()),
             format: Some(BookFormat::Unknown),
             store: Some(BookStore::Unknown),
-            book_created_at: Some(OffsetDateTime::now_utc()),
-            book_updated_at: Some(OffsetDateTime::now_utc()),
+            book_created_at: Some(OffsetDateTime::UNIX_EPOCH),
+            book_updated_at: Some(OffsetDateTime::from_unix_timestamp(1).unwrap()),
             changed_at: OffsetDateTime::now_utc(),
             extra: None,
         }
@@ -384,8 +392,8 @@ mod tests {
             author_id: AuthorId::new(author_id),
             name: Some("Old Name".to_string()),
             yomi: Some("おーるど".to_string()),
-            author_created_at: Some(OffsetDateTime::now_utc()),
-            author_updated_at: Some(OffsetDateTime::now_utc()),
+            author_created_at: Some(OffsetDateTime::UNIX_EPOCH),
+            author_updated_at: Some(OffsetDateTime::from_unix_timestamp(1).unwrap()),
             changed_at: OffsetDateTime::now_utc(),
             extra: None,
         }
@@ -496,10 +504,16 @@ mod tests {
 
         let interactor =
             RestoreBookInteractor::new(book_repo, history_repo, make_transaction_manager());
+        let before = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
         let result = interactor.restore("user1", 1).await;
+        let after = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().value.unwrap().title, "Old Title");
+        let restored = result.unwrap().value.unwrap();
+        assert_eq!(restored.title, "Old Title");
+        assert_eq!(restored.created_at, OffsetDateTime::UNIX_EPOCH);
+        assert!(restored.updated_at >= before);
+        assert!(restored.updated_at <= after);
     }
 
     #[tokio::test]
@@ -593,12 +607,17 @@ mod tests {
 
         let interactor =
             RestoreAuthorInteractor::new(author_repo, history_repo, make_transaction_manager());
+        let before = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
         let result = interactor.restore("user1", 2).await;
+        let after = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
 
         assert!(result.is_ok());
         let restored = result.unwrap().value.unwrap();
         assert_eq!(restored.name, "Old Name");
         assert_eq!(restored.yomi, "おーるど");
+        assert_eq!(restored.created_at, OffsetDateTime::UNIX_EPOCH);
+        assert!(restored.updated_at >= before);
+        assert!(restored.updated_at <= after);
     }
 
     #[tokio::test]

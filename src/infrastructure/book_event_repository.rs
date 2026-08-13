@@ -317,7 +317,11 @@ mod tests {
             &pool,
             &author_repo,
             &user_id,
-            &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
+            &Author::new(
+                author_id.clone(),
+                AuthorName::new("author1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
 
@@ -360,14 +364,22 @@ mod tests {
             &pool,
             &author_repo,
             &user_id,
-            &Author::new(author_id1.clone(), AuthorName::new("a1".to_owned())?)?,
+            &Author::new(
+                author_id1.clone(),
+                AuthorName::new("a1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
         create_author(
             &pool,
             &author_repo,
             &user_id,
-            &Author::new(author_id2.clone(), AuthorName::new("a2".to_owned())?)?,
+            &Author::new(
+                author_id2.clone(),
+                AuthorName::new("a2".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
 
@@ -414,7 +426,11 @@ mod tests {
             &pool,
             &author_repo,
             &user_id,
-            &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
+            &Author::new(
+                author_id.clone(),
+                AuthorName::new("author1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
 
@@ -455,7 +471,11 @@ mod tests {
             &pool,
             &author_repo,
             &user1_id,
-            &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
+            &Author::new(
+                author_id.clone(),
+                AuthorName::new("author1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
 
@@ -492,7 +512,11 @@ mod tests {
             &pool,
             &author_repo,
             &user_id,
-            &Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?,
+            &Author::new(
+                author_id.clone(),
+                AuthorName::new("author1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
         )
         .await?;
 

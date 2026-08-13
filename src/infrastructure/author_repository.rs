@@ -107,18 +107,21 @@ impl AuthorRepository for PgAuthorRepository {
         &self,
         tx: &mut Self::Transaction,
         name: &AuthorName,
+        created_at: OffsetDateTime,
     ) -> Result<AuthorId, DomainError> {
         let user_id = tx.user_id().clone();
         let name = name.as_str();
         let candidate_id = Uuid::new_v4();
 
         let result = sqlx::query(
-            "INSERT INTO author (id, user_id, name) VALUES ($1, $2, $3)
+            "INSERT INTO author (id, user_id, name, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $4)
              ON CONFLICT (user_id, name) DO NOTHING",
         )
         .bind(candidate_id)
         .bind(user_id.as_str())
         .bind(name)
+        .bind(created_at)
         .execute(tx.as_mut())
         .await?;
 
@@ -604,6 +607,10 @@ mod tests {
         tm.commit(tx).await
     }
 
+    fn new_author(id: AuthorId, name: AuthorName) -> Result<Author, DomainError> {
+        Author::new(id, name, OffsetDateTime::UNIX_EPOCH)
+    }
+
     #[sqlx::test]
     async fn create_and_find_by_id(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
@@ -613,7 +620,7 @@ mod tests {
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author_name = AuthorName::new(String::from("author1"))?;
-        let author = Author::new(author_id.clone(), author_name)?;
+        let author = new_author(author_id.clone(), author_name)?;
 
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
@@ -630,7 +637,7 @@ mod tests {
 
         let user_id = prepare_user(&user_repository, "user1").await?;
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new(String::from("author1"))?)?;
+        let author = new_author(author_id.clone(), AuthorName::new(String::from("author1"))?)?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
         let expected = author_repository.find_by_id(&user_id, &author_id).await?;
@@ -654,7 +661,7 @@ mod tests {
         let user_id = prepare_user(&user_repository, "user1").await?;
         let other_user_id = UserId::new(String::from("user2"))?;
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new(String::from("author1"))?)?;
+        let author = new_author(author_id.clone(), AuthorName::new(String::from("author1"))?)?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
         let tm = PgTransactionManager::new(pool.clone());
@@ -677,11 +684,11 @@ mod tests {
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author_name = AuthorName::new(String::from("author1"))?;
-        let author1 = Author::new(author_id.clone(), author_name)?;
+        let author1 = new_author(author_id.clone(), author_name)?;
 
         let author_id = AuthorId::try_from("e9700384-6217-4152-88c0-7ba38aeee73a")?;
         let author_name = AuthorName::new(String::from("author2"))?;
-        let author2 = Author::new(author_id.clone(), author_name)?;
+        let author2 = new_author(author_id.clone(), author_name)?;
 
         create_author(&pool, &author_repository, &user_id, &author1).await?;
         create_author(&pool, &author_repository, &user_id, &author2).await?;
@@ -702,11 +709,11 @@ mod tests {
 
         let author_id1 = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
         let author_name = AuthorName::new(String::from("author1"))?;
-        let author1 = Author::new(author_id1.clone(), author_name)?;
+        let author1 = new_author(author_id1.clone(), author_name)?;
 
         let author_id2 = AuthorId::try_from("e9700384-6217-4152-88c0-7ba38aeee73a")?;
         let author_name = AuthorName::new(String::from("author2"))?;
-        let author2 = Author::new(author_id2.clone(), author_name)?;
+        let author2 = new_author(author_id2.clone(), author_name)?;
 
         create_author(&pool, &author_repository, &user_id, &author1).await?;
         create_author(&pool, &author_repository, &user_id, &author2).await?;
@@ -733,7 +740,7 @@ mod tests {
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        let author = new_author(author_id.clone(), AuthorName::new("author1".to_string())?)?;
         create_author(&pool, &author_repository, &user1_id, &author).await?;
 
         let result = author_repository.find_by_id(&user2_id, &author_id).await?;
@@ -751,7 +758,7 @@ mod tests {
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id, AuthorName::new("author1".to_string())?)?;
+        let author = new_author(author_id, AuthorName::new("author1".to_string())?)?;
         create_author(&pool, &author_repository, &user1_id, &author).await?;
 
         let result = author_repository.find_all(&user2_id).await?;
@@ -771,7 +778,7 @@ mod tests {
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        let author = new_author(author_id.clone(), AuthorName::new("author1".to_string())?)?;
         create_author(&pool, &author_repository, &user1_id, &author).await?;
 
         let result = author_repository
@@ -790,10 +797,10 @@ mod tests {
         let user_id = prepare_user(&user_repository, "user1").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("original".to_string())?)?;
+        let author = new_author(author_id.clone(), AuthorName::new("original".to_string())?)?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
-        let updated = Author::new(author_id.clone(), AuthorName::new("updated".to_string())?)?;
+        let updated = new_author(author_id.clone(), AuthorName::new("updated".to_string())?)?;
         update_author(&pool, &author_repository, &user_id, &updated).await?;
 
         let actual = author_repository.find_by_id(&user_id, &author_id).await?;
@@ -813,7 +820,7 @@ mod tests {
         let user_id = prepare_user(&user_repository, "user1").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id, AuthorName::new("name".to_string())?)?;
+        let author = new_author(author_id, AuthorName::new("name".to_string())?)?;
 
         let result = update_author(&pool, &author_repository, &user_id, &author).await;
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
@@ -830,10 +837,10 @@ mod tests {
         let user2_id = prepare_user(&user_repository, "user2").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("name".to_string())?)?;
+        let author = new_author(author_id.clone(), AuthorName::new("name".to_string())?)?;
         create_author(&pool, &author_repository, &user1_id, &author).await?;
 
-        let updated = Author::new(author_id, AuthorName::new("hacked".to_string())?)?;
+        let updated = new_author(author_id, AuthorName::new("hacked".to_string())?)?;
         let result = update_author(&pool, &author_repository, &user2_id, &updated).await;
         assert!(matches!(result, Err(DomainError::NotFound { .. })));
 
@@ -849,7 +856,7 @@ mod tests {
         let user_id = prepare_user(&user_repository, "user1").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        let author = new_author(author_id.clone(), AuthorName::new("author1".to_string())?)?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
         let book = make_book(
@@ -881,7 +888,7 @@ mod tests {
         let user_id = prepare_user(&user_repository, "user1").await?;
 
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        let author = new_author(author_id.clone(), AuthorName::new("author1".to_string())?)?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
         delete_author(&pool, &author_repository, &user_id, &author_id).await?;
@@ -919,8 +926,8 @@ mod tests {
 
         // Both users have the same author UUID — allowed by composite PK (id, user_id)
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author1 = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
-        let author2 = Author::new(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        let author1 = new_author(author_id.clone(), AuthorName::new("author1".to_string())?)?;
+        let author2 = new_author(author_id.clone(), AuthorName::new("author1".to_string())?)?;
         create_author(&pool, &author_repository, &user1_id, &author1).await?;
         create_author(&pool, &author_repository, &user2_id, &author2).await?;
 
@@ -1002,6 +1009,7 @@ mod tests {
             author_id.clone(),
             AuthorName::new("author1".to_owned())?,
             "おーさー1".to_owned(),
+            OffsetDateTime::UNIX_EPOCH,
         )?;
 
         create_author(&pool, &author_repository, &user_id, &author).await?;
@@ -1036,6 +1044,7 @@ mod tests {
             author_id.clone(),
             AuthorName::new("original".to_owned())?,
             "おりじなる".to_owned(),
+            OffsetDateTime::UNIX_EPOCH,
         )?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
@@ -1043,6 +1052,7 @@ mod tests {
             author_id.clone(),
             AuthorName::new("updated".to_owned())?,
             "あっぷでーと2".to_owned(),
+            OffsetDateTime::UNIX_EPOCH,
         )?;
         update_author(&pool, &author_repository, &user_id, &updated).await?;
 
@@ -1079,7 +1089,7 @@ mod tests {
 
         let user_id = prepare_user(&user_repository, "user1").await?;
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("original".to_owned())?)?;
+        let author = new_author(author_id.clone(), AuthorName::new("original".to_owned())?)?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
         let (source_event_id,): (i64,) = sqlx::query_as(
@@ -1092,6 +1102,7 @@ mod tests {
             author_id.clone(),
             AuthorName::new("restored".to_owned())?,
             "れすとあ".to_owned(),
+            OffsetDateTime::UNIX_EPOCH,
         )?;
 
         restore_author(
@@ -1130,7 +1141,7 @@ mod tests {
 
         let user_id = prepare_user(&user_repository, "user1").await?;
         let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new(author_id.clone(), AuthorName::new("author1".to_owned())?)?;
+        let author = new_author(author_id.clone(), AuthorName::new("author1".to_owned())?)?;
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
         delete_author(&pool, &author_repository, &user_id, &author_id).await?;
@@ -1164,17 +1175,18 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(&user_id, EventSetOperation::ImportBooks).await?;
         let name = AuthorName::new("New Author".to_owned())?;
+        let created_at = OffsetDateTime::from_unix_timestamp(1_700_000_000)?;
         let author_id = author_repository
-            .find_or_create_by_name(&mut tx, &name)
+            .find_or_create_by_name(&mut tx, &name, created_at)
             .await?;
         tm.commit(tx).await?;
 
         // The author row exists with the returned id and name
         let found = author_repository.find_by_id(&user_id, &author_id).await?;
-        assert_eq!(
-            found.map(|a| a.name().as_str().to_string()),
-            Some("New Author".to_string())
-        );
+        let found = found.expect("new author exists");
+        assert_eq!(found.name().as_str(), "New Author");
+        assert_eq!(found.created_at(), &created_at);
+        assert_eq!(found.updated_at(), &created_at);
 
         // Exactly one author_event was recorded for the newly inserted author
         let (author_event_count,): (i64,) = sqlx::query_as(
@@ -1200,7 +1212,7 @@ mod tests {
 
         // Pre-create the author through the ordinary create path
         let existing_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let existing = Author::new(existing_id.clone(), AuthorName::new("Existing".to_owned())?)?;
+        let existing = new_author(existing_id.clone(), AuthorName::new("Existing".to_owned())?)?;
         create_author(&pool, &author_repository, &user_id, &existing).await?;
 
         let (events_before,): (i64,) =
@@ -1214,8 +1226,9 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(&user_id, EventSetOperation::ImportBooks).await?;
         let name = AuthorName::new("Existing".to_owned())?;
+        let attempted_created_at = OffsetDateTime::from_unix_timestamp(1_700_000_000)?;
         let resolved = author_repository
-            .find_or_create_by_name(&mut tx, &name)
+            .find_or_create_by_name(&mut tx, &name, attempted_created_at)
             .await?;
         tm.commit(tx).await?;
 
@@ -1227,6 +1240,13 @@ mod tests {
                 .fetch_one(&pool)
                 .await?;
         assert_eq!(events_after, events_before);
+
+        let found = author_repository
+            .find_by_id(&user_id, &existing_id)
+            .await?
+            .expect("existing author remains");
+        assert_eq!(found.created_at(), &OffsetDateTime::UNIX_EPOCH);
+        assert_eq!(found.updated_at(), &OffsetDateTime::UNIX_EPOCH);
 
         Ok(())
     }

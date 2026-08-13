@@ -106,17 +106,21 @@ pub struct AuthorUpdate {
 }
 
 impl Author {
-    pub fn new(id: AuthorId, name: AuthorName) -> Result<Author, DomainError> {
-        Self::new_with_yomi(id, name, String::new())
+    pub fn new(
+        id: AuthorId,
+        name: AuthorName,
+        created_at: OffsetDateTime,
+    ) -> Result<Author, DomainError> {
+        Self::new_with_yomi(id, name, String::new(), created_at)
     }
 
     pub fn new_with_yomi(
         id: AuthorId,
         name: AuthorName,
         yomi: String,
+        created_at: OffsetDateTime,
     ) -> Result<Author, DomainError> {
-        let now = OffsetDateTime::now_utc();
-        Self::new_with_timestamps(id, name, yomi, now, now)
+        Self::new_with_timestamps(id, name, yomi, created_at, created_at)
     }
 
     pub fn new_with_timestamps(
@@ -175,6 +179,7 @@ mod tests {
         let mut author = Author::new(
             AuthorId::try_from("c6ea22c8-7b70-470c-a713-c7aade5693bd").unwrap(),
             AuthorName::new(String::from("author1")).unwrap(),
+            OffsetDateTime::UNIX_EPOCH,
         )
         .unwrap();
 
@@ -189,6 +194,25 @@ mod tests {
 
         assert_eq!(author.name().as_str(), "author2");
         assert_eq!(author.updated_at(), &updated_at);
+    }
+
+    #[test]
+    fn creation_uses_one_timestamp_for_both_lifecycle_fields() {
+        let created_at = OffsetDateTime::from_unix_timestamp_nanos(1_700_000_000_123_456_789)
+            .expect("valid time");
+        let expected = created_at
+            .replace_nanosecond(123_456_000)
+            .expect("valid nanosecond");
+
+        let author = Author::new(
+            AuthorId::try_from("c6ea22c8-7b70-470c-a713-c7aade5693bd").unwrap(),
+            AuthorName::new(String::from("author1")).unwrap(),
+            created_at,
+        )
+        .unwrap();
+
+        assert_eq!(author.created_at(), &expected);
+        assert_eq!(author.updated_at(), &expected);
     }
 
     #[test]
