@@ -24,7 +24,7 @@ mod tests {
             graphql::{mutation::Mutation, query::Query},
         },
         use_case::{
-            dto::{author::AuthorDto, mutation::EntityMutationResultDto},
+            dto::{author::AuthorDto, mutation::SingleEventMutationResultDto},
             traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},
         },
     };
@@ -81,7 +81,7 @@ mod tests {
             .expect_create_author()
             .with(predicate::eq("user1"), predicate::always())
             .returning(|_, input| {
-                Ok(EntityMutationResultDto::new(
+                Ok(SingleEventMutationResultDto::new(
                     AuthorDto {
                         id: "d065a358-4fa7-4236-ae19-f6f2f9467c35".to_string(),
                         name: input.name,

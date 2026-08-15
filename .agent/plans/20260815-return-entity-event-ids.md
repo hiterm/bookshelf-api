@@ -30,6 +30,8 @@ entity snapshot.
   - [x] plan updated
 - [x] Milestone 6: Clarify E2E scenario names, phases, and restore-compatibility scope.
   - [x] plan updated
+- [x] Milestone 7: Name the specialized result after its single-entity-event invariant.
+  - [x] plan updated
 
 Work began on 2026-08-15 UTC.
 
@@ -60,7 +62,7 @@ Work began on 2026-08-15 UTC.
   a later history lookup adds work and can select the wrong row under
   concurrency.
   Date/Author: 2026-08-15, Codex.
-- Decision: Add `EntityMutationResultDto<T>` for Book and Author create/update,
+- Decision: Add `SingleEventMutationResultDto<T>` for Book and Author create/update,
   while retaining `MutationResultDto<T>` for delete, restore, and import.
   Rationale: A required `EventId` expresses the one-event guarantee without making
   unrelated operations carry an optional or misleading identifier.
@@ -81,6 +83,12 @@ Work began on 2026-08-15 UTC.
   Rationale: Local GraphQL queries and assertions remain readable, while the
   restore phase verifies only that the returned event ID is accepted. Detailed
   restore state transitions belong to `graphql_restore.rs`.
+  Date/Author: 2026-08-15, Codex.
+- Decision: Name the specialized create/update result
+  `SingleEventMutationResultDto<T>`.
+  Rationale: The name states why `event_id` is required: exactly one returnable
+  event is generated for the mutated entity. It does not imply that the entire
+  event set contains only one event.
   Date/Author: 2026-08-15, Codex.
 
 ## Outcomes & Retrospective
@@ -121,7 +129,7 @@ First, make repository `create` and `update` return the exact inserted event ID.
 For Book, return the ID already read for the event-author join insert. For
 Author, add `RETURNING event_id`, fetch the scalar ID, and return it. Update
 mocks and database tests so both create and update prove the returned ID points
-to the expected event. Add a generic `EntityMutationResultDto<T>` with `value`,
+to the expected event. Add a generic `SingleEventMutationResultDto<T>` with `value`,
 `event_set_id`, and `event_id`; use it only for Book and Author create/update.
 Capture the event ID before commit and construct the successful result only
 after commit. Existing failure tests must show that repository or commit errors
@@ -200,7 +208,7 @@ in `docs/database.md`.
 
 At completion, `src/use_case/dto/mutation.rs` defines:
 
-    pub struct EntityMutationResultDto<T> {
+    pub struct SingleEventMutationResultDto<T> {
         pub value: T,
         pub event_set_id: String,
         pub event_id: EventId,
@@ -230,3 +238,7 @@ decimal string conversion at the GraphQL boundary.
 Plan revision note (2026-08-15): Renamed and divided the four create/update E2E
 scenarios into mutation, history, and restore-compatibility phases without
 introducing a large shared assertion helper.
+
+Plan revision note (2026-08-15): Renamed the specialized mutation result to
+`SingleEventMutationResultDto<T>` so its name expresses the one-returnable-event
+invariant for the mutated entity.

@@ -24,8 +24,8 @@ use crate::{
         dto::{
             book::{BookDto, CreateBookDto, ImportBookEntryDto, TimeInfo, UpdateBookDto},
             mutation::{
-                BookMutationResultDto, DeleteBookResultDto, EntityMutationResultDto,
-                ImportBooksResultDto, MutationResultDto,
+                BookMutationResultDto, DeleteBookResultDto, ImportBooksResultDto,
+                MutationResultDto, SingleEventMutationResultDto,
             },
         },
         error::UseCaseError,
@@ -92,7 +92,7 @@ where
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(EntityMutationResultDto::new(
+        Ok(SingleEventMutationResultDto::new(
             book.into(),
             event_set_id,
             event_id,
@@ -185,7 +185,7 @@ where
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(EntityMutationResultDto::new(
+        Ok(SingleEventMutationResultDto::new(
             book.into(),
             event_set_id,
             event_id,
