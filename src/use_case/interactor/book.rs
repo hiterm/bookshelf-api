@@ -24,7 +24,8 @@ use crate::{
         dto::{
             book::{BookDto, CreateBookDto, ImportBookEntryDto, TimeInfo, UpdateBookDto},
             mutation::{
-                BookMutationResultDto, DeleteBookResultDto, ImportBooksResultDto, MutationResultDto,
+                BookMutationResultDto, DeleteBookResultDto, EntityMutationResultDto,
+                ImportBooksResultDto, MutationResultDto,
             },
         },
         error::UseCaseError,
@@ -87,11 +88,15 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::CreateBook)
             .await?;
-        self.book_repository.create(&mut tx, &book).await?;
+        let event_id = self.book_repository.create(&mut tx, &book).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(MutationResultDto::new(book.into(), event_set_id))
+        Ok(EntityMutationResultDto::new(
+            book.into(),
+            event_set_id,
+            event_id,
+        ))
     }
 }
 
@@ -176,11 +181,15 @@ where
         };
         book.update(update, OffsetDateTime::now_utc());
 
-        self.book_repository.update(&mut tx, &book).await?;
+        let event_id = self.book_repository.update(&mut tx, &book).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(MutationResultDto::new(book.into(), event_set_id))
+        Ok(EntityMutationResultDto::new(
+            book.into(),
+            event_set_id,
+            event_id,
+        ))
     }
 }
 
@@ -354,7 +363,7 @@ where
                 input.updated_at,
             )?;
 
-            self.book_repository.create(&mut tx, &book).await?;
+            let _event_id = self.book_repository.create(&mut tx, &book).await?;
             result_books.push(book);
         }
 
@@ -445,7 +454,7 @@ mod tests {
         book_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| Ok(101));
 
         let interactor = CreateBookInteractor::new(book_repository, make_transaction_manager());
         let book_data = CreateBookDto::new(
@@ -468,6 +477,36 @@ mod tests {
         assert_eq!(dto.title, "New Book");
         assert!(dto.owned);
         assert_eq!(dto.created_at, dto.updated_at);
+        assert_eq!(dto.event_id, 101);
+    }
+
+    #[tokio::test]
+    async fn create_book_repository_failure_returns_no_result() {
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_create()
+            .returning(|_, _| Err(DomainError::Unexpected("event insert failed".to_string())));
+
+        let interactor = CreateBookInteractor::new(book_repository, {
+            let mut tm = MockTransactionManager::new();
+            tm.expect_begin().returning(|_, _| Ok(()));
+            tm.expect_commit().times(0);
+            tm
+        });
+        let book_data = CreateBookDto::new(
+            "New Book".to_string(),
+            vec![],
+            "".to_string(),
+            false,
+            true,
+            50,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        let result = interactor.create("user1", book_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
     }
 
     #[tokio::test]
@@ -508,7 +547,7 @@ mod tests {
         book_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| Ok(202));
 
         let interactor = UpdateBookInteractor::new(book_repository, make_transaction_manager());
         let book_data = UpdateBookDto::new(
@@ -531,6 +570,39 @@ mod tests {
         let dto = result.unwrap();
         assert_eq!(dto.title, "Updated Book");
         assert_eq!(dto.priority, 70);
+        assert_eq!(dto.event_id, 202);
+    }
+
+    #[tokio::test]
+    async fn update_book_commit_failure_returns_no_result() {
+        let book_uuid = Uuid::new_v4();
+        let book = make_book(book_uuid);
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_find_by_id_with_tx()
+            .return_once(move |_, _, _| Ok(Some(book)));
+        book_repository.expect_update().returning(|_, _| Ok(202));
+
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit()
+            .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
+        let interactor = UpdateBookInteractor::new(book_repository, tm);
+        let book_data = UpdateBookDto::new(
+            book_uuid.hyphenated().to_string(),
+            "Updated Book".to_string(),
+            vec![],
+            "".to_string(),
+            true,
+            false,
+            70,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        let result = interactor.update("user1", book_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
     }
 
     #[tokio::test]
@@ -668,7 +740,7 @@ mod tests {
         book_repository
             .expect_create()
             .times(super::MAX_BOOK_BATCH)
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| Ok(1));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,
@@ -725,7 +797,7 @@ mod tests {
         book_repository
             .expect_create()
             .times(2)
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| Ok(1));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,
@@ -772,7 +844,7 @@ mod tests {
             .expect_create()
             .withf(|_, book| book.author_ids().len() == 1)
             .times(1)
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| Ok(1));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,

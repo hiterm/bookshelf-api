@@ -17,7 +17,10 @@ use crate::{
     use_case::{
         dto::{
             author::{CreateAuthorDto, UpdateAuthorDto},
-            mutation::{AuthorMutationResultDto, DeleteAuthorResultDto, MutationResultDto},
+            mutation::{
+                AuthorMutationResultDto, DeleteAuthorResultDto, EntityMutationResultDto,
+                MutationResultDto,
+            },
         },
         error::UseCaseError,
         traits::author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
@@ -61,11 +64,15 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::CreateAuthor)
             .await?;
-        self.author_repository.create(&mut tx, &author).await?;
+        let event_id = self.author_repository.create(&mut tx, &author).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(MutationResultDto::new(author.into(), event_set_id))
+        Ok(EntityMutationResultDto::new(
+            author.into(),
+            event_set_id,
+            event_id,
+        ))
     }
 }
 
@@ -126,11 +133,15 @@ where
             OffsetDateTime::now_utc(),
         );
 
-        self.author_repository.update(&mut tx, &author).await?;
+        let event_id = self.author_repository.update(&mut tx, &author).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(MutationResultDto::new(author.into(), event_set_id))
+        Ok(EntityMutationResultDto::new(
+            author.into(),
+            event_set_id,
+            event_id,
+        ))
     }
 }
 
@@ -215,7 +226,7 @@ mod tests {
         author_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| Ok(303));
 
         let interactor = CreateAuthorInteractor::new(author_repository, make_transaction_manager());
         let mut author_data = CreateAuthorDto::new("Test Author".to_string());
@@ -234,6 +245,27 @@ mod tests {
         assert_eq!(dto.created_at, dto.updated_at);
         assert!(dto.created_at >= before);
         assert!(dto.created_at <= after);
+        assert_eq!(dto.event_id, 303);
+    }
+
+    #[tokio::test]
+    async fn create_author_repository_failure_returns_no_result() {
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_create()
+            .returning(|_, _| Err(DomainError::Unexpected("event insert failed".to_string())));
+
+        let interactor = CreateAuthorInteractor::new(author_repository, {
+            let mut tm = MockTransactionManager::new();
+            tm.expect_begin().returning(|_, _| Ok(()));
+            tm.expect_commit().times(0);
+            tm
+        });
+        let author_data = CreateAuthorDto::new("Test Author".to_string());
+
+        let result = interactor.create("user1", author_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
     }
 
     #[tokio::test]
@@ -303,7 +335,7 @@ mod tests {
         author_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| Ok(404));
 
         let interactor = UpdateAuthorInteractor::new(author_repository, make_transaction_manager());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -322,6 +354,34 @@ mod tests {
         assert!(updated.updated_at >= previous_updated_at);
         assert!(updated.updated_at >= before);
         assert!(updated.updated_at <= after);
+        assert_eq!(updated.event_id, 404);
+    }
+
+    #[tokio::test]
+    async fn update_author_commit_failure_returns_no_result() {
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let author = Author::new(
+            AuthorId::try_from(author_id_str).unwrap(),
+            AuthorName::new("Old Name".to_string()).unwrap(),
+            OffsetDateTime::UNIX_EPOCH,
+        )
+        .unwrap();
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_by_id_with_tx()
+            .return_once(move |_, _, _| Ok(Some(author)));
+        author_repository.expect_update().returning(|_, _| Ok(404));
+
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit()
+            .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
+        let interactor = UpdateAuthorInteractor::new(author_repository, tm);
+        let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
+
+        let result = interactor.update("user1", author_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
     }
 
     #[tokio::test]
@@ -342,7 +402,7 @@ mod tests {
         author_repository
             .expect_update()
             .withf(|_, author| author.yomi() == "")
-            .returning(|_, _| Ok(()));
+            .returning(|_, _| Ok(405));
 
         let interactor = UpdateAuthorInteractor::new(author_repository, make_transaction_manager());
         let mut author_data =

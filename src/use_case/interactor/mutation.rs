@@ -183,7 +183,7 @@ mod tests {
     use mockall::predicate::{always, eq};
 
     use crate::common::types::{BookFormat, BookStore};
-    use crate::use_case::dto::mutation::MutationResultDto;
+    use crate::use_case::dto::mutation::{EntityMutationResultDto, MutationResultDto};
     use crate::use_case::error::UseCaseError;
     use crate::use_case::{
         dto::{
@@ -362,9 +362,10 @@ mod tests {
             .expect_create()
             .with(always(), always())
             .returning(move |_, _| {
-                Ok(MutationResultDto::new(
+                Ok(EntityMutationResultDto::new(
                     make_book_dto(&book_id),
                     "event-set".to_string(),
+                    101,
                 ))
             });
 
@@ -402,9 +403,10 @@ mod tests {
             .expect_update()
             .with(always(), always())
             .returning(move |_, _| {
-                Ok(MutationResultDto::new(
+                Ok(EntityMutationResultDto::new(
                     make_book_dto(&book_id),
                     "event-set".to_string(),
+                    102,
                 ))
             });
 
@@ -467,7 +469,7 @@ mod tests {
             .expect_create()
             .with(always(), always())
             .returning(|_, data| {
-                Ok(MutationResultDto::new(
+                Ok(EntityMutationResultDto::new(
                     AuthorDto {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: data.name.clone(),
@@ -476,6 +478,7 @@ mod tests {
                         updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "event-set".to_string(),
+                    103,
                 ))
             });
 
@@ -501,7 +504,7 @@ mod tests {
             .expect_update()
             .with(always(), always())
             .returning(|_, data| {
-                Ok(MutationResultDto::new(
+                Ok(EntityMutationResultDto::new(
                     AuthorDto {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: data.name.clone(),
@@ -510,6 +513,7 @@ mod tests {
                         updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "event-set".to_string(),
+                    104,
                 ))
             });
 

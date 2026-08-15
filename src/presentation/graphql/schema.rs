@@ -24,7 +24,7 @@ mod tests {
             graphql::{mutation::Mutation, query::Query},
         },
         use_case::{
-            dto::author::AuthorDto,
+            dto::{author::AuthorDto, mutation::EntityMutationResultDto},
             traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},
         },
     };
@@ -74,16 +74,64 @@ mod tests {
         assert_eq!(json["data"]["author"]["updatedAt"], "1970-01-01T00:00:00Z");
     }
 
+    #[tokio::test]
+    async fn create_author_payload_exposes_numeric_event_id_as_graphql_id() {
+        let mut mutation_use_case = MockMutationUseCase::new();
+        mutation_use_case
+            .expect_create_author()
+            .with(predicate::eq("user1"), predicate::always())
+            .returning(|_, input| {
+                Ok(EntityMutationResultDto::new(
+                    AuthorDto {
+                        id: "d065a358-4fa7-4236-ae19-f6f2f9467c35".to_string(),
+                        name: input.name,
+                        yomi: String::new(),
+                        created_at: time::OffsetDateTime::UNIX_EPOCH,
+                        updated_at: time::OffsetDateTime::UNIX_EPOCH,
+                    },
+                    "e77df9d5-b7bf-47f2-8753-03f285d440e3".to_string(),
+                    1234,
+                ))
+            });
+        let schema = build_schema(
+            Query::new(MockQueryUseCase::new()),
+            Mutation::new(mutation_use_case),
+        );
+        let claims = Claims {
+            sub: "user1".to_string(),
+            _permissions: None,
+        };
+
+        let response = schema
+            .execute(
+                async_graphql::Request::from(
+                    r#"mutation { createAuthor(authorData: { name: "Author" }) { eventId eventSetId author { name } } }"#,
+                )
+                .data(claims),
+            )
+            .await;
+        let json = serde_json::to_value(response).unwrap();
+
+        assert_eq!(json["data"]["createAuthor"]["eventId"], "1234");
+        assert_eq!(
+            json["data"]["createAuthor"]["eventSetId"],
+            "e77df9d5-b7bf-47f2-8753-03f285d440e3"
+        );
+        assert_eq!(json["data"]["createAuthor"]["author"]["name"], "Author");
+    }
+
     #[test]
     fn mutation_payloads_expose_only_canonical_fields() {
         let query = Query::new(MockQueryUseCase::new());
         let mutation = Mutation::new(MockMutationUseCase::new());
         let sdl = build_schema(query, mutation).sdl();
 
-        assert!(sdl.contains("type BookMutationPayload {\n\tbook: Book!\n\teventSetId: ID!\n}"));
-        assert!(
-            sdl.contains("type AuthorMutationPayload {\n\tauthor: Author!\n\teventSetId: ID!\n}")
-        );
+        assert!(sdl.contains(
+            "type BookMutationPayload {\n\tbook: Book!\n\teventSetId: ID!\n\teventId: ID!\n}"
+        ));
+        assert!(sdl.contains(
+            "type AuthorMutationPayload {\n\tauthor: Author!\n\teventSetId: ID!\n\teventId: ID!\n}"
+        ));
         assert!(sdl.contains("type DeleteBookPayload {\n\tbookId: ID!\n\teventSetId: ID!\n}"));
         assert!(sdl.contains("type DeleteAuthorPayload {\n\tauthorId: ID!\n\teventSetId: ID!\n}"));
     }

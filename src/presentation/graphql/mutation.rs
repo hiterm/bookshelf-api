@@ -48,6 +48,7 @@ where
         Ok(BookMutationPayload::new(
             book.value.into(),
             ID(book.event_set_id),
+            ID(book.event_id.to_string()),
         ))
     }
 
@@ -65,6 +66,7 @@ where
         Ok(BookMutationPayload::new(
             book.value.into(),
             ID(book.event_set_id),
+            ID(book.event_id.to_string()),
         ))
     }
 
@@ -98,6 +100,7 @@ where
         Ok(AuthorMutationPayload::new(
             author.value.into(),
             ID(author.event_set_id),
+            ID(author.event_id.to_string()),
         ))
     }
 
@@ -114,6 +117,7 @@ where
         Ok(AuthorMutationPayload::new(
             author.value.into(),
             ID(author.event_set_id),
+            ID(author.event_id.to_string()),
         ))
     }
 
