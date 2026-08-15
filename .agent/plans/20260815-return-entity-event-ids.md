@@ -28,6 +28,8 @@ entity snapshot.
   - [x] plan updated
 - [x] Milestone 5: Replace bare create/update event ID results with the domain `EventId` newtype.
   - [x] plan updated
+- [x] Milestone 6: Clarify E2E scenario names, phases, and restore-compatibility scope.
+  - [x] plan updated
 
 Work began on 2026-08-15 UTC.
 
@@ -73,6 +75,12 @@ Work began on 2026-08-15 UTC.
   Rationale: The newtype makes the identifier's meaning explicit and prevents
   unrelated numeric IDs from satisfying these internal contracts. PostgreSQL
   and GraphQL remain the conversion boundaries.
+  Date/Author: 2026-08-15, Codex.
+- Decision: Keep four explicit create/update Book/Author E2E scenarios and
+  structure each as mutation, history, and restore compatibility.
+  Rationale: Local GraphQL queries and assertions remain readable, while the
+  restore phase verifies only that the returned event ID is accepted. Detailed
+  restore state transitions belong to `graphql_restore.rs`.
   Date/Author: 2026-08-15, Codex.
 
 ## Outcomes & Retrospective
@@ -218,3 +226,7 @@ the retrospective with final evidence.
 Plan revision note (2026-08-15): Replaced bare create/update event ID results
 with `EventId`, keeping raw `i64` handling at the PostgreSQL boundary and
 decimal string conversion at the GraphQL boundary.
+
+Plan revision note (2026-08-15): Renamed and divided the four create/update E2E
+scenarios into mutation, history, and restore-compatibility phases without
+introducing a large shared assertion helper.

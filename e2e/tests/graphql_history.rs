@@ -8,14 +8,17 @@ use serial_test::serial;
 
 #[tokio::test]
 #[serial]
-async fn e2e_book_events_records_create_operation() -> Result<()> {
+async fn e2e_create_book_returns_event_matching_history_and_usable_for_restore() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     let author_id =
         create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
+
+    // Phase 1: mutation — capture the entity and event references.
     let (book_id, event_id, event_set_id) =
         create_test_book_with_event("History Book Create", &author_id, &token).await?;
 
+    // Phase 2: history — match the returned references and recorded snapshot.
     let query = format!(
         r#"{{ bookEvents(bookId: "{}") {{
             eventId eventSetId operation bookId
@@ -94,6 +97,7 @@ async fn e2e_book_events_records_create_operation() -> Result<()> {
         "create event extra should be null"
     );
 
+    // Phase 3: restore compatibility — verify the returned event ID is accepted.
     let restore_query = format!(
         r#"mutation {{ restoreBook(eventId: "{}") {{ book {{ id }} eventSetId }} }}"#,
         event_id
@@ -109,14 +113,14 @@ async fn e2e_book_events_records_create_operation() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-async fn e2e_book_events_records_update_operation() -> Result<()> {
+async fn e2e_update_book_returns_event_matching_history_and_usable_for_restore() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     let author_id =
         create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
     let book_id = create_test_book("Original Title", &author_id, &token).await?;
 
-    // Update the book
+    // Phase 1: mutation — capture the updated entity's event references.
     let update_query = format!(
         r#"
         mutation {{
@@ -140,6 +144,11 @@ async fn e2e_book_events_records_update_operation() -> Result<()> {
         response.get("errors").is_none(),
         "updateBook should not return errors"
     );
+    let returned_book_id = response["data"]["updateBook"]["book"]["id"]
+        .as_str()
+        .context("updateBook book ID should be a string")?
+        .to_owned();
+    assert_eq!(returned_book_id, book_id);
     let event_id = response["data"]["updateBook"]["eventId"]
         .as_str()
         .context("updateBook eventId should be a string")?
@@ -149,15 +158,17 @@ async fn e2e_book_events_records_update_operation() -> Result<()> {
         .context("updateBook eventSetId should be a string")?
         .to_owned();
 
+    // Phase 2: history — match the returned references and recorded snapshot.
     let query = format!(
         r#"{{ bookEvents(bookId: "{}") {{
             eventId eventSetId operation bookId
             title authorIds isbn read owned priority format store
             bookCreatedAt bookUpdatedAt changedAt extra
         }} }}"#,
-        book_id
+        returned_book_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "bookEvents after updateBook");
     let entries = response["data"]["bookEvents"]
         .as_array()
         .context("bookEvents should be an array")?;
@@ -176,7 +187,10 @@ async fn e2e_book_events_records_update_operation() -> Result<()> {
         update_entry["eventSetId"].as_str(),
         Some(event_set_id.as_str())
     );
-    assert_eq!(update_entry["bookId"].as_str(), Some(book_id.as_str()));
+    assert_eq!(
+        update_entry["bookId"].as_str(),
+        Some(returned_book_id.as_str())
+    );
     assert_eq!(update_entry["title"].as_str(), Some("Updated Title"));
     assert_eq!(
         update_entry["authorIds"]
@@ -202,6 +216,7 @@ async fn e2e_book_events_records_update_operation() -> Result<()> {
     assert_eq!(create_entry["operation"].as_str(), Some("create"));
     assert_eq!(create_entry["title"].as_str(), Some("Original Title"));
 
+    // Phase 3: restore compatibility — verify the returned event ID is accepted.
     let restore_query = format!(
         r#"mutation {{ restoreBook(eventId: "{}") {{ book {{ id title }} eventSetId }} }}"#,
         event_id
@@ -265,13 +280,16 @@ async fn e2e_book_events_records_delete_operation() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-async fn e2e_author_events_records_create_operation() -> Result<()> {
+async fn e2e_create_author_returns_event_matching_history_and_usable_for_restore() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     let author_name = format!("Author History Create {}", uuid::Uuid::new_v4());
+
+    // Phase 1: mutation — capture the entity and event references.
     let (author_id, event_id, event_set_id) =
         create_test_author_with_event(&author_name, &token).await?;
 
+    // Phase 2: history — match the returned references and recorded snapshot.
     let query = format!(
         r#"{{ authorEvents(authorId: "{}") {{
             eventId eventSetId operation authorId
@@ -323,6 +341,7 @@ async fn e2e_author_events_records_create_operation() -> Result<()> {
         "create event extra should be null"
     );
 
+    // Phase 3: restore compatibility — verify the returned event ID is accepted.
     let restore_query = format!(
         r#"mutation {{ restoreAuthor(eventId: "{}") {{ author {{ id }} eventSetId }} }}"#,
         event_id
@@ -336,13 +355,15 @@ async fn e2e_author_events_records_create_operation() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-async fn e2e_author_events_records_update_operation() -> Result<()> {
+async fn e2e_update_author_returns_event_matching_history_and_usable_for_restore() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 
     let original_name = format!("Author Before Update History {}", uuid::Uuid::new_v4());
     let author_id = create_test_author(&original_name, &token).await?;
 
     let updated_name = format!("Author After Update History {}", uuid::Uuid::new_v4());
+
+    // Phase 1: mutation — capture the updated entity's event references.
     let update_query = format!(
         r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ author {{ id name }} eventId eventSetId }} }}"#,
         author_id, updated_name
@@ -352,6 +373,11 @@ async fn e2e_author_events_records_update_operation() -> Result<()> {
         response.get("errors").is_none(),
         "updateAuthor should not return errors"
     );
+    let returned_author_id = response["data"]["updateAuthor"]["author"]["id"]
+        .as_str()
+        .context("updateAuthor author ID should be a string")?
+        .to_owned();
+    assert_eq!(returned_author_id, author_id);
     let event_id = response["data"]["updateAuthor"]["eventId"]
         .as_str()
         .context("updateAuthor eventId should be a string")?
@@ -361,14 +387,16 @@ async fn e2e_author_events_records_update_operation() -> Result<()> {
         .context("updateAuthor eventSetId should be a string")?
         .to_owned();
 
+    // Phase 2: history — match the returned references and recorded snapshot.
     let query = format!(
         r#"{{ authorEvents(authorId: "{}") {{
             eventId eventSetId operation authorId
             name yomi authorCreatedAt authorUpdatedAt changedAt extra
         }} }}"#,
-        author_id
+        returned_author_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "authorEvents after updateAuthor");
     let entries = response["data"]["authorEvents"]
         .as_array()
         .context("authorEvents should be an array")?;
@@ -386,7 +414,10 @@ async fn e2e_author_events_records_update_operation() -> Result<()> {
         update_entry["eventSetId"].as_str(),
         Some(event_set_id.as_str())
     );
-    assert_eq!(update_entry["authorId"].as_str(), Some(author_id.as_str()));
+    assert_eq!(
+        update_entry["authorId"].as_str(),
+        Some(returned_author_id.as_str())
+    );
     assert_eq!(update_entry["name"].as_str(), Some(updated_name.as_str()));
     assert_eq!(
         update_entry["yomi"].as_str(),
@@ -405,6 +436,7 @@ async fn e2e_author_events_records_update_operation() -> Result<()> {
     assert_eq!(create_entry["operation"].as_str(), Some("create"));
     assert_eq!(create_entry["name"].as_str(), Some(original_name.as_str()));
 
+    // Phase 3: restore compatibility — verify the returned event ID is accepted.
     let restore_query = format!(
         r#"mutation {{ restoreAuthor(eventId: "{}") {{ author {{ id name }} eventSetId }} }}"#,
         event_id

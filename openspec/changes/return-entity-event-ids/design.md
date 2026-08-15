@@ -63,6 +63,13 @@ End-to-end tests will compare the returned ID and event-set ID with history,
 then use the ID as restore input. This validates the cross-layer contract more
 directly than testing only the schema shape.
 
+Each create/update E2E scenario is organized into mutation, history, and
+restore-compatibility phases. These tests only assert that the returned event
+ID is accepted by the restore API; restore state transitions remain the
+responsibility of the dedicated restore E2E suite. The four Book/Author and
+create/update scenarios stay explicit instead of hiding their GraphQL payloads
+behind a large shared helper.
+
 ## Risks / Trade-offs
 
 - [A resolver omits the new non-null field] → Construct payloads from the

@@ -17,6 +17,7 @@
 - [x] 3.1 Add Book create/update E2E coverage linking returned event IDs and event-set IDs to history and restore
 - [x] 3.2 Add Author create/update E2E coverage linking returned event IDs and event-set IDs to history and restore
 - [x] 3.3 Run mutation- and restore-related E2E tests when their database and authentication environment is available
+- [x] 3.4 Name and structure create/update E2E tests around the mutation-to-history-to-restore contract
 
 ## 4. Documentation and validation
 
