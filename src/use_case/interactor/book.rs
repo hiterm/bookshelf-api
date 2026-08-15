@@ -510,6 +510,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_book_commit_failure_returns_no_result() {
+        let mut book_repository = MockBookRepository::new();
+        book_repository.expect_create().returning(|_, _| Ok(101));
+
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit()
+            .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
+        let interactor = CreateBookInteractor::new(book_repository, tm);
+        let book_data = CreateBookDto::new(
+            "New Book".to_string(),
+            vec![],
+            "".to_string(),
+            false,
+            true,
+            50,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        let result = interactor.create("user1", book_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
+    }
+
+    #[tokio::test]
     async fn create_book_fails_with_empty_title() {
         // Given
         let book_repository = MockBookRepository::new();
@@ -587,6 +613,39 @@ mod tests {
         tm.expect_begin().returning(|_, _| Ok(()));
         tm.expect_commit()
             .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
+        let interactor = UpdateBookInteractor::new(book_repository, tm);
+        let book_data = UpdateBookDto::new(
+            book_uuid.hyphenated().to_string(),
+            "Updated Book".to_string(),
+            vec![],
+            "".to_string(),
+            true,
+            false,
+            70,
+            BookFormat::Unknown,
+            BookStore::Unknown,
+        );
+
+        let result = interactor.update("user1", book_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
+    }
+
+    #[tokio::test]
+    async fn update_book_repository_failure_returns_no_result() {
+        let book_uuid = Uuid::new_v4();
+        let book = make_book(book_uuid);
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_find_by_id_with_tx()
+            .return_once(move |_, _, _| Ok(Some(book)));
+        book_repository
+            .expect_update()
+            .returning(|_, _| Err(DomainError::Unexpected("event insert failed".to_string())));
+
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit().times(0);
         let interactor = UpdateBookInteractor::new(book_repository, tm);
         let book_data = UpdateBookDto::new(
             book_uuid.hyphenated().to_string(),

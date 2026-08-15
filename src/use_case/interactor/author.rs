@@ -269,6 +269,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_author_commit_failure_returns_no_result() {
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository.expect_create().returning(|_, _| Ok(303));
+
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit()
+            .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
+        let interactor = CreateAuthorInteractor::new(author_repository, tm);
+        let author_data = CreateAuthorDto::new("Test Author".to_string());
+
+        let result = interactor.create("user1", author_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
+    }
+
+    #[tokio::test]
     async fn create_author_fails_with_empty_name() {
         // Given
         let author_repository = MockAuthorRepository::new();
@@ -376,6 +393,34 @@ mod tests {
         tm.expect_begin().returning(|_, _| Ok(()));
         tm.expect_commit()
             .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
+        let interactor = UpdateAuthorInteractor::new(author_repository, tm);
+        let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
+
+        let result = interactor.update("user1", author_data).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
+    }
+
+    #[tokio::test]
+    async fn update_author_repository_failure_returns_no_result() {
+        let author_id_str = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let author = Author::new(
+            AuthorId::try_from(author_id_str).unwrap(),
+            AuthorName::new("Old Name".to_string()).unwrap(),
+            OffsetDateTime::UNIX_EPOCH,
+        )
+        .unwrap();
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_by_id_with_tx()
+            .return_once(move |_, _, _| Ok(Some(author)));
+        author_repository
+            .expect_update()
+            .returning(|_, _| Err(DomainError::Unexpected("event insert failed".to_string())));
+
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit().times(0);
         let interactor = UpdateAuthorInteractor::new(author_repository, tm);
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
 
