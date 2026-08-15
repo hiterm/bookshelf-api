@@ -634,7 +634,7 @@ mod tests {
         let author_name = AuthorName::new(String::from("author1"))?;
         let author = new_author(author_id.clone(), author_name)?;
 
-        let event_id = create_author(&pool, &author_repository, &user_id, &author).await?;
+        create_author(&pool, &author_repository, &user_id, &author).await?;
 
         let actual = author_repository.find_by_id(&user_id, &author_id).await?;
         assert_eq!(actual, Some(author.clone()));
@@ -1024,7 +1024,7 @@ mod tests {
             OffsetDateTime::UNIX_EPOCH,
         )?;
 
-        create_author(&pool, &author_repository, &user_id, &author).await?;
+        let event_id = create_author(&pool, &author_repository, &user_id, &author).await?;
 
         let (es_op,): (String,) =
             sqlx::query_as("SELECT operation FROM event_set WHERE user_id = $1")

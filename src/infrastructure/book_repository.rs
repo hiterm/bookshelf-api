@@ -668,7 +668,7 @@ mod tests {
         assert_eq!(all_books.len(), 0);
 
         let book = book_entity1(&author_ids)?;
-        let event_id = create_book(&pool, &book_repository, &user_id, &book).await?;
+        create_book(&pool, &book_repository, &user_id, &book).await?;
 
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book));
@@ -1151,7 +1151,7 @@ mod tests {
         let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
 
-        create_book(&pool, &book_repository, &user_id, &book).await?;
+        let event_id = create_book(&pool, &book_repository, &user_id, &book).await?;
 
         let (cs_op,): (String,) = sqlx::query_as(
             "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'create_book'",
