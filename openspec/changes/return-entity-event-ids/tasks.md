@@ -4,6 +4,7 @@
 - [x] 1.2 Return inserted event IDs from Author create/update repository operations and cover them with unit tests
 - [x] 1.3 Add `EntityMutationResultDto<T>` and migrate only Book/Author create/update use-case contracts
 - [x] 1.4 Verify create/update transaction failure paths cannot return an event ID
+- [x] 1.5 Represent returned create/update event IDs with the domain `EventId` newtype
 
 ## 2. GraphQL contract
 

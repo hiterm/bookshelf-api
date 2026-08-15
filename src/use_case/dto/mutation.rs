@@ -1,4 +1,5 @@
 use super::{author::AuthorDto, book::BookDto};
+use crate::domain::entity::event::EventId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MutationResultDto<T> {
@@ -27,11 +28,11 @@ impl<T> std::ops::Deref for MutationResultDto<T> {
 pub struct EntityMutationResultDto<T> {
     pub value: T,
     pub event_set_id: String,
-    pub event_id: i64,
+    pub event_id: EventId,
 }
 
 impl<T> EntityMutationResultDto<T> {
-    pub fn new(value: T, event_set_id: String, event_id: i64) -> Self {
+    pub fn new(value: T, event_set_id: String, event_id: EventId) -> Self {
         Self {
             value,
             event_set_id,

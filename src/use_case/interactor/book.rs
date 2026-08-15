@@ -454,7 +454,7 @@ mod tests {
         book_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(101));
+            .returning(|_, _| Ok(101.into()));
 
         let interactor = CreateBookInteractor::new(book_repository, make_transaction_manager());
         let book_data = CreateBookDto::new(
@@ -477,7 +477,7 @@ mod tests {
         assert_eq!(dto.title, "New Book");
         assert!(dto.owned);
         assert_eq!(dto.created_at, dto.updated_at);
-        assert_eq!(dto.event_id, 101);
+        assert_eq!(dto.event_id.value(), 101);
     }
 
     #[tokio::test]
@@ -512,7 +512,9 @@ mod tests {
     #[tokio::test]
     async fn create_book_commit_failure_returns_no_result() {
         let mut book_repository = MockBookRepository::new();
-        book_repository.expect_create().returning(|_, _| Ok(101));
+        book_repository
+            .expect_create()
+            .returning(|_, _| Ok(101.into()));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -573,7 +575,7 @@ mod tests {
         book_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(202));
+            .returning(|_, _| Ok(202.into()));
 
         let interactor = UpdateBookInteractor::new(book_repository, make_transaction_manager());
         let book_data = UpdateBookDto::new(
@@ -596,7 +598,7 @@ mod tests {
         let dto = result.unwrap();
         assert_eq!(dto.title, "Updated Book");
         assert_eq!(dto.priority, 70);
-        assert_eq!(dto.event_id, 202);
+        assert_eq!(dto.event_id.value(), 202);
     }
 
     #[tokio::test]
@@ -607,7 +609,9 @@ mod tests {
         book_repository
             .expect_find_by_id_with_tx()
             .return_once(move |_, _, _| Ok(Some(book)));
-        book_repository.expect_update().returning(|_, _| Ok(202));
+        book_repository
+            .expect_update()
+            .returning(|_, _| Ok(202.into()));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -799,7 +803,7 @@ mod tests {
         book_repository
             .expect_create()
             .times(super::MAX_BOOK_BATCH)
-            .returning(|_, _| Ok(1));
+            .returning(|_, _| Ok(1.into()));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,
@@ -856,7 +860,7 @@ mod tests {
         book_repository
             .expect_create()
             .times(2)
-            .returning(|_, _| Ok(1));
+            .returning(|_, _| Ok(1.into()));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,
@@ -903,7 +907,7 @@ mod tests {
             .expect_create()
             .withf(|_, book| book.author_ids().len() == 1)
             .times(1)
-            .returning(|_, _| Ok(1));
+            .returning(|_, _| Ok(1.into()));
 
         let interactor = ImportBooksInteractor::new(
             book_repository,

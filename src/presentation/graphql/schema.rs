@@ -90,7 +90,7 @@ mod tests {
                         updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "e77df9d5-b7bf-47f2-8753-03f285d440e3".to_string(),
-                    1234,
+                    1234.into(),
                 ))
             });
         let schema = build_schema(

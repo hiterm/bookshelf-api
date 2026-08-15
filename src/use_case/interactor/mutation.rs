@@ -365,7 +365,7 @@ mod tests {
                 Ok(EntityMutationResultDto::new(
                     make_book_dto(&book_id),
                     "event-set".to_string(),
-                    101,
+                    101.into(),
                 ))
             });
 
@@ -406,7 +406,7 @@ mod tests {
                 Ok(EntityMutationResultDto::new(
                     make_book_dto(&book_id),
                     "event-set".to_string(),
-                    102,
+                    102.into(),
                 ))
             });
 
@@ -478,7 +478,7 @@ mod tests {
                         updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "event-set".to_string(),
-                    103,
+                    103.into(),
                 ))
             });
 
@@ -513,7 +513,7 @@ mod tests {
                         updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "event-set".to_string(),
-                    104,
+                    104.into(),
                 ))
             });
 

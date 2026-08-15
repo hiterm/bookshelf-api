@@ -226,7 +226,7 @@ mod tests {
         author_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(303));
+            .returning(|_, _| Ok(303.into()));
 
         let interactor = CreateAuthorInteractor::new(author_repository, make_transaction_manager());
         let mut author_data = CreateAuthorDto::new("Test Author".to_string());
@@ -245,7 +245,7 @@ mod tests {
         assert_eq!(dto.created_at, dto.updated_at);
         assert!(dto.created_at >= before);
         assert!(dto.created_at <= after);
-        assert_eq!(dto.event_id, 303);
+        assert_eq!(dto.event_id.value(), 303);
     }
 
     #[tokio::test]
@@ -271,7 +271,9 @@ mod tests {
     #[tokio::test]
     async fn create_author_commit_failure_returns_no_result() {
         let mut author_repository = MockAuthorRepository::new();
-        author_repository.expect_create().returning(|_, _| Ok(303));
+        author_repository
+            .expect_create()
+            .returning(|_, _| Ok(303.into()));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -352,7 +354,7 @@ mod tests {
         author_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(404));
+            .returning(|_, _| Ok(404.into()));
 
         let interactor = UpdateAuthorInteractor::new(author_repository, make_transaction_manager());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -371,7 +373,7 @@ mod tests {
         assert!(updated.updated_at >= previous_updated_at);
         assert!(updated.updated_at >= before);
         assert!(updated.updated_at <= after);
-        assert_eq!(updated.event_id, 404);
+        assert_eq!(updated.event_id.value(), 404);
     }
 
     #[tokio::test]
@@ -387,7 +389,9 @@ mod tests {
         author_repository
             .expect_find_by_id_with_tx()
             .return_once(move |_, _, _| Ok(Some(author)));
-        author_repository.expect_update().returning(|_, _| Ok(404));
+        author_repository
+            .expect_update()
+            .returning(|_, _| Ok(404.into()));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -447,7 +451,7 @@ mod tests {
         author_repository
             .expect_update()
             .withf(|_, author| author.yomi() == "")
-            .returning(|_, _| Ok(405));
+            .returning(|_, _| Ok(405.into()));
 
         let interactor = UpdateAuthorInteractor::new(author_repository, make_transaction_manager());
         let mut author_data =

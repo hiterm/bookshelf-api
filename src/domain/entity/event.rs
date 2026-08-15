@@ -10,6 +10,27 @@ use crate::{
     },
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EventId(i64);
+
+impl EventId {
+    pub fn value(self) -> i64 {
+        self.0
+    }
+}
+
+impl From<i64> for EventId {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for EventId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventOperation {
     Create,
@@ -99,7 +120,15 @@ impl TryFrom<&str> for EventOperation {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventOperation, EventSetOperation};
+    use super::{EventId, EventOperation, EventSetOperation};
+
+    #[test]
+    fn event_id_round_trips_database_value() {
+        let event_id = EventId::from(42);
+
+        assert_eq!(event_id.value(), 42);
+        assert_eq!(event_id.to_string(), "42");
+    }
 
     #[test]
     fn event_operation_round_trip() {

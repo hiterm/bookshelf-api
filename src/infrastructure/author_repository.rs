@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::domain::{
     entity::{
         author::{Author, AuthorId, AuthorName},
-        event::EventOperation,
+        event::{EventId, EventOperation},
         user::UserId,
     },
     error::DomainError,
@@ -64,7 +64,7 @@ impl AuthorRepository for PgAuthorRepository {
         &self,
         tx: &mut Self::Transaction,
         author: &Author,
-    ) -> Result<i64, DomainError> {
+    ) -> Result<EventId, DomainError> {
         let user_id = tx.user_id().clone();
         sqlx::query(
             "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
@@ -105,7 +105,7 @@ impl AuthorRepository for PgAuthorRepository {
         .fetch_one(tx.as_mut())
         .await?;
 
-        Ok(event_id)
+        Ok(EventId::from(event_id))
     }
 
     async fn find_or_create_by_name(
@@ -220,7 +220,7 @@ impl AuthorRepository for PgAuthorRepository {
         &self,
         tx: &mut Self::Transaction,
         author: &Author,
-    ) -> Result<i64, DomainError> {
+    ) -> Result<EventId, DomainError> {
         let user_id = tx.user_id().clone();
         let result = sqlx::query(
             "UPDATE author SET name = $1, yomi = $2, updated_at = $3
@@ -276,7 +276,7 @@ impl AuthorRepository for PgAuthorRepository {
         .fetch_one(tx.as_mut())
         .await?;
 
-        Ok(event_id)
+        Ok(EventId::from(event_id))
     }
 
     async fn delete(
@@ -576,7 +576,7 @@ mod tests {
         let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
         let event_id = author_repository.create(&mut tx, author).await?;
         tm.commit(tx).await?;
-        Ok(event_id)
+        Ok(event_id.value())
     }
 
     async fn update_author(
@@ -589,7 +589,7 @@ mod tests {
         let mut tx = tm.begin(user_id, EventSetOperation::UpdateAuthor).await?;
         let event_id = author_repository.update(&mut tx, author).await?;
         tm.commit(tx).await?;
-        Ok(event_id)
+        Ok(event_id.value())
     }
 
     async fn delete_author(

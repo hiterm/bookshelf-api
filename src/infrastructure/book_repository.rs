@@ -11,6 +11,7 @@ use crate::{
         entity::{
             author::AuthorId,
             book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+            event::EventId,
             user::UserId,
         },
         error::DomainError,
@@ -123,7 +124,11 @@ impl PgBookRepository {
 impl BookRepository for PgBookRepository {
     type Transaction = PgTransaction;
 
-    async fn create(&self, tx: &mut Self::Transaction, book: &Book) -> Result<i64, DomainError> {
+    async fn create(
+        &self,
+        tx: &mut Self::Transaction,
+        book: &Book,
+    ) -> Result<EventId, DomainError> {
         let user_id = tx.user_id().clone();
         sqlx::query(
             "INSERT INTO book (
@@ -205,7 +210,7 @@ impl BookRepository for PgBookRepository {
             .await?;
         }
 
-        Ok(event_id)
+        Ok(EventId::from(event_id))
     }
 
     async fn find_by_id(
@@ -267,7 +272,11 @@ impl BookRepository for PgBookRepository {
         books
     }
 
-    async fn update(&self, tx: &mut Self::Transaction, book: &Book) -> Result<i64, DomainError> {
+    async fn update(
+        &self,
+        tx: &mut Self::Transaction,
+        book: &Book,
+    ) -> Result<EventId, DomainError> {
         let user_id = tx.user_id().clone();
         let result = sqlx::query(
             "UPDATE book SET
@@ -376,7 +385,7 @@ impl BookRepository for PgBookRepository {
             .await?;
         }
 
-        Ok(event_id)
+        Ok(EventId::from(event_id))
     }
 
     async fn delete(
@@ -600,7 +609,7 @@ mod tests {
         let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
         let event_id = book_repository.create(&mut tx, book).await?;
         tm.commit(tx).await?;
-        Ok(event_id)
+        Ok(event_id.value())
     }
 
     async fn update_book(
@@ -613,7 +622,7 @@ mod tests {
         let mut tx = tm.begin(user_id, EventSetOperation::UpdateBook).await?;
         let event_id = book_repository.update(&mut tx, book).await?;
         tm.commit(tx).await?;
-        Ok(event_id)
+        Ok(event_id.value())
     }
 
     async fn delete_book(

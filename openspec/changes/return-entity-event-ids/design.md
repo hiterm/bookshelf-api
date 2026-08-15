@@ -37,6 +37,12 @@ database-generated identifier attached to the write that created it. Inferring
 the ID later from event history was rejected because it adds a query and can be
 ambiguous under concurrent writes.
 
+The database adapter will convert the PostgreSQL `BIGINT` value into the domain
+newtype `EventId`. Repository contracts and `EntityMutationResultDto<T>` will
+carry `EventId` instead of a bare `i64`, so unrelated numeric values cannot be
+substituted accidentally. GraphQL remains the external conversion boundary and
+renders `EventId` through its decimal `Display` representation.
+
 Create/update use cases will return a dedicated generic
 `EntityMutationResultDto<T>` containing `value`, `event_set_id`, and `event_id`.
 The existing `MutationResultDto<T>` remains for operations that do not guarantee

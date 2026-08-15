@@ -4,6 +4,7 @@ use mockall::automock;
 use crate::domain::{
     entity::{
         book::{Book, BookId},
+        event::EventId,
         user::UserId,
     },
     error::DomainError,
@@ -14,7 +15,8 @@ use crate::domain::{
 pub trait BookRepository: Send + Sync + 'static {
     type Transaction: Send;
 
-    async fn create(&self, tx: &mut Self::Transaction, book: &Book) -> Result<i64, DomainError>;
+    async fn create(&self, tx: &mut Self::Transaction, book: &Book)
+    -> Result<EventId, DomainError>;
     async fn find_by_id(
         &self,
         user_id: &UserId,
@@ -27,7 +29,8 @@ pub trait BookRepository: Send + Sync + 'static {
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError>;
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError>;
-    async fn update(&self, tx: &mut Self::Transaction, book: &Book) -> Result<i64, DomainError>;
+    async fn update(&self, tx: &mut Self::Transaction, book: &Book)
+    -> Result<EventId, DomainError>;
     async fn delete(&self, tx: &mut Self::Transaction, book_id: &BookId)
     -> Result<(), DomainError>;
     // Upserts or deletes the entity and records a restore event in one transaction.

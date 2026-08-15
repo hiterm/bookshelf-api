@@ -26,6 +26,8 @@ entity snapshot.
   - [x] plan updated
 - [x] Milestone 4: Update architecture documentation and pass all mandatory validation.
   - [x] plan updated
+- [x] Milestone 5: Replace bare create/update event ID results with the domain `EventId` newtype.
+  - [x] plan updated
 
 Work began on 2026-08-15 UTC.
 
@@ -51,14 +53,14 @@ Work began on 2026-08-15 UTC.
 ## Decision Log
 
 - Decision: Change Book and Author repository `create` and `update` methods to
-  return `Result<i64, DomainError>` containing the inserted entity event ID.
+  return `Result<EventId, DomainError>` containing the inserted entity event ID.
   Rationale: The database-generated ID is known atomically at insertion time;
   a later history lookup adds work and can select the wrong row under
   concurrency.
   Date/Author: 2026-08-15, Codex.
 - Decision: Add `EntityMutationResultDto<T>` for Book and Author create/update,
   while retaining `MutationResultDto<T>` for delete, restore, and import.
-  Rationale: A required `i64` expresses the one-event guarantee without making
+  Rationale: A required `EventId` expresses the one-event guarantee without making
   unrelated operations carry an optional or misleading identifier.
   Date/Author: 2026-08-15, Codex.
 - Decision: Let `ImportBooksInteractor` explicitly ignore each event ID returned
@@ -66,15 +68,21 @@ Work began on 2026-08-15 UTC.
   Rationale: Import creates multiple Book and possibly Author events, so no one
   event ID truthfully represents the mutation payload.
   Date/Author: 2026-08-15, Codex.
+- Decision: Represent create/update repository results and entity mutation DTO
+  fields with `EventId` instead of bare `i64` values.
+  Rationale: The newtype makes the identifier's meaning explicit and prevents
+  unrelated numeric IDs from satisfying these internal contracts. PostgreSQL
+  and GraphQL remain the conversion boundaries.
+  Date/Author: 2026-08-15, Codex.
 
 ## Outcomes & Retrospective
 
-The feature is complete. Repository event inserts return their database IDs,
-create/update use cases preserve those IDs through commit, and GraphQL exposes
-them as required IDs without changing other mutation contracts. The generated
-schema is current, all 154 Rust unit tests pass, and 12 history/restore E2E tests
-pass against local PostgreSQL. Formatting and warning-denying clippy validation
-also pass.
+The feature is complete. Repository event inserts return their database IDs as
+the domain `EventId` newtype, create/update use cases preserve those IDs through
+commit, and GraphQL exposes them as required IDs without changing other
+mutation contracts. The generated schema is current, all 159 Rust unit tests
+pass, and 12 history/restore E2E tests pass against local PostgreSQL. Formatting
+and warning-denying clippy validation also pass.
 
 ## Context and Orientation
 
@@ -187,11 +195,11 @@ At completion, `src/use_case/dto/mutation.rs` defines:
     pub struct EntityMutationResultDto<T> {
         pub value: T,
         pub event_set_id: String,
-        pub event_id: i64,
+        pub event_id: EventId,
     }
 
 `BookMutationResultDto` and `AuthorMutationResultDto` alias this type. The Book
-and Author repository traits return `Result<i64, DomainError>` from `create`
+and Author repository traits return `Result<EventId, DomainError>` from `create`
 and `update`. No new crate dependency is required. The GraphQL layer uses
 `async_graphql::ID` and converts the signed 64-bit database ID to a decimal
 string.
@@ -206,3 +214,7 @@ tests passed; recorded the E2E environment requirement and evidence.
 Plan revision note (2026-08-15): Marked final validation complete after
 `cargo fmt --check`, warning-denying clippy, and all Rust tests passed; updated
 the retrospective with final evidence.
+
+Plan revision note (2026-08-15): Replaced bare create/update event ID results
+with `EventId`, keeping raw `i64` handling at the PostgreSQL boundary and
+decimal string conversion at the GraphQL boundary.

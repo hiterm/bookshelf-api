@@ -38,6 +38,11 @@ Single-entity Book and Author `create` and `update` mutations also return an
   by history queries and accepted as the source by the corresponding restore
   mutation.
 
+Internally, create/update repository results carry the domain `EventId` newtype.
+Only the PostgreSQL adapter handles its underlying `BIGINT`/`i64` value, and the
+GraphQL boundary converts it to the decimal string representation required by
+GraphQL `ID`.
+
 Mutations that do not guarantee exactly one newly recorded entity snapshot do
 not return a single `eventId`. This includes delete, restore, bulk import, and
 user registration. Their payload contracts remain specific to the operation;
