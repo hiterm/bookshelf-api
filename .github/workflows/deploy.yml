@@ -24,7 +24,7 @@ jobs:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
     steps:
       - name: Check out the release
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.release_tag }}
@@ -76,7 +76,7 @@ jobs:
 
       - uses: ./.github/actions/setup-rust-toolchain
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1 # zizmor: ignore[cache-poisoning]
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning]
 
       - name: Start PostgreSQL
         run: sudo systemctl start postgresql.service
@@ -195,7 +195,7 @@ jobs:
           echo "Release image: ${release_image}"
 
       - name: Log in to the Container registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -230,14 +230,14 @@ jobs:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
     steps:
       - name: Check out bookshelf frontend
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: hiterm/bookshelf
           ref: main
           path: bookshelf-src
           persist-credentials: false
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           package_json_file: bookshelf-src/package.json
 
@@ -254,7 +254,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('bookshelf-src/pnpm-lock.yaml') }}
 
       - name: Log in to the Container registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
