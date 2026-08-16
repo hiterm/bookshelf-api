@@ -71,6 +71,32 @@ where
         Ok(books)
     }
 
+    async fn find_books_by_author_ids_as_hash_map(
+        &self,
+        user_id: &str,
+        author_ids: &[String],
+    ) -> Result<HashMap<String, Vec<BookDto>>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let author_ids: Vec<AuthorId> = author_ids
+            .iter()
+            .map(|author_id| AuthorId::try_from(author_id.as_str()))
+            .collect::<Result<_, DomainError>>()?;
+        let books_by_author = self
+            .book_repository
+            .find_by_author_ids_as_hash_map(&user_id, &author_ids)
+            .await?;
+
+        Ok(books_by_author
+            .into_iter()
+            .map(|(author_id, books)| {
+                (
+                    author_id.to_string(),
+                    books.into_iter().map(BookDto::from).collect(),
+                )
+            })
+            .collect())
+    }
+
     async fn find_author_by_id(
         &self,
         user_id: &str,
@@ -308,6 +334,79 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn find_books_by_author_ids_batches_ids_and_maps_books() {
+        let user_repository = MockUserRepository::new();
+        let mut book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+        let author_id1 = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let author_id2 = "93090e87-b7a1-403c-974c-d74d881e83b9";
+        let book = make_book("a1b2c3d4-e5f6-4890-abcd-ef1234567890");
+        let expected_book_id = book.id().to_string();
+
+        book_repository
+            .expect_find_by_author_ids_as_hash_map()
+            .withf(move |user_id, author_ids| {
+                user_id.as_str() == "user1"
+                    && author_ids.len() == 2
+                    && author_ids[0].to_string() == author_id1
+                    && author_ids[1].to_string() == author_id2
+            })
+            .times(1)
+            .returning(move |_, author_ids| {
+                Ok(HashMap::from([
+                    (author_ids[0].clone(), vec![book.clone()]),
+                    (author_ids[1].clone(), Vec::new()),
+                ]))
+            });
+
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
+            event_set_repository: MockEventSetRepository::new(),
+        };
+
+        let result = query_interactor
+            .find_books_by_author_ids_as_hash_map(
+                "user1",
+                &[author_id1.to_string(), author_id2.to_string()],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result[author_id1].len(), 1);
+        assert_eq!(result[author_id1][0].id, expected_book_id);
+        assert!(result[author_id2].is_empty());
+    }
+
+    #[tokio::test]
+    async fn find_books_by_author_ids_rejects_invalid_id_without_calling_repository() {
+        let user_repository = MockUserRepository::new();
+        let mut book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+        book_repository
+            .expect_find_by_author_ids_as_hash_map()
+            .times(0)
+            .returning(|_, _| Ok(HashMap::new()));
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
+            event_set_repository: MockEventSetRepository::new(),
+        };
+
+        let result = query_interactor
+            .find_books_by_author_ids_as_hash_map("user1", &["invalid-author-id".to_string()])
+            .await;
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]

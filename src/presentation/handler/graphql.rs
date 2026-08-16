@@ -12,7 +12,11 @@ use axum::{
 use crate::{
     presentation::{
         extractor::claims::Claims,
-        graphql::{loader::AuthorLoader, mutation::Mutation, query::Query},
+        graphql::{
+            loader::{AuthorLoader, BooksByAuthorLoader},
+            mutation::Mutation,
+            query::Query,
+        },
     },
     use_case::traits::{mutation::MutationUseCase, query::QueryUseCase},
 };
@@ -29,12 +33,21 @@ where
 {
     let query_use_case: QUC = query_use_case.clone();
     let author_loader = DataLoader::new(
-        AuthorLoader::new(claims.clone(), query_use_case),
+        AuthorLoader::new(claims.clone(), query_use_case.clone()),
+        tokio::spawn,
+    );
+    let books_by_author_loader = DataLoader::new(
+        BooksByAuthorLoader::new(claims.clone(), query_use_case),
         tokio::spawn,
     );
 
     schema
-        .execute(req.into_inner().data(claims).data(author_loader))
+        .execute(
+            req.into_inner()
+                .data(claims)
+                .data(author_loader)
+                .data(books_by_author_loader),
+        )
         .await
         .into()
 }

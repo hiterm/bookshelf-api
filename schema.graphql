@@ -4,6 +4,7 @@ type Author {
 	yomi: String!
 	createdAt: DateTime!
 	updatedAt: DateTime!
+	books: [Book!]!
 }
 
 type AuthorEventEntry {

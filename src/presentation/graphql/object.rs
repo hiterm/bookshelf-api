@@ -11,7 +11,7 @@ use crate::use_case::dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, Upd
 use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
 use crate::use_case::dto::event_set::{EventSetDetailDto, EventSetDto};
 
-use super::loader::AuthorLoader;
+use super::loader::{AuthorLoader, BooksByAuthorLoader};
 
 #[derive(SimpleObject)]
 pub struct User {
@@ -75,7 +75,7 @@ impl From<BookStore> for CommonBookStore {
     }
 }
 
-#[derive(SimpleObject)]
+#[derive(Clone, SimpleObject)]
 #[graphql(complex)]
 pub struct Book {
     pub id: String,
@@ -236,12 +236,24 @@ impl From<UpdateBookInput> for UpdateBookDto {
 }
 
 #[derive(Debug, Clone, SimpleObject)]
+#[graphql(complex)]
 pub struct Author {
     pub id: ID,
     pub name: String,
     pub yomi: String,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+}
+
+#[ComplexObject]
+impl Author {
+    async fn books(&self, ctx: &Context<'_>) -> Result<Vec<Book>> {
+        let loader = ctx.data_unchecked::<DataLoader<BooksByAuthorLoader<QI>>>();
+        Ok(loader
+            .load_one(self.id.to_string())
+            .await?
+            .unwrap_or_default())
+    }
 }
 
 impl Author {
