@@ -32,6 +32,8 @@ entity snapshot.
   - [x] plan updated
 - [x] Milestone 7: Name the specialized result after its single-entity-event invariant.
   - [x] plan updated
+- [x] Milestone 8: Verify combined mutation delegation preserves entity event IDs.
+  - [x] plan updated
 
 Work began on 2026-08-15 UTC.
 
@@ -242,3 +244,7 @@ introducing a large shared assertion helper.
 Plan revision note (2026-08-15): Renamed the specialized mutation result to
 `SingleEventMutationResultDto<T>` so its name expresses the one-returnable-event
 invariant for the mutated entity.
+
+Plan revision note (2026-08-16): Added explicit assertions that the combined
+mutation interactor preserves the event IDs returned by all four Book and
+Author create/update sub-use-cases.

@@ -6,6 +6,7 @@
 - [x] 1.4 Verify create/update transaction failure paths cannot return an event ID
 - [x] 1.5 Represent returned create/update event IDs with the domain `EventId` newtype
 - [x] 1.6 Name the specialized mutation result after its single-entity-event invariant
+- [x] 1.7 Verify the combined mutation interactor preserves returned event IDs
 
 ## 2. GraphQL contract
 
