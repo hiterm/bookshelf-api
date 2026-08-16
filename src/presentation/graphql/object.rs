@@ -472,11 +472,16 @@ impl From<EventSetDetailDto> for EventSetDetail {
 pub struct BookMutationPayload {
     pub book: Book,
     pub event_set_id: ID,
+    pub event_id: ID,
 }
 
 impl BookMutationPayload {
-    pub fn new(book: Book, event_set_id: ID) -> Self {
-        Self { book, event_set_id }
+    pub fn new(book: Book, event_set_id: ID, event_id: ID) -> Self {
+        Self {
+            book,
+            event_set_id,
+            event_id,
+        }
     }
 }
 
@@ -484,13 +489,15 @@ impl BookMutationPayload {
 pub struct AuthorMutationPayload {
     pub author: Author,
     pub event_set_id: ID,
+    pub event_id: ID,
 }
 
 impl AuthorMutationPayload {
-    pub fn new(author: Author, event_set_id: ID) -> Self {
+    pub fn new(author: Author, event_set_id: ID, event_id: ID) -> Self {
         Self {
             author,
             event_set_id,
+            event_id,
         }
     }
 }

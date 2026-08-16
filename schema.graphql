@@ -22,6 +22,7 @@ type AuthorEventEntry {
 type AuthorMutationPayload {
 	author: Author!
 	eventSetId: ID!
+	eventId: ID!
 }
 
 type Book {
@@ -66,6 +67,7 @@ enum BookFormat {
 type BookMutationPayload {
 	book: Book!
 	eventSetId: ID!
+	eventId: ID!
 }
 
 enum BookStore {

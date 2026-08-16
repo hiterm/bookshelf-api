@@ -28,6 +28,27 @@ to `begin`, and the generated `event_set.id` exposed by the transaction so
 mutation results can return an `eventSetId` after a successful commit. Event
 row creation and persistence details remain in the infrastructure layer.
 
+Single-entity Book and Author `create` and `update` mutations also return an
+`eventId`. The two identifiers have different scopes:
+
+- `eventSetId` identifies the complete logical operation and can group one or
+  more entity events.
+- `eventId` identifies the newly recorded Book or Author snapshot for that
+  create or update mutation. It is the same per-entity event identifier exposed
+  by history queries and accepted as the source by the corresponding restore
+  mutation.
+
+Internally, create/update repository results carry the domain `EventId` newtype.
+Only the PostgreSQL adapter handles its underlying `BIGINT`/`i64` value, and the
+GraphQL boundary converts it to the decimal string representation required by
+GraphQL `ID`.
+
+Mutations that do not guarantee exactly one newly recorded entity snapshot do
+not return a single `eventId`. This includes delete, restore, bulk import, and
+user registration. Their payload contracts remain specific to the operation;
+in particular, an import can record multiple Book and Author events under one
+`eventSetId`.
+
 ## Infrastructure responsibilities
 
 - `PgTransactionManager::begin` generates the `event_set` UUID, binds the

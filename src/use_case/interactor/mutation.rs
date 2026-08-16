@@ -183,7 +183,7 @@ mod tests {
     use mockall::predicate::{always, eq};
 
     use crate::common::types::{BookFormat, BookStore};
-    use crate::use_case::dto::mutation::MutationResultDto;
+    use crate::use_case::dto::mutation::{MutationResultDto, SingleEventMutationResultDto};
     use crate::use_case::error::UseCaseError;
     use crate::use_case::{
         dto::{
@@ -362,9 +362,10 @@ mod tests {
             .expect_create()
             .with(always(), always())
             .returning(move |_, _| {
-                Ok(MutationResultDto::new(
+                Ok(SingleEventMutationResultDto::new(
                     make_book_dto(&book_id),
                     "event-set".to_string(),
+                    101.into(),
                 ))
             });
 
@@ -387,8 +388,9 @@ mod tests {
         let result = interactor.create_book("user1", book_data).await;
 
         // Then
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().id, expected_dto.id);
+        let result = result.unwrap();
+        assert_eq!(result.id, expected_dto.id);
+        assert_eq!(result.event_id.value(), 101);
     }
 
     #[tokio::test]
@@ -402,9 +404,10 @@ mod tests {
             .expect_update()
             .with(always(), always())
             .returning(move |_, _| {
-                Ok(MutationResultDto::new(
+                Ok(SingleEventMutationResultDto::new(
                     make_book_dto(&book_id),
                     "event-set".to_string(),
+                    102.into(),
                 ))
             });
 
@@ -428,8 +431,9 @@ mod tests {
         let result = interactor.update_book("user1", book_data).await;
 
         // Then
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().id, expected_dto.id);
+        let result = result.unwrap();
+        assert_eq!(result.id, expected_dto.id);
+        assert_eq!(result.event_id.value(), 102);
     }
 
     #[tokio::test]
@@ -467,7 +471,7 @@ mod tests {
             .expect_create()
             .with(always(), always())
             .returning(|_, data| {
-                Ok(MutationResultDto::new(
+                Ok(SingleEventMutationResultDto::new(
                     AuthorDto {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: data.name.clone(),
@@ -476,6 +480,7 @@ mod tests {
                         updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "event-set".to_string(),
+                    103.into(),
                 ))
             });
 
@@ -489,8 +494,9 @@ mod tests {
         let result = interactor.create_author("user1", author_data).await;
 
         // Then
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().name, "New Author");
+        let result = result.unwrap();
+        assert_eq!(result.name, "New Author");
+        assert_eq!(result.event_id.value(), 103);
     }
 
     #[tokio::test]
@@ -501,7 +507,7 @@ mod tests {
             .expect_update()
             .with(always(), always())
             .returning(|_, data| {
-                Ok(MutationResultDto::new(
+                Ok(SingleEventMutationResultDto::new(
                     AuthorDto {
                         id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                         name: data.name.clone(),
@@ -510,6 +516,7 @@ mod tests {
                         updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "event-set".to_string(),
+                    104.into(),
                 ))
             });
 
@@ -526,8 +533,9 @@ mod tests {
         let result = interactor.update_author("user1", author_data).await;
 
         // Then
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().name, "Updated Author");
+        let result = result.unwrap();
+        assert_eq!(result.name, "Updated Author");
+        assert_eq!(result.event_id.value(), 104);
     }
 
     #[tokio::test]

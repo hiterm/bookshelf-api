@@ -11,6 +11,7 @@ use crate::{
         entity::{
             author::AuthorId,
             book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+            event::EventId,
             user::UserId,
         },
         error::DomainError,
@@ -123,7 +124,11 @@ impl PgBookRepository {
 impl BookRepository for PgBookRepository {
     type Transaction = PgTransaction;
 
-    async fn create(&self, tx: &mut Self::Transaction, book: &Book) -> Result<(), DomainError> {
+    async fn create(
+        &self,
+        tx: &mut Self::Transaction,
+        book: &Book,
+    ) -> Result<EventId, DomainError> {
         let user_id = tx.user_id().clone();
         sqlx::query(
             "INSERT INTO book (
@@ -205,7 +210,7 @@ impl BookRepository for PgBookRepository {
             .await?;
         }
 
-        Ok(())
+        Ok(EventId::from(event_id))
     }
 
     async fn find_by_id(
@@ -267,7 +272,11 @@ impl BookRepository for PgBookRepository {
         books
     }
 
-    async fn update(&self, tx: &mut Self::Transaction, book: &Book) -> Result<(), DomainError> {
+    async fn update(
+        &self,
+        tx: &mut Self::Transaction,
+        book: &Book,
+    ) -> Result<EventId, DomainError> {
         let user_id = tx.user_id().clone();
         let result = sqlx::query(
             "UPDATE book SET
@@ -376,7 +385,7 @@ impl BookRepository for PgBookRepository {
             .await?;
         }
 
-        Ok(())
+        Ok(EventId::from(event_id))
     }
 
     async fn delete(
@@ -595,11 +604,12 @@ mod tests {
         book_repository: &PgBookRepository,
         user_id: &UserId,
         book: &Book,
-    ) -> Result<(), DomainError> {
+    ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
-        book_repository.create(&mut tx, book).await?;
-        tm.commit(tx).await
+        let event_id = book_repository.create(&mut tx, book).await?;
+        tm.commit(tx).await?;
+        Ok(event_id.value())
     }
 
     async fn update_book(
@@ -607,11 +617,12 @@ mod tests {
         book_repository: &PgBookRepository,
         user_id: &UserId,
         book: &Book,
-    ) -> Result<(), DomainError> {
+    ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::UpdateBook).await?;
-        book_repository.update(&mut tx, book).await?;
-        tm.commit(tx).await
+        let event_id = book_repository.update(&mut tx, book).await?;
+        tm.commit(tx).await?;
+        Ok(event_id.value())
     }
 
     async fn delete_book(
@@ -1149,7 +1160,7 @@ mod tests {
         let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
         let book = book_entity1(&author_ids)?;
 
-        create_book(&pool, &book_repository, &user_id, &book).await?;
+        let event_id = create_book(&pool, &book_repository, &user_id, &book).await?;
 
         let (cs_op,): (String,) = sqlx::query_as(
             "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'create_book'",
@@ -1159,13 +1170,14 @@ mod tests {
         .await?;
         assert_eq!(cs_op, "create_book");
 
-        let (bh_op, bh_title): (String, String) =
-            sqlx::query_as("SELECT operation, title FROM book_event WHERE user_id = $1")
+        let (stored_event_id, bh_op, bh_title): (i64, String, String) =
+            sqlx::query_as("SELECT event_id, operation, title FROM book_event WHERE user_id = $1")
                 .bind(user_id.as_str())
                 .fetch_one(&pool)
                 .await?;
         assert_eq!(bh_op, "create");
         assert_eq!(bh_title, "title1");
+        assert_eq!(event_id, stored_event_id);
 
         let (author_count,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM book_event_author bea
@@ -1205,10 +1217,10 @@ mod tests {
             PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
             PrimitiveDateTime::new(date!(2022 - 05 - 05), time!(0:00)).assume_utc(),
         )?;
-        update_book(&pool, &book_repository, &user_id, &updated).await?;
+        let event_id = update_book(&pool, &book_repository, &user_id, &updated).await?;
 
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT operation, title FROM book_event WHERE user_id = $1
+        let rows: Vec<(i64, String, String)> = sqlx::query_as(
+            "SELECT event_id, operation, title FROM book_event WHERE user_id = $1
              ORDER BY changed_at DESC",
         )
         .bind(user_id.as_str())
@@ -1217,9 +1229,10 @@ mod tests {
 
         assert_eq!(rows.len(), 2);
         // Most recent entry is the update event (post-update state)
-        assert_eq!(rows[0].0, "update");
-        assert_eq!(rows[0].1, "title2");
-        assert_eq!(rows[1].0, "create");
+        assert_eq!(rows[0].0, event_id);
+        assert_eq!(rows[0].1, "update");
+        assert_eq!(rows[0].2, "title2");
+        assert_eq!(rows[1].1, "create");
 
         let cs_count: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM event_set WHERE user_id = $1
