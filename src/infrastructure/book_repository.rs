@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use serde_json::json;
@@ -33,6 +35,13 @@ struct BookRow {
     store: String,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
+}
+
+#[derive(sqlx::FromRow)]
+struct AuthorBookRow {
+    author_id: Uuid,
+    #[sqlx(flatten)]
+    book: BookRow,
 }
 
 fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
@@ -270,6 +279,66 @@ impl BookRepository for PgBookRepository {
         .await;
 
         books
+    }
+
+    async fn find_by_author_ids_as_hash_map(
+        &self,
+        user_id: &UserId,
+        author_ids: &[AuthorId],
+    ) -> Result<HashMap<AuthorId, Vec<Book>>, DomainError> {
+        let mut books_by_author: HashMap<AuthorId, Vec<Book>> = author_ids
+            .iter()
+            .cloned()
+            .map(|author_id| (author_id, Vec::new()))
+            .collect();
+        let author_uuids: Vec<Uuid> = author_ids.iter().map(AuthorId::to_uuid).collect();
+
+        let rows: Vec<AuthorBookRow> = sqlx::query_as(
+            "WITH authors_of_book_and_user AS (
+                SELECT
+                    user_id,
+                    book_id,
+                    array_agg(author_id) AS author_ids
+                FROM book_author
+                WHERE user_id = $1
+                GROUP BY user_id, book_id
+            )
+            SELECT
+                requested.author_id,
+                book.id,
+                book.title,
+                authors.author_ids,
+                book.isbn,
+                book.read,
+                book.owned,
+                book.priority,
+                book.format,
+                book.store,
+                book.created_at,
+                book.updated_at
+            FROM book_author AS requested
+            INNER JOIN book
+                ON book.user_id = requested.user_id
+                AND book.id = requested.book_id
+            LEFT OUTER JOIN authors_of_book_and_user AS authors
+                ON authors.user_id = book.user_id
+                AND authors.book_id = book.id
+            WHERE requested.user_id = $1
+                AND requested.author_id = ANY($2)",
+        )
+        .bind(user_id.as_str())
+        .bind(author_uuids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        for row in rows {
+            books_by_author
+                .entry(AuthorId::new(row.author_id))
+                .or_default()
+                .push(book_from_row(row.book)?);
+        }
+
+        Ok(books_by_author)
     }
 
     async fn update(
@@ -760,6 +829,54 @@ mod tests {
             assert_eq!(all_books[0], book2);
             assert_eq!(all_books[1], book1);
         }
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_author_ids_groups_books_and_preserves_scope(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+        let user1_author_ids = prepare_authors1(&pool, &user1_id, &author_repository).await?;
+        let empty_author_id =
+            prepare_authors2(&pool, &user1_id, &author_repository).await?[0].clone();
+
+        let shared_book = book_entity1(&user1_author_ids)?;
+        let second_book = book_entity2(&user1_author_ids[..1])?;
+        create_book(&pool, &book_repository, &user1_id, &shared_book).await?;
+        create_book(&pool, &book_repository, &user1_id, &second_book).await?;
+
+        let user2_author_ids = prepare_authors1(&pool, &user2_id, &author_repository).await?;
+        let other_users_book = book_entity1(&user2_author_ids)?;
+        create_book(&pool, &book_repository, &user2_id, &other_users_book).await?;
+
+        let requested_author_ids = vec![
+            user1_author_ids[0].clone(),
+            user1_author_ids[1].clone(),
+            empty_author_id.clone(),
+        ];
+        let result = book_repository
+            .find_by_author_ids_as_hash_map(&user1_id, &requested_author_ids)
+            .await?;
+
+        assert_eq!(result[&user1_author_ids[0]].len(), 2);
+        assert!(
+            result[&user1_author_ids[0]]
+                .iter()
+                .any(|book| book.id() == shared_book.id())
+        );
+        assert!(
+            result[&user1_author_ids[0]]
+                .iter()
+                .any(|book| book.id() == second_book.id())
+        );
+        assert_eq!(result[&user1_author_ids[1]], vec![shared_book]);
+        assert!(result[&empty_author_id].is_empty());
 
         Ok(())
     }

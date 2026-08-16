@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use mockall::automock;
 
 use crate::domain::{
     entity::{
+        author::AuthorId,
         book::{Book, BookId},
         event::EventId,
         user::UserId,
@@ -29,6 +32,11 @@ pub trait BookRepository: Send + Sync + 'static {
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError>;
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError>;
+    async fn find_by_author_ids_as_hash_map(
+        &self,
+        user_id: &UserId,
+        author_ids: &[AuthorId],
+    ) -> Result<HashMap<AuthorId, Vec<Book>>, DomainError>;
     async fn update(&self, tx: &mut Self::Transaction, book: &Book)
     -> Result<EventId, DomainError>;
     async fn delete(&self, tx: &mut Self::Transaction, book_id: &BookId)

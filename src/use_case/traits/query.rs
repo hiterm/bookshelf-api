@@ -24,6 +24,11 @@ pub trait QueryUseCase: Send + Sync + 'static {
         book_id: &str,
     ) -> Result<Option<BookDto>, UseCaseError>;
     async fn find_all_books(&self, user_id: &str) -> Result<Vec<BookDto>, UseCaseError>;
+    async fn find_books_by_author_ids_as_hash_map(
+        &self,
+        user_id: &str,
+        author_ids: &[String],
+    ) -> Result<HashMap<String, Vec<BookDto>>, UseCaseError>;
     async fn find_author_by_id(
         &self,
         user_id: &str,
