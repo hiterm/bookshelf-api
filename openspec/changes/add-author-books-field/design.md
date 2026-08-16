@@ -6,7 +6,7 @@ The GraphQL `Book` type already resolves its authors with a request-scoped `Auth
 
 **Goals:**
 
-- Expose each author's books through the existing GraphQL `Book` type.
+- Add `books` to the existing GraphQL `Author` type and return entries using the existing GraphQL `Book` type.
 - Fetch relationships for all authors in one DataLoader batch and one database query.
 - Preserve user isolation through every layer.
 - Return a non-null empty list for authors without books.

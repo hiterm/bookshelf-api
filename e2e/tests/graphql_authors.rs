@@ -54,6 +54,71 @@ async fn e2e_graphql_authors() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+async fn e2e_graphql_authors_resolve_shared_and_empty_books() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let author1_id = create_test_author("Author With Shared Book 1", &token).await?;
+    let author2_id = create_test_author("Author With Shared Book 2", &token).await?;
+    let empty_author_id = create_test_author("Author Without Books", &token).await?;
+    let book_title = format!("Shared Book {}", uuid::Uuid::new_v4());
+    let create_book = format!(
+        r#"
+        mutation {{
+            createBook(bookData: {{
+                title: "{}"
+                authorIds: ["{}", "{}"]
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ book {{ id }} }}
+        }}
+        "#,
+        book_title, author1_id, author2_id
+    );
+    let (_, response) = graphql_request(&create_book, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "create shared book");
+    let book_id = response["data"]["createBook"]["book"]["id"]
+        .as_str()
+        .context("created book id should be a string")?
+        .to_owned();
+
+    let query = r#"{ authors { id books { id title } } }"#;
+    let (_, response) = graphql_request(query, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "resolve author books");
+    let authors = response["data"]["authors"]
+        .as_array()
+        .context("authors should be an array")?;
+    let books_for = |author_id: &str| -> Result<&Vec<serde_json::Value>> {
+        authors
+            .iter()
+            .find(|author| author["id"].as_str() == Some(author_id))
+            .with_context(|| format!("author {author_id} should be returned"))?["books"]
+            .as_array()
+            .context("books should be an array")
+    };
+
+    for author_id in [&author1_id, &author2_id] {
+        let books = books_for(author_id)?;
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0]["id"].as_str(), Some(book_id.as_str()));
+        assert_eq!(books[0]["title"].as_str(), Some(book_title.as_str()));
+    }
+    assert!(
+        books_for(&empty_author_id)?.is_empty(),
+        "an author without books should return an empty list"
+    );
+
+    delete_test_book(&book_id, &token).await?;
+    for author_id in [&author1_id, &author2_id, &empty_author_id] {
+        delete_test_author(author_id, &token).await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn e2e_graphql_create_author() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 

@@ -385,6 +385,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn find_books_by_author_ids_rejects_invalid_id_without_calling_repository() {
+        let user_repository = MockUserRepository::new();
+        let mut book_repository = MockBookRepository::new();
+        let author_repository = MockAuthorRepository::new();
+        book_repository
+            .expect_find_by_author_ids_as_hash_map()
+            .times(0)
+            .returning(|_, _| Ok(HashMap::new()));
+        let query_interactor = QueryInteractor {
+            user_repository,
+            book_repository,
+            author_repository,
+            book_event_repository: MockBookEventRepository::new(),
+            author_event_repository: MockAuthorEventRepository::new(),
+            event_set_repository: MockEventSetRepository::new(),
+        };
+
+        let result = query_interactor
+            .find_books_by_author_ids_as_hash_map("user1", &["invalid-author-id".to_string()])
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn find_author_by_id_passes_correct_user_id_to_repository() {
         // Given
         let user_repository = MockUserRepository::new();

@@ -14,6 +14,7 @@
 - [x] 3.1 Add and test `BooksByAuthorLoader` with one batched use-case call
 - [x] 3.2 Add the `Author.books` complex resolver and register its request-scoped DataLoader
 - [x] 3.3 Add GraphQL tests for populated, empty, shared, and batched author book results
+- [x] 3.4 Add an authenticated HTTP E2E test for shared and empty author book results
 
 ## 4. Verification
 
