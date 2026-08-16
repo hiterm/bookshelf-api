@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.12.0](https://github.com/hiterm/bookshelf-api/compare/2.11.1...2.12.0) - 2026-08-16
+
+### Other Changes
+- Return entity event IDs from mutations by @hiterm in https://github.com/hiterm/bookshelf-api/pull/301
+- Add books field to GraphQL authors by @hiterm in https://github.com/hiterm/bookshelf-api/pull/303
+
 ## [2.11.1](https://github.com/hiterm/bookshelf-api/compare/2.11.0...2.11.1) - 2026-08-13
 
 ### Other Changes
