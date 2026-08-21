@@ -89,6 +89,14 @@ where
             .begin(&user_id, EventSetOperation::MergeAuthor)
             .await?;
 
+        // Book updates lock their Book row before book_author inserts acquire
+        // foreign-key locks on Author rows. Merge uses the same Book -> Author
+        // order to avoid a deadlock cycle with a concurrent updateBook.
+        let books = self
+            .book_repository
+            .find_by_author_id_with_tx(&mut tx, &user_id, &source_id)
+            .await?;
+
         let (first_id, second_id) = if source_id.to_uuid() < destination_id.to_uuid() {
             (&source_id, &destination_id)
         } else {
@@ -121,10 +129,6 @@ where
             )
         };
 
-        let books = self
-            .book_repository
-            .find_by_author_id_with_tx(&mut tx, &user_id, &source_id)
-            .await?;
         for mut book in books {
             let mut author_ids: Vec<_> = book
                 .author_ids()
@@ -334,7 +338,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use mockall::predicate::always;
+    use mockall::{Sequence, predicate::always};
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -849,20 +853,23 @@ mod tests {
             timestamp,
         )
         .unwrap();
+        let mut sequence = Sequence::new();
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_find_by_author_id_with_tx()
+            .in_sequence(&mut sequence)
+            .returning(|_, _, _| Ok(vec![]));
         let mut author_repository = MockAuthorRepository::new();
         let mut locked = vec![source.clone(), destination.clone()].into_iter();
         author_repository
             .expect_find_by_id_with_tx()
             .times(2)
+            .in_sequence(&mut sequence)
             .returning(move |_, _, _| Ok(Some(locked.next().unwrap())));
         author_repository
             .expect_delete()
             .with(always(), always(), always())
             .returning(|_, _, _| Ok(()));
-        let mut book_repository = MockBookRepository::new();
-        book_repository
-            .expect_find_by_author_id_with_tx()
-            .returning(|_, _, _| Ok(vec![]));
         let mut event_repository = MockAuthorEventRepository::new();
         event_repository
             .expect_append()

@@ -18,6 +18,8 @@ After this change an authenticated client can call `mergeAuthor(sourceAuthorId:,
   - [x] plan updated
 - [x] Milestone 5: Address PR review feedback by serializing Book snapshot reads, expanding merge-loop tests, and testing mutation delegation.
   - [x] plan updated
+- [x] Milestone 6: Align merge lock acquisition with updateBook by locking Book rows before Author rows, preventing a Book/Author deadlock cycle.
+  - [x] plan updated
 
 Plan created 2026-08-20 UTC.
 
@@ -32,6 +34,9 @@ Plan created 2026-08-20 UTC.
 - Observation: Locking only the two Author rows does not serialize a full Book snapshot against concurrent `updateBook` operations, so either mutation could overwrite fields read before the other committed.
   Evidence: PR review identified that `find_by_id_with_tx` and the merge lookup both read Book rows without `FOR UPDATE`; both transaction-aware reads now lock the base Book row, and multi-book merge locks are ordered by Book ID.
 
+- Observation: Adding Book locks after Author locks introduced an Author-to-Book order opposite to `updateBook`, whose Book lock is followed by foreign-key locks on newly associated Authors.
+  Evidence: a merge holding the destination Author and waiting for a Book could cycle with an update holding that Book and waiting for the destination Author. Merge now locks Books first, matching `updateBook`, then locks Authors in UUID order.
+
 ## Decision Log
 
 - Decision: Keep merge orchestration in a dedicated use-case interactor and use existing repository mutation methods for book updates and source deletion.
@@ -44,6 +49,10 @@ Plan created 2026-08-20 UTC.
 
 - Decision: Require both ordinary Book updates and author merge to acquire a Book row lock while reading the snapshot they will rewrite.
   Rationale: A lock on only the source Author does not protect mutable Book fields or `book_author` snapshots from lost updates. Sharing the row-lock convention makes either transaction wait and then read the committed state; ordering merge locks by Book ID avoids lock-order inversions across multi-book merges.
+  Date/Author: 2026-08-21 / Codex
+
+- Decision: Acquire merge locks in Book-ID order first and Author-UUID order second.
+  Rationale: `updateBook` necessarily locks its Book before `book_author` inserts take Author foreign-key locks. Giving merge the same entity-class order removes the Book/Author deadlock cycle while retaining deterministic ordering within each class.
   Date/Author: 2026-08-21 / Codex
 
 ## Outcomes & Retrospective
@@ -98,6 +107,8 @@ Validation transcripts will be added as milestones complete.
 Plan updated 2026-08-20 UTC after implementation and validation. The E2E execution limitation is recorded so a future contributor can run the committed scenario in the configured CI environment.
 
 Plan updated 2026-08-21 UTC after PR review. Transaction-aware Book reads now share the row-lock invariant, and the unit suite exercises the previously uncovered merge loop and mutation delegation.
+
+Plan updated 2026-08-21 UTC after the follow-up concurrency review. Merge now follows the same Book-before-Author lock order as updateBook, and a mock sequence test guards that repository call order.
 
 ## Interfaces and Dependencies
 
