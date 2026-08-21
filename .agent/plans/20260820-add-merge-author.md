@@ -20,6 +20,8 @@ After this change an authenticated client can call `mergeAuthor(sourceAuthorId:,
   - [x] plan updated
 - [x] Milestone 6: Align merge lock acquisition with updateBook by locking Book rows before Author rows, preventing a Book/Author deadlock cycle.
   - [x] plan updated
+- [x] Milestone 7: Refresh Book associations after lock waits, assert complete merge event payloads, and add PostgreSQL repository coverage.
+  - [x] plan updated
 
 Plan created 2026-08-20 UTC.
 
@@ -37,6 +39,9 @@ Plan created 2026-08-20 UTC.
 - Observation: Adding Book locks after Author locks introduced an Author-to-Book order opposite to `updateBook`, whose Book lock is followed by foreign-key locks on newly associated Authors.
   Evidence: a merge holding the destination Author and waiting for a Book could cycle with an update holding that Book and waiting for the destination Author. Merge now locks Books first, matching `updateBook`, then locks Authors in UUID order.
 
+- Observation: Under PostgreSQL Read Committed, a statement snapshot is established before `SELECT ... FOR UPDATE` finishes waiting, so association aggregation in that same statement can remain stale.
+  Evidence: the merge lookup now uses one statement to lock ordered Book IDs and a second statement with a fresh snapshot to re-check the source relation and load all current Author IDs.
+
 ## Decision Log
 
 - Decision: Keep merge orchestration in a dedicated use-case interactor and use existing repository mutation methods for book updates and source deletion.
@@ -53,6 +58,10 @@ Plan created 2026-08-20 UTC.
 
 - Decision: Acquire merge locks in Book-ID order first and Author-UUID order second.
   Rationale: `updateBook` necessarily locks its Book before `book_author` inserts take Author foreign-key locks. Giving merge the same entity-class order removes the Book/Author deadlock cycle while retaining deterministic ordering within each class.
+  Date/Author: 2026-08-21 / Codex
+
+- Decision: Separate merge Book locking from Book/Author snapshot loading into two SQL statements.
+  Rationale: A fresh Read Committed snapshot after lock acquisition prevents a concurrent update that completed during the wait from having its relationship changes overwritten by stale `book_author` aggregation.
   Date/Author: 2026-08-21 / Codex
 
 ## Outcomes & Retrospective
@@ -109,6 +118,8 @@ Plan updated 2026-08-20 UTC after implementation and validation. The E2E executi
 Plan updated 2026-08-21 UTC after PR review. Transaction-aware Book reads now share the row-lock invariant, and the unit suite exercises the previously uncovered merge loop and mutation delegation.
 
 Plan updated 2026-08-21 UTC after the follow-up concurrency review. Merge now follows the same Book-before-Author lock order as updateBook, and a mock sequence test guards that repository call order.
+
+Plan updated 2026-08-21 UTC after the snapshot review. Book locks and association reads are separate statements, event predicates cover the complete merge history contract, and a PostgreSQL feature test covers result scope, author restoration, and ordering.
 
 ## Interfaces and Dependencies
 

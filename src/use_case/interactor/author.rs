@@ -351,11 +351,13 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                event::EventOperation,
             },
             error::DomainError,
             repository::{
                 author_event_repository::MockAuthorEventRepository,
-                author_repository::MockAuthorRepository, book_repository::MockBookRepository,
+                author_repository::{DeleteAuthorEventExtra, MockAuthorRepository},
+                book_repository::MockBookRepository,
                 transaction::MockTransactionManager,
             },
         },
@@ -868,11 +870,32 @@ mod tests {
             .returning(move |_, _, _| Ok(Some(locked.next().unwrap())));
         author_repository
             .expect_delete()
-            .with(always(), always(), always())
+            .withf(move |_, author_id, extra| {
+                author_id.to_string() == source_id
+                    && matches!(
+                        extra,
+                        Some(DeleteAuthorEventExtra::Merge {
+                            destination_author_id
+                        }) if destination_author_id.to_string() == destination_id
+                    )
+            })
             .returning(|_, _, _| Ok(()));
         let mut event_repository = MockAuthorEventRepository::new();
         event_repository
             .expect_append()
+            .withf(move |_, event| {
+                event.operation == EventOperation::MergeAsDestination
+                    && event.author_id.to_string() == destination_id
+                    && event.name.is_none()
+                    && event.yomi.is_none()
+                    && event.author_created_at.is_none()
+                    && event.author_updated_at.is_none()
+                    && event.extra
+                        == Some(serde_json::json!({
+                            "version": 1,
+                            "source_author_id": source_id,
+                        }))
+            })
             .returning(|_, _| Ok(1.into()));
         let interactor = MergeAuthorInteractor::new(
             author_repository,
@@ -955,6 +978,15 @@ mod tests {
             .returning(move |_, _, _| Ok(Some(locked.next().unwrap())));
         author_repository
             .expect_delete()
+            .withf(move |_, author_id, extra| {
+                author_id.to_string() == source_id
+                    && matches!(
+                        extra,
+                        Some(DeleteAuthorEventExtra::Merge {
+                            destination_author_id
+                        }) if destination_author_id.to_string() == destination_id
+                    )
+            })
             .returning(|_, _, _| Ok(()));
         let mut book_repository = MockBookRepository::new();
         book_repository
@@ -980,6 +1012,19 @@ mod tests {
         let mut event_repository = MockAuthorEventRepository::new();
         event_repository
             .expect_append()
+            .withf(move |_, event| {
+                event.operation == EventOperation::MergeAsDestination
+                    && event.author_id.to_string() == destination_id
+                    && event.name.is_none()
+                    && event.yomi.is_none()
+                    && event.author_created_at.is_none()
+                    && event.author_updated_at.is_none()
+                    && event.extra
+                        == Some(serde_json::json!({
+                            "version": 1,
+                            "source_author_id": source_id,
+                        }))
+            })
             .returning(|_, _| Ok(2.into()));
         let interactor = MergeAuthorInteractor::new(
             author_repository,
