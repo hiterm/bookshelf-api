@@ -42,6 +42,9 @@ Plan created 2026-08-20 UTC.
 - Observation: Under PostgreSQL Read Committed, a statement snapshot is established before `SELECT ... FOR UPDATE` finishes waiting, so association aggregation in that same statement can remain stale.
   Evidence: the merge lookup now uses one statement to lock ordered Book IDs and a second statement with a fresh snapshot to re-check the source relation and load all current Author IDs.
 
+- Observation: Existing Book repository fixtures use fixed Book IDs and intentionally allow the same ID for different users, so comparing a user1 result ID against a user2 fixture did not prove user scoping.
+  Evidence: the first CI run of the new PostgreSQL test failed because both users' `book_entity1` values shared an ID. The test now rebuilds the user2 Book with a unique ID before asserting exclusion.
+
 ## Decision Log
 
 - Decision: Keep merge orchestration in a dedicated use-case interactor and use existing repository mutation methods for book updates and source deletion.
@@ -120,6 +123,8 @@ Plan updated 2026-08-21 UTC after PR review. Transaction-aware Book reads now sh
 Plan updated 2026-08-21 UTC after the follow-up concurrency review. Merge now follows the same Book-before-Author lock order as updateBook, and a mock sequence test guards that repository call order.
 
 Plan updated 2026-08-21 UTC after the snapshot review. Book locks and association reads are separate statements, event predicates cover the complete merge history contract, and a PostgreSQL feature test covers result scope, author restoration, and ordering.
+
+Plan updated 2026-08-21 UTC after CI exposed a fixed-ID fixture collision. The cross-user Book now has a unique ID so the scope assertion tests ownership rather than fixture identity reuse.
 
 ## Interfaces and Dependencies
 

@@ -970,7 +970,20 @@ mod tests {
 
         let user1_book1 = book_entity1(&user1_author_ids)?;
         let user1_book2 = book_entity2(&user1_author_ids[..1])?;
-        let user2_book = book_entity1(&user2_author_ids)?;
+        let user2_book_template = book_entity1(&user2_author_ids)?.destructure();
+        let user2_book = Book::new(
+            BookId::new(Uuid::new_v4())?,
+            user2_book_template.title,
+            user2_book_template.author_ids,
+            user2_book_template.isbn,
+            user2_book_template.read,
+            user2_book_template.owned,
+            user2_book_template.priority,
+            user2_book_template.format,
+            user2_book_template.store,
+            user2_book_template.created_at,
+            user2_book_template.updated_at,
+        )?;
         create_book(&pool, &book_repository, &user1_id, &user1_book1).await?;
         create_book(&pool, &book_repository, &user1_id, &user1_book2).await?;
         create_book(&pool, &book_repository, &user2_id, &user2_book).await?;
