@@ -16,6 +16,8 @@ After this change an authenticated client can call `mergeAuthor(sourceAuthorId:,
   - [x] plan updated
 - [x] Milestone 4: Run formatting, clippy, unit tests, and schema verification; record the unavailable external E2E environment.
   - [x] plan updated
+- [x] Milestone 5: Address PR review feedback by serializing Book snapshot reads, expanding merge-loop tests, and testing mutation delegation.
+  - [x] plan updated
 
 Plan created 2026-08-20 UTC.
 
@@ -27,6 +29,9 @@ Plan created 2026-08-20 UTC.
 - Observation: The first dependency resolution attempted inside the sandbox could not resolve crates.io; retrying with approved network access populated the cache and all subsequent checks ran normally.
   Evidence: the initial check reported `Could not resolve host: index.crates.io`; the approved retry downloaded the locked dependencies and completed.
 
+- Observation: Locking only the two Author rows does not serialize a full Book snapshot against concurrent `updateBook` operations, so either mutation could overwrite fields read before the other committed.
+  Evidence: PR review identified that `find_by_id_with_tx` and the merge lookup both read Book rows without `FOR UPDATE`; both transaction-aware reads now lock the base Book row, and multi-book merge locks are ordered by Book ID.
+
 ## Decision Log
 
 - Decision: Keep merge orchestration in a dedicated use-case interactor and use existing repository mutation methods for book updates and source deletion.
@@ -37,9 +42,13 @@ Plan created 2026-08-20 UTC.
   Rationale: Concurrent inverse merges otherwise acquire row locks in opposite order and can deadlock.
   Date/Author: 2026-08-20 / Codex
 
+- Decision: Require both ordinary Book updates and author merge to acquire a Book row lock while reading the snapshot they will rewrite.
+  Rationale: A lock on only the source Author does not protect mutable Book fields or `book_author` snapshots from lost updates. Sharing the row-lock convention makes either transaction wait and then read the committed state; ordering merge locks by Book ID avoids lock-order inversions across multi-book merges.
+  Date/Author: 2026-08-21 / Codex
+
 ## Outcomes & Retrospective
 
-The `mergeAuthor` mutation is implemented from GraphQL through PostgreSQL persistence. It locks authors deterministically, moves and records every affected book, records typed source and destination author events in one event set, preserves the destination entity state, and rejects invalid restore semantics. The generated schema matches `schema.graphql`; formatting, clippy, and all 165 non-database unit tests pass. The external E2E scenario was added but could not be run locally because no test server or database URL was supplied.
+The `mergeAuthor` mutation is implemented from GraphQL through PostgreSQL persistence. It locks authors and affected books deterministically, moves and records every affected book, records typed source and destination author events in one event set, preserves the destination entity state, and rejects invalid restore semantics. Merge-loop tests cover source replacement, destination deduplication, preservation of other authors, multiple updates, and mutation delegation. The generated schema matches `schema.graphql`; formatting, clippy, and all non-database unit tests pass. The external E2E scenario was added but could not be run locally because no test server or database URL was supplied.
 
 ## Context and Orientation
 
@@ -87,6 +96,8 @@ Validation transcripts will be added as milestones complete.
     Finished `dev` profile ...
 
 Plan updated 2026-08-20 UTC after implementation and validation. The E2E execution limitation is recorded so a future contributor can run the committed scenario in the configured CI environment.
+
+Plan updated 2026-08-21 UTC after PR review. Transaction-aware Book reads now share the row-lock invariant, and the unit suite exercises the previously uncovered merge loop and mutation delegation.
 
 ## Interfaces and Dependencies
 

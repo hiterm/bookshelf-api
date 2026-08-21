@@ -19,7 +19,7 @@ use crate::{
     },
     use_case::{
         dto::{
-            author::{CreateAuthorDto, MergeAuthorInputDto, UpdateAuthorDto},
+            author::{AuthorDto, CreateAuthorDto, MergeAuthorInputDto, UpdateAuthorDto},
             mutation::{
                 AuthorMutationResultDto, DeleteAuthorResultDto, MutationResultDto,
                 SingleEventMutationResultDto,
@@ -72,7 +72,7 @@ where
         &self,
         user_id: &str,
         input: MergeAuthorInputDto,
-    ) -> Result<MutationResultDto<crate::use_case::dto::author::AuthorDto>, UseCaseError> {
+    ) -> Result<MutationResultDto<AuthorDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let source_id_text = input.source_author_id;
         let destination_id_text = input.destination_author_id;
@@ -336,11 +336,18 @@ where
 mod tests {
     use mockall::predicate::always;
     use time::OffsetDateTime;
+    use uuid::Uuid;
 
     use crate::{
-        common::time::normalize_timestamp_for_persistence,
+        common::{
+            time::normalize_timestamp_for_persistence,
+            types::{BookFormat, BookStore},
+        },
         domain::{
-            entity::author::{Author, AuthorId, AuthorName},
+            entity::{
+                author::{Author, AuthorId, AuthorName},
+                book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+            },
             error::DomainError,
             repository::{
                 author_event_repository::MockAuthorEventRepository,
@@ -880,5 +887,110 @@ mod tests {
 
         assert_eq!(result.value.id, destination_id);
         assert_eq!(result.value.name, "Destination");
+    }
+
+    #[tokio::test]
+    async fn merge_author_moves_multiple_books_without_duplicate_destination() {
+        let source_id = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let destination_id = "106099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let other_id = AuthorId::try_from("206099b4-6c42-4ec4-8645-f6bd5b63eddc").unwrap();
+        let source_author_id = AuthorId::try_from(source_id).unwrap();
+        let destination_author_id = AuthorId::try_from(destination_id).unwrap();
+        let timestamp = OffsetDateTime::UNIX_EPOCH;
+        let source = Author::new(
+            source_author_id.clone(),
+            AuthorName::new("Source".to_string()).unwrap(),
+            timestamp,
+        )
+        .unwrap();
+        let destination = Author::new(
+            destination_author_id.clone(),
+            AuthorName::new("Destination".to_string()).unwrap(),
+            timestamp,
+        )
+        .unwrap();
+        let make_book = |title: &str, author_ids: Vec<AuthorId>| {
+            Book::new(
+                BookId::new(Uuid::new_v4()).unwrap(),
+                BookTitle::new(title.to_string()).unwrap(),
+                author_ids,
+                Isbn::new(String::new()).unwrap(),
+                ReadFlag::new(false),
+                OwnedFlag::new(false),
+                Priority::new(50).unwrap(),
+                BookFormat::Unknown,
+                BookStore::Unknown,
+                timestamp,
+                timestamp,
+            )
+            .unwrap()
+        };
+        let books = vec![
+            make_book(
+                "Needs destination",
+                vec![source_author_id.clone(), other_id.clone()],
+            ),
+            make_book(
+                "Already has destination",
+                vec![
+                    source_author_id.clone(),
+                    destination_author_id.clone(),
+                    other_id.clone(),
+                ],
+            ),
+        ];
+
+        let mut author_repository = MockAuthorRepository::new();
+        let mut locked = vec![source, destination].into_iter();
+        author_repository
+            .expect_find_by_id_with_tx()
+            .times(2)
+            .returning(move |_, _, _| Ok(Some(locked.next().unwrap())));
+        author_repository
+            .expect_delete()
+            .returning(|_, _, _| Ok(()));
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_find_by_author_id_with_tx()
+            .return_once(move |_, _, _| Ok(books));
+        let expected_source = source_author_id.clone();
+        let expected_destination = destination_author_id.clone();
+        let expected_other = other_id.clone();
+        book_repository
+            .expect_update()
+            .times(2)
+            .withf(move |_, book| {
+                !book.author_ids().contains(&expected_source)
+                    && book
+                        .author_ids()
+                        .iter()
+                        .filter(|id| *id == &expected_destination)
+                        .count()
+                        == 1
+                    && book.author_ids().contains(&expected_other)
+            })
+            .returning(|_, _| Ok(1.into()));
+        let mut event_repository = MockAuthorEventRepository::new();
+        event_repository
+            .expect_append()
+            .returning(|_, _| Ok(2.into()));
+        let interactor = MergeAuthorInteractor::new(
+            author_repository,
+            book_repository,
+            event_repository,
+            make_transaction_manager(),
+        );
+
+        let result = interactor
+            .merge(
+                "user1",
+                crate::use_case::dto::author::MergeAuthorInputDto {
+                    source_author_id: source_id.to_string(),
+                    destination_author_id: destination_id.to_string(),
+                },
+            )
+            .await;
+
+        assert!(result.is_ok());
     }
 }

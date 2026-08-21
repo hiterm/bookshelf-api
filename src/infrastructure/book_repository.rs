@@ -236,7 +236,24 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError> {
-        find_book_by_id_with_executor(tx.as_mut(), user_id, book_id).await
+        let row: Option<BookRow> = sqlx::query_as(
+            "SELECT book.id, book.title,
+                    (SELECT array_agg(book_author.author_id)
+                     FROM book_author
+                     WHERE book_author.user_id = book.user_id
+                       AND book_author.book_id = book.id) AS author_ids,
+                    book.isbn, book.read, book.owned, book.priority, book.format,
+                    book.store, book.created_at, book.updated_at
+             FROM book
+             WHERE book.user_id = $1 AND book.id = $2
+             FOR UPDATE OF book",
+        )
+        .bind(user_id.as_str())
+        .bind(book_id.to_uuid())
+        .fetch_optional(tx.as_mut())
+        .await?;
+
+        row.map(book_from_row).transpose()
     }
 
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
@@ -348,24 +365,23 @@ impl BookRepository for PgBookRepository {
         author_id: &AuthorId,
     ) -> Result<Vec<Book>, DomainError> {
         let rows: Vec<BookRow> = sqlx::query_as(
-            "WITH authors_of_book_and_user AS (
-                SELECT book_id, array_agg(author_id) AS author_ids
-                FROM book_author
-                WHERE user_id = $1
-                GROUP BY book_id
-            )
-            SELECT book.id, book.title, authors.author_ids, book.isbn, book.read,
-                   book.owned, book.priority, book.format, book.store,
-                   book.created_at, book.updated_at
+            "SELECT book.id, book.title,
+                    (SELECT array_agg(book_author.author_id)
+                     FROM book_author
+                     WHERE book_author.user_id = book.user_id
+                       AND book_author.book_id = book.id) AS author_ids,
+                   book.isbn, book.read, book.owned, book.priority, book.format,
+                   book.store, book.created_at, book.updated_at
             FROM book
-            JOIN authors_of_book_and_user authors ON authors.book_id = book.id
             WHERE book.user_id = $1
               AND EXISTS (
                   SELECT 1 FROM book_author requested
                   WHERE requested.user_id = $1
                     AND requested.book_id = book.id
                     AND requested.author_id = $2
-              )",
+              )
+            ORDER BY book.id
+            FOR UPDATE OF book",
         )
         .bind(user_id.as_str())
         .bind(author_id.to_uuid())

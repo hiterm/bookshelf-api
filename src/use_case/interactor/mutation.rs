@@ -303,6 +303,11 @@ mod tests {
             self
         }
 
+        fn with_merge_author(mut self, mock: MockMergeAuthorUseCase) -> Self {
+            self.merge_author = mock;
+            self
+        }
+
         fn with_restore_book(mut self, mock: MockRestoreBookUseCase) -> Self {
             self.restore_book = mock;
             self
@@ -584,6 +589,43 @@ mod tests {
 
         // Then
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn merge_author_delegates_to_sub_use_case() {
+        let mut mock_merge_author = MockMergeAuthorUseCase::new();
+        mock_merge_author
+            .expect_merge()
+            .with(eq("user1"), always())
+            .returning(|_, _| {
+                Ok(MutationResultDto::new(
+                    AuthorDto {
+                        id: "106099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                        name: "Destination".to_string(),
+                        yomi: String::new(),
+                        created_at: OffsetDateTime::UNIX_EPOCH,
+                        updated_at: OffsetDateTime::UNIX_EPOCH,
+                    },
+                    "event-set".to_string(),
+                ))
+            });
+        let interactor = InteractorBuilder::new()
+            .with_merge_author(mock_merge_author)
+            .build();
+
+        let result = interactor
+            .merge_author(
+                "user1",
+                crate::use_case::dto::author::MergeAuthorInputDto {
+                    source_author_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                    destination_author_id: "106099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.value.name, "Destination");
+        assert_eq!(result.event_set_id, "event-set");
     }
 
     #[tokio::test]

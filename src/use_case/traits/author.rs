@@ -3,7 +3,7 @@ use mockall::automock;
 
 use crate::use_case::{
     dto::{
-        author::{CreateAuthorDto, MergeAuthorInputDto, UpdateAuthorDto},
+        author::{AuthorDto, CreateAuthorDto, MergeAuthorInputDto, UpdateAuthorDto},
         mutation::{AuthorMutationResultDto, DeleteAuthorResultDto, MutationResultDto},
     },
     error::UseCaseError,
@@ -26,7 +26,7 @@ pub trait MergeAuthorUseCase: Send + Sync + 'static {
         &self,
         user_id: &str,
         input: MergeAuthorInputDto,
-    ) -> Result<MutationResultDto<crate::use_case::dto::author::AuthorDto>, UseCaseError>;
+    ) -> Result<MutationResultDto<AuthorDto>, UseCaseError>;
 }
 
 #[automock]
