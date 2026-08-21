@@ -37,6 +37,12 @@ pub trait BookRepository: Send + Sync + 'static {
         user_id: &UserId,
         author_ids: &[AuthorId],
     ) -> Result<HashMap<AuthorId, Vec<Book>>, DomainError>;
+    async fn find_by_author_id_with_tx(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        author_id: &AuthorId,
+    ) -> Result<Vec<Book>, DomainError>;
     async fn update(&self, tx: &mut Self::Transaction, book: &Book)
     -> Result<EventId, DomainError>;
     async fn delete(&self, tx: &mut Self::Transaction, book_id: &BookId)

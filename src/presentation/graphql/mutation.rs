@@ -10,7 +10,8 @@ use crate::{
 use super::object::{
     Author, AuthorMutationPayload, Book, BookMutationPayload, CreateAuthorInput, CreateBookInput,
     DeleteAuthorPayload, DeleteBookPayload, ImportBookInput, ImportBooksPayload,
-    RestoreAuthorPayload, RestoreBookPayload, UpdateAuthorInput, UpdateBookInput, User,
+    MergeAuthorPayload, RestoreAuthorPayload, RestoreBookPayload, UpdateAuthorInput,
+    UpdateBookInput, User,
 };
 
 pub struct Mutation<MUC> {
@@ -133,6 +134,29 @@ where
             .await?;
         Ok(DeleteAuthorPayload {
             author_id: ID(result.value),
+            event_set_id: ID(result.event_set_id),
+        })
+    }
+
+    async fn merge_author(
+        &self,
+        ctx: &Context<'_>,
+        source_author_id: ID,
+        destination_author_id: ID,
+    ) -> Result<MergeAuthorPayload, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let result = self
+            .mutation_use_case
+            .merge_author(
+                &claims.sub,
+                crate::use_case::dto::author::MergeAuthorInputDto {
+                    source_author_id: source_author_id.to_string(),
+                    destination_author_id: destination_author_id.to_string(),
+                },
+            )
+            .await?;
+        Ok(MergeAuthorPayload {
+            author: result.value.into(),
             event_set_id: ID(result.event_set_id),
         })
     }

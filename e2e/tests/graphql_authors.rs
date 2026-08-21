@@ -119,6 +119,48 @@ async fn e2e_graphql_authors_resolve_shared_and_empty_books() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+async fn e2e_graphql_merge_author_moves_books_and_returns_destination() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let source_id = create_test_author("Merge Source", &token).await?;
+    let destination_id = create_test_author("Merge Destination", &token).await?;
+    let book_id = create_test_book("Merged Book", &source_id, &token).await?;
+
+    let mutation = format!(
+        r#"mutation {{ mergeAuthor(sourceAuthorId: "{}", destinationAuthorId: "{}") {{ author {{ id name books {{ id }} }} eventSetId }} }}"#,
+        source_id, destination_id
+    );
+    let (_, response) = graphql_request(&mutation, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "merge author");
+    let payload = &response["data"]["mergeAuthor"];
+    assert_eq!(
+        payload["author"]["id"].as_str(),
+        Some(destination_id.as_str())
+    );
+    assert_eq!(
+        payload["author"]["books"][0]["id"].as_str(),
+        Some(book_id.as_str())
+    );
+    assert!(payload["eventSetId"].as_str().is_some());
+    assert!(payload.get("eventId").is_none());
+
+    let query = format!(
+        r#"{{ source: author(id: "{}") {{ id }} destination: author(id: "{}") {{ id books {{ id }} }} }}"#,
+        source_id, destination_id
+    );
+    let (_, response) = graphql_request(&query, Some(&token)).await?;
+    assert!(response["data"]["source"].is_null());
+    assert_eq!(
+        response["data"]["destination"]["books"][0]["id"].as_str(),
+        Some(book_id.as_str())
+    );
+
+    delete_test_book(&book_id, &token).await?;
+    delete_test_author(&destination_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn e2e_graphql_create_author() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
 

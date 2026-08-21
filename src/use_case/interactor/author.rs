@@ -6,30 +6,174 @@ use crate::{
     domain::{
         entity::{
             author::{Author, AuthorId, AuthorName, AuthorUpdate, validate_author_yomi},
-            event::EventSetOperation,
+            book::BookUpdate,
+            event::{EventSetOperation, NewAuthorEvent},
             user::UserId,
         },
         repository::{
-            author_repository::AuthorRepository,
+            author_event_repository::AuthorEventRepository,
+            author_repository::{AuthorRepository, DeleteAuthorEventExtra},
+            book_repository::BookRepository,
             transaction::{TransactionEventSet, TransactionManager},
         },
     },
     use_case::{
         dto::{
-            author::{CreateAuthorDto, UpdateAuthorDto},
+            author::{CreateAuthorDto, MergeAuthorInputDto, UpdateAuthorDto},
             mutation::{
                 AuthorMutationResultDto, DeleteAuthorResultDto, MutationResultDto,
                 SingleEventMutationResultDto,
             },
         },
         error::UseCaseError,
-        traits::author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
+        traits::author::{
+            CreateAuthorUseCase, DeleteAuthorUseCase, MergeAuthorUseCase, UpdateAuthorUseCase,
+        },
     },
 };
 
 pub struct CreateAuthorInteractor<AR, TM> {
     author_repository: AR,
     transaction_manager: TM,
+}
+
+pub struct MergeAuthorInteractor<AR, BR, AER, TM> {
+    author_repository: AR,
+    book_repository: BR,
+    author_event_repository: AER,
+    transaction_manager: TM,
+}
+
+impl<AR, BR, AER, TM> MergeAuthorInteractor<AR, BR, AER, TM> {
+    pub fn new(
+        author_repository: AR,
+        book_repository: BR,
+        author_event_repository: AER,
+        transaction_manager: TM,
+    ) -> Self {
+        Self {
+            author_repository,
+            book_repository,
+            author_event_repository,
+            transaction_manager,
+        }
+    }
+}
+
+#[async_trait]
+impl<AR, BR, AER, TM> MergeAuthorUseCase for MergeAuthorInteractor<AR, BR, AER, TM>
+where
+    TM: TransactionManager,
+    AR: AuthorRepository<Transaction = TM::Transaction>,
+    BR: BookRepository<Transaction = TM::Transaction>,
+    AER: AuthorEventRepository<Transaction = TM::Transaction>,
+{
+    async fn merge(
+        &self,
+        user_id: &str,
+        input: MergeAuthorInputDto,
+    ) -> Result<MutationResultDto<crate::use_case::dto::author::AuthorDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let source_id_text = input.source_author_id;
+        let destination_id_text = input.destination_author_id;
+        let source_id = AuthorId::try_from(source_id_text.as_str())?;
+        let destination_id = AuthorId::try_from(destination_id_text.as_str())?;
+        if source_id == destination_id {
+            return Err(UseCaseError::Validation(
+                "source and destination authors must differ".to_string(),
+            ));
+        }
+
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::MergeAuthor)
+            .await?;
+
+        let (first_id, second_id) = if source_id.to_uuid() < destination_id.to_uuid() {
+            (&source_id, &destination_id)
+        } else {
+            (&destination_id, &source_id)
+        };
+        let first = self
+            .author_repository
+            .find_by_id_with_tx(&mut tx, &user_id, first_id)
+            .await?;
+        let second = self
+            .author_repository
+            .find_by_id_with_tx(&mut tx, &user_id, second_id)
+            .await?;
+        let find_or_not_found = |author: Option<Author>, id: &str| {
+            author.ok_or_else(|| UseCaseError::NotFound {
+                entity_type: "author",
+                entity_id: id.to_string(),
+                user_id: user_id.clone().into_string(),
+            })
+        };
+        let (source_author, destination_author) = if first_id == &source_id {
+            (
+                find_or_not_found(first, &source_id_text)?,
+                find_or_not_found(second, &destination_id_text)?,
+            )
+        } else {
+            (
+                find_or_not_found(second, &source_id_text)?,
+                find_or_not_found(first, &destination_id_text)?,
+            )
+        };
+
+        let books = self
+            .book_repository
+            .find_by_author_id_with_tx(&mut tx, &user_id, &source_id)
+            .await?;
+        for mut book in books {
+            let mut author_ids: Vec<_> = book
+                .author_ids()
+                .iter()
+                .filter(|id| *id != &source_id)
+                .cloned()
+                .collect();
+            if !author_ids.contains(&destination_id) {
+                author_ids.push(destination_id.clone());
+            }
+            book.update(
+                BookUpdate {
+                    title: book.title().clone(),
+                    author_ids,
+                    isbn: book.isbn().clone(),
+                    read: book.read().clone(),
+                    owned: book.owned().clone(),
+                    priority: book.priority().clone(),
+                    format: book.format().clone(),
+                    store: book.store().clone(),
+                },
+                OffsetDateTime::now_utc(),
+            );
+            self.book_repository.update(&mut tx, &book).await?;
+        }
+
+        self.author_repository
+            .delete(
+                &mut tx,
+                source_author.id(),
+                Some(DeleteAuthorEventExtra::Merge {
+                    destination_author_id: destination_id.clone(),
+                }),
+            )
+            .await?;
+        self.author_event_repository
+            .append(
+                &mut tx,
+                &NewAuthorEvent::merge_as_destination(destination_id, source_author.id()),
+            )
+            .await?;
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        self.transaction_manager.commit(tx).await?;
+
+        Ok(MutationResultDto::new(
+            destination_author.into(),
+            event_set_id,
+        ))
+    }
 }
 
 impl<AR, TM> CreateAuthorInteractor<AR, TM> {
@@ -178,7 +322,9 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::DeleteAuthor)
             .await?;
-        self.author_repository.delete(&mut tx, &author_id).await?;
+        self.author_repository
+            .delete(&mut tx, &author_id, None)
+            .await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
 
@@ -197,16 +343,21 @@ mod tests {
             entity::author::{Author, AuthorId, AuthorName},
             error::DomainError,
             repository::{
-                author_repository::MockAuthorRepository, transaction::MockTransactionManager,
+                author_event_repository::MockAuthorEventRepository,
+                author_repository::MockAuthorRepository, book_repository::MockBookRepository,
+                transaction::MockTransactionManager,
             },
         },
         use_case::{
             dto::author::{CreateAuthorDto, UpdateAuthorDto},
             error::UseCaseError,
             interactor::author::{
-                CreateAuthorInteractor, DeleteAuthorInteractor, UpdateAuthorInteractor,
+                CreateAuthorInteractor, DeleteAuthorInteractor, MergeAuthorInteractor,
+                UpdateAuthorInteractor,
             },
-            traits::author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
+            traits::author::{
+                CreateAuthorUseCase, DeleteAuthorUseCase, MergeAuthorUseCase, UpdateAuthorUseCase,
+            },
         },
     };
 
@@ -559,8 +710,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| Ok(()));
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
 
         let interactor = DeleteAuthorInteractor::new(author_repository, make_transaction_manager());
 
@@ -579,8 +730,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| {
+            .with(always(), always(), always())
+            .returning(|_, _, _| {
                 Err(DomainError::NotFound {
                     entity_type: "author",
                     entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
@@ -605,8 +756,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always())
-            .returning(|_, _| {
+            .with(always(), always(), always())
+            .returning(|_, _, _| {
                 Err(DomainError::HasAssociatedBooks {
                     author_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                     user_id: "user1".to_string(),
@@ -649,5 +800,85 @@ mod tests {
 
         // Then
         assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn merge_author_rejects_identical_ids_before_transaction() {
+        let id = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let interactor = MergeAuthorInteractor::new(
+            MockAuthorRepository::new(),
+            MockBookRepository::new(),
+            MockAuthorEventRepository::new(),
+            MockTransactionManager::new(),
+        );
+
+        let result = interactor
+            .merge(
+                "user1",
+                crate::use_case::dto::author::MergeAuthorInputDto {
+                    source_author_id: id.to_string(),
+                    destination_author_id: id.to_string(),
+                },
+            )
+            .await;
+
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn merge_author_without_books_deletes_source_and_records_destination() {
+        let source_id = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let destination_id = "106099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let timestamp = OffsetDateTime::UNIX_EPOCH;
+        let source = Author::new(
+            AuthorId::try_from(source_id).unwrap(),
+            AuthorName::new("Source".to_string()).unwrap(),
+            timestamp,
+        )
+        .unwrap();
+        let destination = Author::new(
+            AuthorId::try_from(destination_id).unwrap(),
+            AuthorName::new("Destination".to_string()).unwrap(),
+            timestamp,
+        )
+        .unwrap();
+        let mut author_repository = MockAuthorRepository::new();
+        let mut locked = vec![source.clone(), destination.clone()].into_iter();
+        author_repository
+            .expect_find_by_id_with_tx()
+            .times(2)
+            .returning(move |_, _, _| Ok(Some(locked.next().unwrap())));
+        author_repository
+            .expect_delete()
+            .with(always(), always(), always())
+            .returning(|_, _, _| Ok(()));
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_find_by_author_id_with_tx()
+            .returning(|_, _, _| Ok(vec![]));
+        let mut event_repository = MockAuthorEventRepository::new();
+        event_repository
+            .expect_append()
+            .returning(|_, _| Ok(1.into()));
+        let interactor = MergeAuthorInteractor::new(
+            author_repository,
+            book_repository,
+            event_repository,
+            make_transaction_manager(),
+        );
+
+        let result = interactor
+            .merge(
+                "user1",
+                crate::use_case::dto::author::MergeAuthorInputDto {
+                    source_author_id: source_id.to_string(),
+                    destination_author_id: destination_id.to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.value.id, destination_id);
+        assert_eq!(result.value.name, "Destination");
     }
 }

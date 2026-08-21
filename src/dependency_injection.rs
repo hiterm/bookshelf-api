@@ -10,7 +10,10 @@ use crate::{
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
-        author::{CreateAuthorInteractor, DeleteAuthorInteractor, UpdateAuthorInteractor},
+        author::{
+            CreateAuthorInteractor, DeleteAuthorInteractor, MergeAuthorInteractor,
+            UpdateAuthorInteractor,
+        },
         book::{
             CreateBookInteractor, DeleteBookInteractor, ImportBooksInteractor, UpdateBookInteractor,
         },
@@ -38,6 +41,12 @@ pub type MI = MutationInteractor<
     CreateAuthorInteractor<PgAuthorRepository, PgTransactionManager>,
     UpdateAuthorInteractor<PgAuthorRepository, PgTransactionManager>,
     DeleteAuthorInteractor<PgAuthorRepository, PgTransactionManager>,
+    MergeAuthorInteractor<
+        PgAuthorRepository,
+        PgBookRepository,
+        PgAuthorEventRepository,
+        PgTransactionManager,
+    >,
     RestoreBookInteractor<PgBookRepository, PgBookEventRepository, PgTransactionManager>,
     RestoreAuthorInteractor<PgAuthorRepository, PgAuthorEventRepository, PgTransactionManager>,
     ImportBooksInteractor<PgBookRepository, PgAuthorRepository, PgTransactionManager>,
@@ -75,6 +84,12 @@ pub fn dependency_injection(
         UpdateAuthorInteractor::new(author_repository.clone(), transaction_manager.clone());
     let delete_author_use_case =
         DeleteAuthorInteractor::new(author_repository.clone(), transaction_manager.clone());
+    let merge_author_use_case = MergeAuthorInteractor::new(
+        author_repository.clone(),
+        book_repository.clone(),
+        author_event_repository.clone(),
+        transaction_manager.clone(),
+    );
     let import_books_use_case = ImportBooksInteractor::new(
         book_repository.clone(),
         author_repository.clone(),
@@ -99,6 +114,7 @@ pub fn dependency_injection(
         create_author_use_case,
         update_author_use_case,
         delete_author_use_case,
+        merge_author_use_case,
         restore_book_use_case,
         restore_author_use_case,
         import_books_use_case,

@@ -341,6 +341,40 @@ impl BookRepository for PgBookRepository {
         Ok(books_by_author)
     }
 
+    async fn find_by_author_id_with_tx(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        author_id: &AuthorId,
+    ) -> Result<Vec<Book>, DomainError> {
+        let rows: Vec<BookRow> = sqlx::query_as(
+            "WITH authors_of_book_and_user AS (
+                SELECT book_id, array_agg(author_id) AS author_ids
+                FROM book_author
+                WHERE user_id = $1
+                GROUP BY book_id
+            )
+            SELECT book.id, book.title, authors.author_ids, book.isbn, book.read,
+                   book.owned, book.priority, book.format, book.store,
+                   book.created_at, book.updated_at
+            FROM book
+            JOIN authors_of_book_and_user authors ON authors.book_id = book.id
+            WHERE book.user_id = $1
+              AND EXISTS (
+                  SELECT 1 FROM book_author requested
+                  WHERE requested.user_id = $1
+                    AND requested.book_id = book.id
+                    AND requested.author_id = $2
+              )",
+        )
+        .bind(user_id.as_str())
+        .bind(author_id.to_uuid())
+        .fetch_all(tx.as_mut())
+        .await?;
+
+        rows.into_iter().map(book_from_row).collect()
+    }
+
     async fn update(
         &self,
         tx: &mut Self::Transaction,

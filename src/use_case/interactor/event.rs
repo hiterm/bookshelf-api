@@ -195,6 +195,9 @@ where
                 self.transaction_manager.commit(tx).await?;
                 Ok(MutationResultDto::new(None, event_set_id))
             }
+            EventOperation::MergeAsDestination => Err(UseCaseError::Validation(
+                "merge_as_destination events cannot be restored".to_string(),
+            )),
         }
     }
 }
@@ -293,6 +296,9 @@ where
                 self.transaction_manager.commit(tx).await?;
                 Ok(MutationResultDto::new(None, event_set_id))
             }
+            EventOperation::MergeAsDestination => Err(UseCaseError::Validation(
+                "merge_as_destination events cannot be restored".to_string(),
+            )),
         }
     }
 }

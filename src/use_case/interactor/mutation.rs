@@ -2,18 +2,20 @@ use async_trait::async_trait;
 
 use crate::use_case::{
     dto::{
-        author::{CreateAuthorDto, UpdateAuthorDto},
+        author::{AuthorDto, CreateAuthorDto, MergeAuthorInputDto, UpdateAuthorDto},
         book::{CreateBookDto, ImportBookEntryDto, UpdateBookDto},
         mutation::{
             AuthorMutationResultDto, BookMutationResultDto, DeleteAuthorResultDto,
-            DeleteBookResultDto, ImportBooksResultDto, RestoreAuthorResultDto,
+            DeleteBookResultDto, ImportBooksResultDto, MutationResultDto, RestoreAuthorResultDto,
             RestoreBookResultDto,
         },
         user::UserDto,
     },
     error::UseCaseError,
     traits::{
-        author::{CreateAuthorUseCase, DeleteAuthorUseCase, UpdateAuthorUseCase},
+        author::{
+            CreateAuthorUseCase, DeleteAuthorUseCase, MergeAuthorUseCase, UpdateAuthorUseCase,
+        },
         book::{CreateBookUseCase, DeleteBookUseCase, ImportBooksUseCase, UpdateBookUseCase},
         event::{RestoreAuthorUseCase, RestoreBookUseCase},
         mutation::MutationUseCase,
@@ -21,7 +23,7 @@ use crate::use_case::{
     },
 };
 
-pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC> {
+pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, MAUC, RBUC, RAUC, IBUC> {
     register_user_use_case: RUUC,
     create_book_use_case: CBUC,
     update_book_use_case: UBUC,
@@ -29,13 +31,14 @@ pub struct MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RA
     create_author_use_case: CAUC,
     update_author_use_case: UAUC,
     delete_author_use_case: DAUC,
+    merge_author_use_case: MAUC,
     restore_book_use_case: RBUC,
     restore_author_use_case: RAUC,
     import_books_use_case: IBUC,
 }
 
-impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
-    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, MAUC, RBUC, RAUC, IBUC>
+    MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, MAUC, RBUC, RAUC, IBUC>
 {
     // This constructor takes many arguments because MutationInteractor composes all
     // mutation use cases via dependency injection. Splitting it would reduce clarity
@@ -49,6 +52,7 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
         create_author_use_case: CAUC,
         update_author_use_case: UAUC,
         delete_author_use_case: DAUC,
+        merge_author_use_case: MAUC,
         restore_book_use_case: RBUC,
         restore_author_use_case: RAUC,
         import_books_use_case: IBUC,
@@ -61,6 +65,7 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
             create_author_use_case,
             update_author_use_case,
             delete_author_use_case,
+            merge_author_use_case,
             restore_book_use_case,
             restore_author_use_case,
             import_books_use_case,
@@ -69,8 +74,8 @@ impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
 }
 
 #[async_trait]
-impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC> MutationUseCase
-    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, RBUC, RAUC, IBUC>
+impl<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, MAUC, RBUC, RAUC, IBUC> MutationUseCase
+    for MutationInteractor<RUUC, CBUC, UBUC, DBUC, CAUC, UAUC, DAUC, MAUC, RBUC, RAUC, IBUC>
 where
     RUUC: RegisterUserUseCase,
     CBUC: CreateBookUseCase,
@@ -79,6 +84,7 @@ where
     CAUC: CreateAuthorUseCase,
     UAUC: UpdateAuthorUseCase,
     DAUC: DeleteAuthorUseCase,
+    MAUC: MergeAuthorUseCase,
     RBUC: RestoreBookUseCase,
     RAUC: RestoreAuthorUseCase,
     IBUC: ImportBooksUseCase,
@@ -151,6 +157,14 @@ where
         Ok(result)
     }
 
+    async fn merge_author(
+        &self,
+        user_id: &str,
+        input: MergeAuthorInputDto,
+    ) -> Result<MutationResultDto<AuthorDto>, UseCaseError> {
+        self.merge_author_use_case.merge(user_id, input).await
+    }
+
     async fn restore_book(
         &self,
         user_id: &str,
@@ -193,7 +207,10 @@ mod tests {
         },
         interactor::mutation::MutationInteractor,
         traits::{
-            author::{MockCreateAuthorUseCase, MockDeleteAuthorUseCase, MockUpdateAuthorUseCase},
+            author::{
+                MockCreateAuthorUseCase, MockDeleteAuthorUseCase, MockMergeAuthorUseCase,
+                MockUpdateAuthorUseCase,
+            },
             book::{
                 MockCreateBookUseCase, MockDeleteBookUseCase, MockImportBooksUseCase,
                 MockUpdateBookUseCase,
@@ -214,6 +231,7 @@ mod tests {
         MockCreateAuthorUseCase,
         MockUpdateAuthorUseCase,
         MockDeleteAuthorUseCase,
+        MockMergeAuthorUseCase,
         MockRestoreBookUseCase,
         MockRestoreAuthorUseCase,
         MockImportBooksUseCase,
@@ -227,6 +245,7 @@ mod tests {
         create_author: MockCreateAuthorUseCase,
         update_author: MockUpdateAuthorUseCase,
         delete_author: MockDeleteAuthorUseCase,
+        merge_author: MockMergeAuthorUseCase,
         restore_book: MockRestoreBookUseCase,
         restore_author: MockRestoreAuthorUseCase,
         import_books: MockImportBooksUseCase,
@@ -242,6 +261,7 @@ mod tests {
                 create_author: MockCreateAuthorUseCase::new(),
                 update_author: MockUpdateAuthorUseCase::new(),
                 delete_author: MockDeleteAuthorUseCase::new(),
+                merge_author: MockMergeAuthorUseCase::new(),
                 restore_book: MockRestoreBookUseCase::new(),
                 restore_author: MockRestoreAuthorUseCase::new(),
                 import_books: MockImportBooksUseCase::new(),
@@ -307,6 +327,7 @@ mod tests {
                 self.create_author,
                 self.update_author,
                 self.delete_author,
+                self.merge_author,
                 self.restore_book,
                 self.restore_author,
                 self.import_books,

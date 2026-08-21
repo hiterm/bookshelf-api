@@ -14,7 +14,7 @@ use crate::domain::{
         user::UserId,
     },
     error::DomainError,
-    repository::author_repository::AuthorRepository,
+    repository::author_repository::{AuthorRepository, DeleteAuthorEventExtra},
 };
 use crate::infrastructure::transaction::PgTransaction;
 
@@ -283,6 +283,7 @@ impl AuthorRepository for PgAuthorRepository {
         &self,
         tx: &mut Self::Transaction,
         author_id: &AuthorId,
+        extra: Option<DeleteAuthorEventExtra>,
     ) -> Result<(), DomainError> {
         let user_id = tx.user_id().clone();
         // Lock the author row to prevent concurrent inserts into book_author after the count check.
@@ -338,13 +339,23 @@ impl AuthorRepository for PgAuthorRepository {
             }
         }
 
+        let extra = extra.map(|extra| match extra {
+            DeleteAuthorEventExtra::Merge {
+                destination_author_id,
+            } => json!({
+                "type": "merge",
+                "version": 1,
+                "destination_author_id": destination_author_id.to_string(),
+            }),
+        });
         sqlx::query(
-            "INSERT INTO author_event (event_set_id, operation, author_id, user_id)
-             VALUES ($1, 'delete', $2, $3)",
+            "INSERT INTO author_event (event_set_id, operation, author_id, user_id, extra)
+             VALUES ($1, 'delete', $2, $3, $4)",
         )
         .bind(tx.event_set_id())
         .bind(author_id.to_uuid())
         .bind(user_id.as_str())
+        .bind(extra)
         .execute(tx.as_mut())
         .await?;
 
@@ -600,7 +611,7 @@ mod tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::DeleteAuthor).await?;
-        author_repository.delete(&mut tx, author_id).await?;
+        author_repository.delete(&mut tx, author_id, None).await?;
         tm.commit(tx).await
     }
 
