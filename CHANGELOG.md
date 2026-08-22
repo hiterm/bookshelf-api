@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.13.0](https://github.com/hiterm/bookshelf-api/compare/2.12.0...2.13.0) - 2026-08-22
+
+### Other Changes
+- Update Rust crate serial_test to v4 by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/297
+- Update Rust crate validator to 0.21.0 by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/298
+- Update postgres:latest Docker digest to 3a82e1f by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/273
+- Update github-actions non-major by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/272
+- Update cargo non-major by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/268
+- Add GraphQL author merge mutation by @hiterm in https://github.com/hiterm/bookshelf-api/pull/306
+
 ## [2.12.0](https://github.com/hiterm/bookshelf-api/compare/2.11.1...2.12.0) - 2026-08-16
 
 ### Other Changes
