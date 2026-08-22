@@ -171,6 +171,11 @@ A scalar that can represent any JSON value.
 """
 scalar JSON
 
+type MergeAuthorPayload {
+	author: Author!
+	eventSetId: ID!
+}
+
 type Mutation {
 	registerUser: User!
 	createBook(bookData: CreateBookInput!): BookMutationPayload!
@@ -179,6 +184,7 @@ type Mutation {
 	createAuthor(authorData: CreateAuthorInput!): AuthorMutationPayload!
 	updateAuthor(authorData: UpdateAuthorInput!): AuthorMutationPayload!
 	deleteAuthor(authorId: ID!): DeleteAuthorPayload!
+	mergeAuthor(sourceAuthorId: ID!, destinationAuthorId: ID!): MergeAuthorPayload!
 	restoreBook(eventId: ID!): RestoreBookPayload!
 	restoreAuthor(eventId: ID!): RestoreAuthorPayload!
 	"""

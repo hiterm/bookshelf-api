@@ -7,13 +7,14 @@ use uuid::Uuid;
 use crate::domain::{
     entity::{
         author::AuthorId,
-        event::{AuthorEvent, EventOperation},
+        event::{AuthorEvent, EventId, EventOperation, NewAuthorEvent},
         event_set::EventSetId,
         user::UserId,
     },
     error::DomainError,
     repository::author_event_repository::AuthorEventRepository,
 };
+use crate::infrastructure::transaction::PgTransaction;
 
 #[derive(sqlx::FromRow)]
 struct AuthorEventRow {
@@ -60,6 +61,36 @@ impl PgAuthorEventRepository {
 
 #[async_trait]
 impl AuthorEventRepository for PgAuthorEventRepository {
+    type Transaction = PgTransaction;
+
+    async fn append(
+        &self,
+        tx: &mut Self::Transaction,
+        event: &NewAuthorEvent,
+    ) -> Result<EventId, DomainError> {
+        let user_id = tx.user_id().clone();
+        let (event_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO author_event
+               (event_set_id, operation, author_id, user_id, name, yomi,
+                author_created_at, author_updated_at, extra)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING event_id",
+        )
+        .bind(tx.event_set_id())
+        .bind(event.operation.as_str())
+        .bind(event.author_id.to_uuid())
+        .bind(user_id.as_str())
+        .bind(&event.name)
+        .bind(&event.yomi)
+        .bind(event.author_created_at)
+        .bind(event.author_updated_at)
+        .bind(&event.extra)
+        .fetch_one(tx.as_mut())
+        .await?;
+
+        Ok(EventId::from(event_id))
+    }
+
     async fn find_by_author(
         &self,
         user_id: &UserId,

@@ -236,7 +236,24 @@ impl BookRepository for PgBookRepository {
         user_id: &UserId,
         book_id: &BookId,
     ) -> Result<Option<Book>, DomainError> {
-        find_book_by_id_with_executor(tx.as_mut(), user_id, book_id).await
+        let row: Option<BookRow> = sqlx::query_as(
+            "SELECT book.id, book.title,
+                    (SELECT array_agg(book_author.author_id)
+                     FROM book_author
+                     WHERE book_author.user_id = book.user_id
+                       AND book_author.book_id = book.id) AS author_ids,
+                    book.isbn, book.read, book.owned, book.priority, book.format,
+                    book.store, book.created_at, book.updated_at
+             FROM book
+             WHERE book.user_id = $1 AND book.id = $2
+             FOR UPDATE OF book",
+        )
+        .bind(user_id.as_str())
+        .bind(book_id.to_uuid())
+        .fetch_optional(tx.as_mut())
+        .await?;
+
+        row.map(book_from_row).transpose()
     }
 
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
@@ -339,6 +356,64 @@ impl BookRepository for PgBookRepository {
         }
 
         Ok(books_by_author)
+    }
+
+    async fn find_by_author_id_with_tx(
+        &self,
+        tx: &mut Self::Transaction,
+        user_id: &UserId,
+        author_id: &AuthorId,
+    ) -> Result<Vec<Book>, DomainError> {
+        // Acquire all Book locks first. Reading book_author in a later statement
+        // gives Read Committed a fresh snapshot after any lock wait completes.
+        let locked_book_ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT book.id
+             FROM book
+             WHERE book.user_id = $1
+               AND EXISTS (
+                   SELECT 1 FROM book_author requested
+                   WHERE requested.user_id = $1
+                     AND requested.book_id = book.id
+                     AND requested.author_id = $2
+               )
+             ORDER BY book.id
+             FOR UPDATE OF book",
+        )
+        .bind(user_id.as_str())
+        .bind(author_id.to_uuid())
+        .fetch_all(tx.as_mut())
+        .await?;
+
+        if locked_book_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let rows: Vec<BookRow> = sqlx::query_as(
+            "SELECT book.id, book.title,
+                    (SELECT array_agg(book_author.author_id)
+                     FROM book_author
+                     WHERE book_author.user_id = book.user_id
+                       AND book_author.book_id = book.id) AS author_ids,
+                   book.isbn, book.read, book.owned, book.priority, book.format,
+                   book.store, book.created_at, book.updated_at
+            FROM book
+            WHERE book.user_id = $1
+              AND book.id = ANY($3)
+              AND EXISTS (
+                  SELECT 1 FROM book_author requested
+                  WHERE requested.user_id = $1
+                    AND requested.book_id = book.id
+                    AND requested.author_id = $2
+              )
+            ORDER BY book.id",
+        )
+        .bind(user_id.as_str())
+        .bind(author_id.to_uuid())
+        .bind(&locked_book_ids)
+        .fetch_all(tx.as_mut())
+        .await?;
+
+        rows.into_iter().map(book_from_row).collect()
     }
 
     async fn update(
@@ -877,6 +952,64 @@ mod tests {
         );
         assert_eq!(result[&user1_author_ids[1]], vec![shared_book]);
         assert!(result[&empty_author_id].is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_author_id_with_tx_returns_fresh_scoped_books_in_id_order(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+        let user1_author_ids = prepare_authors1(&pool, &user1_id, &author_repository).await?;
+        let user2_author_ids = prepare_authors1(&pool, &user2_id, &author_repository).await?;
+
+        let user1_book1 = book_entity1(&user1_author_ids)?;
+        let user1_book2 = book_entity2(&user1_author_ids[..1])?;
+        let user2_book_template = book_entity1(&user2_author_ids)?.destructure();
+        let user2_book = Book::new(
+            BookId::new(Uuid::new_v4())?,
+            user2_book_template.title,
+            user2_book_template.author_ids,
+            user2_book_template.isbn,
+            user2_book_template.read,
+            user2_book_template.owned,
+            user2_book_template.priority,
+            user2_book_template.format,
+            user2_book_template.store,
+            user2_book_template.created_at,
+            user2_book_template.updated_at,
+        )?;
+        create_book(&pool, &book_repository, &user1_id, &user1_book1).await?;
+        create_book(&pool, &book_repository, &user1_id, &user1_book2).await?;
+        create_book(&pool, &book_repository, &user2_id, &user2_book).await?;
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user1_id, EventSetOperation::MergeAuthor).await?;
+        let books = book_repository
+            .find_by_author_id_with_tx(&mut tx, &user1_id, &user1_author_ids[0])
+            .await?;
+
+        assert_eq!(books.len(), 2);
+        assert!(
+            books
+                .windows(2)
+                .all(|books| { books[0].id().to_uuid() < books[1].id().to_uuid() })
+        );
+        assert!(books.iter().all(|book| {
+            book.author_ids().contains(&user1_author_ids[0]) && book.id() != user2_book.id()
+        }));
+        let shared = books
+            .iter()
+            .find(|book| book.id() == user1_book1.id())
+            .expect("shared user1 book should be returned");
+        assert_eq!(shared.author_ids().len(), 2);
+        assert!(shared.author_ids().contains(&user1_author_ids[1]));
+        tm.commit(tx).await?;
 
         Ok(())
     }

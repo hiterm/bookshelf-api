@@ -13,6 +13,11 @@ use crate::domain::{
     error::DomainError,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeleteAuthorEventExtra {
+    Merge { destination_author_id: AuthorId },
+}
+
 #[automock(type Transaction = ();)]
 #[async_trait]
 pub trait AuthorRepository: Send + Sync + 'static {
@@ -57,6 +62,7 @@ pub trait AuthorRepository: Send + Sync + 'static {
         &self,
         tx: &mut Self::Transaction,
         author_id: &AuthorId,
+        extra: Option<DeleteAuthorEventExtra>,
     ) -> Result<(), DomainError>;
     // Upserts or deletes the entity and records a restore event in one transaction.
     // author=Some means upsert; author=None means delete (only author_id is used).

@@ -46,6 +46,11 @@ pub struct UpdateAuthorDto {
     pub yomi: Option<String>,
 }
 
+pub struct MergeAuthorInputDto {
+    pub source_author_id: String,
+    pub destination_author_id: String,
+}
+
 impl UpdateAuthorDto {
     pub fn new(id: String, name: String) -> Self {
         Self {

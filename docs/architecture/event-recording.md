@@ -11,6 +11,10 @@ Every `create`, `update`, `delete`, and `restore` operation on any entity
 records an event inside the same database transaction. This applies to
 existing entities (`Book`, `Author`) and any new entity added in the future.
 
+An event `extra` object always contains a numeric `version`. If it contains a
+`type`, that version describes the schema for that type; otherwise it describes
+the extra schema for the event operation itself.
+
 ## Transaction boundary (use-case layer)
 
 The transaction boundary is owned by the use-case layer via the
@@ -58,6 +62,12 @@ in particular, an import can record multiple Book and Author events under one
   reads `tx.event_set_id()` for event recording, and inserts the per-event
   `<entity>_event` rows. Domain repository traits expose only an associated
   `Transaction` type; they carry no other event knowledge.
+
+Normally the entity repository records an event while changing entity state.
+When an entity participates in a logical operation without changing state, a
+transaction-aware event repository write may record that participation. It
+must receive the transaction opened by the use case, derive `user_id` and
+`event_set_id` from it, and must not open another transaction or event set.
 
 ## Adding a new entity or mutation operation
 

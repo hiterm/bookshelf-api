@@ -38,6 +38,7 @@ pub enum EventOperation {
     Delete,
     Restore,
     Snapshot,
+    MergeAsDestination,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +53,7 @@ pub enum EventSetOperation {
     RestoreAuthor,
     ImportBooks,
     SnapshotAll,
+    MergeAuthor,
 }
 
 impl EventSetOperation {
@@ -67,6 +69,7 @@ impl EventSetOperation {
             EventSetOperation::RestoreAuthor => "restore_author",
             EventSetOperation::ImportBooks => "import_books",
             EventSetOperation::SnapshotAll => "snapshot_all",
+            EventSetOperation::MergeAuthor => "merge_author",
         }
     }
 }
@@ -86,6 +89,7 @@ impl TryFrom<&str> for EventSetOperation {
             "restore_author" => Ok(EventSetOperation::RestoreAuthor),
             "import_books" => Ok(EventSetOperation::ImportBooks),
             "snapshot_all" => Ok(EventSetOperation::SnapshotAll),
+            "merge_author" => Ok(EventSetOperation::MergeAuthor),
             _ => Err(format!("Unknown event set operation: {}", value)),
         }
     }
@@ -99,6 +103,7 @@ impl EventOperation {
             EventOperation::Delete => "delete",
             EventOperation::Restore => "restore",
             EventOperation::Snapshot => "snapshot",
+            EventOperation::MergeAsDestination => "merge_as_destination",
         }
     }
 }
@@ -113,6 +118,7 @@ impl TryFrom<&str> for EventOperation {
             "delete" => Ok(EventOperation::Delete),
             "restore" => Ok(EventOperation::Restore),
             "snapshot" => Ok(EventOperation::Snapshot),
+            "merge_as_destination" => Ok(EventOperation::MergeAsDestination),
             _ => Err(format!("Unknown event operation: {}", value)),
         }
     }
@@ -138,6 +144,7 @@ mod tests {
             EventOperation::Delete,
             EventOperation::Restore,
             EventOperation::Snapshot,
+            EventOperation::MergeAsDestination,
         ];
         for variant in &variants {
             let s = variant.as_str();
@@ -163,6 +170,7 @@ mod tests {
         assert_eq!(EventSetOperation::RestoreAuthor.as_str(), "restore_author");
         assert_eq!(EventSetOperation::ImportBooks.as_str(), "import_books");
         assert_eq!(EventSetOperation::SnapshotAll.as_str(), "snapshot_all");
+        assert_eq!(EventSetOperation::MergeAuthor.as_str(), "merge_author");
     }
 
     #[test]
@@ -178,6 +186,7 @@ mod tests {
             EventSetOperation::RestoreAuthor,
             EventSetOperation::ImportBooks,
             EventSetOperation::SnapshotAll,
+            EventSetOperation::MergeAuthor,
         ];
         for variant in &variants {
             let s = variant.as_str();
@@ -228,4 +237,32 @@ pub struct AuthorEvent {
     pub changed_at: OffsetDateTime,
     // Operation-specific extra data (e.g. source_event_id for restore)
     pub extra: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewAuthorEvent {
+    pub operation: EventOperation,
+    pub author_id: AuthorId,
+    pub name: Option<String>,
+    pub yomi: Option<String>,
+    pub author_created_at: Option<OffsetDateTime>,
+    pub author_updated_at: Option<OffsetDateTime>,
+    pub extra: Option<Value>,
+}
+
+impl NewAuthorEvent {
+    pub fn merge_as_destination(author_id: AuthorId, source_author_id: &AuthorId) -> Self {
+        Self {
+            operation: EventOperation::MergeAsDestination,
+            author_id,
+            name: None,
+            yomi: None,
+            author_created_at: None,
+            author_updated_at: None,
+            extra: Some(serde_json::json!({
+                "version": 1,
+                "source_author_id": source_author_id.to_string(),
+            })),
+        }
+    }
 }

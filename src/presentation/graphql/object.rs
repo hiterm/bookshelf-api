@@ -504,6 +504,12 @@ pub struct AuthorMutationPayload {
     pub event_id: ID,
 }
 
+#[derive(SimpleObject)]
+pub struct MergeAuthorPayload {
+    pub author: Author,
+    pub event_set_id: ID,
+}
+
 impl AuthorMutationPayload {
     pub fn new(author: Author, event_set_id: ID, event_id: ID) -> Self {
         Self {

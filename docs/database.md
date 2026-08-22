@@ -26,6 +26,7 @@ Lookup table for valid `event_set.operation` values.
 | `restore_author`| An author restore was performed                  |
 | `import_books`  | A bulk import of books was performed             |
 | `snapshot_all`  | A point-in-time snapshot of all entities (system)|
+| `merge_author`  | One author was merged into another               |
 
 ### `event_set`
 
@@ -53,6 +54,7 @@ Lookup table for valid per-event `operation` values.
 | `delete`   | Entity was deleted; only id stored, data fields are NULL     |
 | `restore`  | Entity state was restored; data fields populated, `extra` set|
 | `snapshot` | Point-in-time capture; all data fields populated             |
+| `merge_as_destination` | Unchanged author participated as merge destination |
 
 ### `book_event`
 
@@ -126,7 +128,11 @@ evolution without breaking existing consumers.
 
 ### All other operations
 
-`extra` is `NULL` for `create`, `update`, `delete`, and `snapshot` events.
+`extra` is normally `NULL` for `create`, `update`, `delete`, and `snapshot`
+events. A merge source uses a `delete` event with
+`{"type":"merge","version":1,"destination_author_id":"<uuid>"}`. The
+unchanged destination uses `merge_as_destination` with
+`{"version":1,"source_author_id":"<uuid>"}`; its snapshot columns are NULL.
 
 ## Version History
 
