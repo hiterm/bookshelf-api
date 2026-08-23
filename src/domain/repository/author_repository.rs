@@ -53,6 +53,12 @@ pub trait AuthorRepository: Send + Sync + 'static {
         name: &AuthorName,
         created_at: OffsetDateTime,
     ) -> Result<AuthorId, DomainError>;
+    async fn find_or_create_by_names(
+        &self,
+        tx: &mut Self::Transaction,
+        names: &[AuthorName],
+        created_at: OffsetDateTime,
+    ) -> Result<HashMap<String, AuthorId>, DomainError>;
     async fn update(
         &self,
         tx: &mut Self::Transaction,

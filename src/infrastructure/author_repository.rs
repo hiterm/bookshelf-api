@@ -45,6 +45,15 @@ struct AuthorIdSnapshotRow {
     updated_at: OffsetDateTime,
 }
 
+#[derive(sqlx::FromRow)]
+struct BulkAuthorRow {
+    id: Uuid,
+    name: String,
+    yomi: String,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone)]
 pub struct PgAuthorRepository {
     pool: PgPool,
@@ -164,6 +173,85 @@ impl AuthorRepository for PgAuthorRepository {
         }
 
         Ok(author_id)
+    }
+
+    async fn find_or_create_by_names(
+        &self,
+        tx: &mut Self::Transaction,
+        names: &[AuthorName],
+        created_at: OffsetDateTime,
+    ) -> Result<HashMap<String, AuthorId>, DomainError> {
+        if names.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let user_id = tx.user_id().clone();
+        let ids: Vec<Uuid> = names.iter().map(|_| Uuid::new_v4()).collect();
+        let names: Vec<&str> = names.iter().map(AuthorName::as_str).collect();
+        let created: Vec<BulkAuthorRow> = sqlx::query_as(
+            "INSERT INTO author (id, user_id, name, created_at, updated_at)
+             SELECT id, $1, name, $2, $2
+             FROM UNNEST($3::uuid[], $4::text[]) AS input(id, name)
+             ON CONFLICT (user_id, name) DO NOTHING
+             RETURNING id, name, yomi, created_at, updated_at",
+        )
+        .bind(user_id.as_str())
+        .bind(created_at)
+        .bind(&ids)
+        .bind(&names)
+        .fetch_all(tx.as_mut())
+        .await?;
+
+        if !created.is_empty() {
+            let author_ids: Vec<Uuid> = created.iter().map(|author| author.id).collect();
+            let event_names: Vec<&str> =
+                created.iter().map(|author| author.name.as_str()).collect();
+            let yomis: Vec<&str> = created.iter().map(|author| author.yomi.as_str()).collect();
+            let created_ats: Vec<OffsetDateTime> =
+                created.iter().map(|author| author.created_at).collect();
+            let updated_ats: Vec<OffsetDateTime> =
+                created.iter().map(|author| author.updated_at).collect();
+
+            sqlx::query(
+                "INSERT INTO author_event
+                   (event_set_id, operation, author_id, user_id, name, yomi,
+                    author_created_at, author_updated_at)
+                 SELECT $1, 'create', author_id, $2, name, yomi, created_at, updated_at
+                 FROM UNNEST(
+                   $3::uuid[], $4::text[], $5::text[], $6::timestamptz[], $7::timestamptz[]
+                 ) AS input(author_id, name, yomi, created_at, updated_at)",
+            )
+            .bind(tx.event_set_id())
+            .bind(user_id.as_str())
+            .bind(&author_ids)
+            .bind(&event_names)
+            .bind(&yomis)
+            .bind(&created_ats)
+            .bind(&updated_ats)
+            .execute(tx.as_mut())
+            .await?;
+        }
+
+        let resolved: Vec<(Uuid, String)> = sqlx::query_as(
+            "SELECT id, name FROM author WHERE user_id = $1 AND name = ANY($2::text[])",
+        )
+        .bind(user_id.as_str())
+        .bind(&names)
+        .fetch_all(tx.as_mut())
+        .await?;
+
+        if resolved.len() != names.len() {
+            return Err(DomainError::Unexpected(format!(
+                "resolved {} authors for {} unique names",
+                resolved.len(),
+                names.len()
+            )));
+        }
+
+        Ok(resolved
+            .into_iter()
+            .map(|(id, name)| (name, AuthorId::new(id)))
+            .collect())
     }
 
     async fn find_by_id(
