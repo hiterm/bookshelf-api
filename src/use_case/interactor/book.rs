@@ -313,28 +313,23 @@ where
             .collect();
         let inputs = inputs?;
 
+        let mut seen_author_names = HashSet::new();
+        let unique_author_names: Vec<AuthorName> = inputs
+            .iter()
+            .flat_map(|input| input.author_names.iter())
+            .filter(|name| seen_author_names.insert(name.as_str().to_owned()))
+            .cloned()
+            .collect();
+
         let mut tx = self
             .transaction_manager
             .begin(&user_id, EventSetOperation::ImportBooks)
             .await?;
 
-        // Resolve every unique author name to an id within the shared
-        // transaction. Deduplication (formerly inside the import repository)
-        // lives here as a name -> AuthorId map.
-        let mut name_to_id: HashMap<String, AuthorId> = HashMap::new();
-        for input in &inputs {
-            for author_name in &input.author_names {
-                let key = author_name.as_str().to_owned();
-                if name_to_id.contains_key(&key) {
-                    continue;
-                }
-                let author_id = self
-                    .author_repository
-                    .find_or_create_by_name(&mut tx, author_name, now)
-                    .await?;
-                name_to_id.insert(key, author_id);
-            }
-        }
+        let name_to_id = self
+            .author_repository
+            .find_or_create_by_names(&mut tx, &unique_author_names, now)
+            .await?;
 
         let mut result_books = Vec::with_capacity(inputs.len());
         for input in inputs {
@@ -370,9 +365,12 @@ where
                 input.updated_at,
             )?;
 
-            let _event_id = self.book_repository.create(&mut tx, &book).await?;
             result_books.push(book);
         }
+
+        self.book_repository
+            .create_all(&mut tx, &result_books)
+            .await?;
 
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
@@ -1043,17 +1041,23 @@ mod tests {
 
     #[tokio::test]
     async fn import_books_at_max_batch_succeeds() {
-        // Given: MAX_BOOK_BATCH books with no authors. Each book is created;
-        // the author repository is never called.
+        // Given: MAX_BOOK_BATCH books with no authors use one bulk call.
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_or_create_by_names()
+            .withf(|_, names, _| names.is_empty())
+            .times(1)
+            .returning(|_, _, _| Ok(HashMap::new()));
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_create()
-            .times(super::MAX_BOOK_BATCH)
-            .returning(|_, _| Ok(1.into()));
+            .expect_create_all()
+            .withf(|_, books| books.len() == super::MAX_BOOK_BATCH)
+            .times(1)
+            .returning(|_, _| Ok(()));
 
         let interactor = ImportBooksTestCommand::build(
             book_repository,
-            MockAuthorRepository::new(),
+            author_repository,
             make_transaction_manager(),
         );
         let books = vec![import_entry("Book", vec![]); super::MAX_BOOK_BATCH];
@@ -1090,23 +1094,27 @@ mod tests {
     async fn import_books_with_author_names() {
         // Given: two books, each with one distinct author. Authors are
         // resolved once each; both books are created.
-        let author_uuid = Uuid::new_v4();
         let author_times = Arc::new(Mutex::new(Vec::new()));
         let captured_author_times = Arc::clone(&author_times);
         let mut author_repository = MockAuthorRepository::new();
         author_repository
-            .expect_find_or_create_by_name()
-            .times(2)
-            .returning(move |_, _, created_at| {
+            .expect_find_or_create_by_names()
+            .withf(|_, names, _| names.len() == 2)
+            .times(1)
+            .returning(move |_, names, created_at| {
                 captured_author_times.lock().unwrap().push(created_at);
-                Ok(AuthorId::new(author_uuid))
+                Ok(names
+                    .iter()
+                    .map(|name| (name.as_str().to_owned(), AuthorId::new(Uuid::new_v4())))
+                    .collect())
             });
 
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_create()
-            .times(2)
-            .returning(|_, _| Ok(1.into()));
+            .expect_create_all()
+            .withf(|_, books| books.len() == 2)
+            .times(1)
+            .returning(|_, _| Ok(()));
 
         let interactor = ImportBooksTestCommand::build(
             book_repository,
@@ -1129,7 +1137,6 @@ mod tests {
         assert_eq!(dtos[1].created_at, dtos[1].updated_at);
         assert_eq!(dtos[0].created_at, dtos[1].created_at);
         let author_times = author_times.lock().unwrap();
-        assert_eq!(author_times[0], author_times[1]);
         assert_eq!(
             normalize_timestamp_for_persistence(author_times[0]),
             dtos[0].created_at
@@ -1144,16 +1151,22 @@ mod tests {
         let author_uuid = Uuid::new_v4();
         let mut author_repository = MockAuthorRepository::new();
         author_repository
-            .expect_find_or_create_by_name()
+            .expect_find_or_create_by_names()
+            .withf(|_, names, _| names.len() == 1)
             .times(1)
-            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
+            .returning(move |_, names, _| {
+                Ok(HashMap::from([(
+                    names[0].as_str().to_owned(),
+                    AuthorId::new(author_uuid),
+                )]))
+            });
 
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_create()
-            .withf(|_, book| book.author_ids().len() == 1)
+            .expect_create_all()
+            .withf(|_, books| books.len() == 1 && books[0].author_ids().len() == 1)
             .times(1)
-            .returning(|_, _| Ok(1.into()));
+            .returning(|_, _| Ok(()));
 
         let interactor = ImportBooksTestCommand::build(
             book_repository,
@@ -1177,13 +1190,18 @@ mod tests {
         let author_uuid = Uuid::new_v4();
         let mut author_repository = MockAuthorRepository::new();
         author_repository
-            .expect_find_or_create_by_name()
+            .expect_find_or_create_by_names()
             .times(1)
-            .returning(move |_, _, _| Ok(AuthorId::new(author_uuid)));
+            .returning(move |_, names, _| {
+                Ok(HashMap::from([(
+                    names[0].as_str().to_owned(),
+                    AuthorId::new(author_uuid),
+                )]))
+            });
 
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_create()
+            .expect_create_all()
             .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
 
         let mut tm = MockTransactionManager::new();
@@ -1205,12 +1223,17 @@ mod tests {
         // Given: book creation fails inside the transaction.
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_create()
+            .expect_create_all()
             .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
+
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_or_create_by_names()
+            .returning(|_, _, _| Ok(HashMap::new()));
 
         let interactor = ImportBooksTestCommand::build(
             book_repository,
-            MockAuthorRepository::new(),
+            author_repository,
             make_transaction_manager(),
         );
         let books = vec![import_entry("Book", vec![])];
@@ -1666,6 +1689,37 @@ mod import_integration_tests {
             book_event_author_count, 0,
             "book_event_author should be empty when no authors"
         );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn import_persists_maximum_batch_with_one_event_per_book(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_id = prepare_user(&pool, "user1").await?;
+        let books: Vec<ImportBookEntryDto> = (0..super::MAX_BOOK_BATCH)
+            .map(|index| entry(&format!("Book {index}"), vec![]))
+            .collect();
+
+        let result = interactor(&pool).import(user_id.as_str(), books).await?;
+        assert_eq!(result.len(), super::MAX_BOOK_BATCH);
+
+        let (book_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book WHERE user_id = $1")
+            .bind(user_id.as_str())
+            .fetch_one(&pool)
+            .await?;
+        let (event_count, distinct_event_sets): (i64, i64) = sqlx::query_as(
+            "SELECT COUNT(*), COUNT(DISTINCT event_set_id)
+             FROM book_event WHERE user_id = $1",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+
+        assert_eq!(book_count, super::MAX_BOOK_BATCH as i64);
+        assert_eq!(event_count, super::MAX_BOOK_BATCH as i64);
+        assert_eq!(distinct_event_sets, 1);
 
         Ok(())
     }

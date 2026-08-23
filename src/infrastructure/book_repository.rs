@@ -222,6 +222,139 @@ impl BookRepository for PgBookRepository {
         Ok(EventId::from(event_id))
     }
 
+    async fn create_all(
+        &self,
+        tx: &mut Self::Transaction,
+        books: &[Book],
+    ) -> Result<(), DomainError> {
+        if books.is_empty() {
+            return Ok(());
+        }
+
+        let user_id = tx.user_id().clone();
+        let ids: Vec<Uuid> = books.iter().map(|book| book.id().to_uuid()).collect();
+        let titles: Vec<&str> = books.iter().map(|book| book.title().as_str()).collect();
+        let isbns: Vec<&str> = books.iter().map(|book| book.isbn().as_str()).collect();
+        let reads: Vec<bool> = books.iter().map(|book| book.read().to_bool()).collect();
+        let owneds: Vec<bool> = books.iter().map(|book| book.owned().to_bool()).collect();
+        let priorities: Vec<i32> = books.iter().map(|book| book.priority().to_i32()).collect();
+        let formats: Vec<String> = books.iter().map(|book| book.format().to_string()).collect();
+        let stores: Vec<String> = books.iter().map(|book| book.store().to_string()).collect();
+        let created_ats: Vec<OffsetDateTime> =
+            books.iter().map(|book| *book.created_at()).collect();
+        let updated_ats: Vec<OffsetDateTime> =
+            books.iter().map(|book| *book.updated_at()).collect();
+
+        sqlx::query(
+            "INSERT INTO book
+               (id, user_id, title, isbn, read, owned, priority, format, store,
+                created_at, updated_at)
+             SELECT id, $1, title, isbn, read, owned, priority, format, store,
+                    created_at, updated_at
+             FROM UNNEST(
+               $2::uuid[], $3::text[], $4::text[], $5::bool[], $6::bool[],
+               $7::int4[], $8::text[], $9::text[], $10::timestamptz[],
+               $11::timestamptz[]
+             ) AS input(id, title, isbn, read, owned, priority, format, store,
+                        created_at, updated_at)",
+        )
+        .bind(user_id.as_str())
+        .bind(&ids)
+        .bind(&titles)
+        .bind(&isbns)
+        .bind(&reads)
+        .bind(&owneds)
+        .bind(&priorities)
+        .bind(&formats)
+        .bind(&stores)
+        .bind(&created_ats)
+        .bind(&updated_ats)
+        .execute(tx.as_mut())
+        .await?;
+
+        let relationships: Vec<(Uuid, Uuid)> = books
+            .iter()
+            .flat_map(|book| {
+                book.author_ids()
+                    .iter()
+                    .map(move |author_id| (book.id().to_uuid(), author_id.to_uuid()))
+            })
+            .collect();
+        if !relationships.is_empty() {
+            let book_ids: Vec<Uuid> = relationships.iter().map(|(book_id, _)| *book_id).collect();
+            let author_ids: Vec<Uuid> = relationships
+                .iter()
+                .map(|(_, author_id)| *author_id)
+                .collect();
+            sqlx::query(
+                "INSERT INTO book_author (user_id, book_id, author_id)
+                 SELECT $1, book_id, author_id
+                 FROM UNNEST($2::uuid[], $3::uuid[]) AS input(book_id, author_id)",
+            )
+            .bind(user_id.as_str())
+            .bind(&book_ids)
+            .bind(&author_ids)
+            .execute(tx.as_mut())
+            .await?;
+        }
+
+        let events: Vec<(i64, Uuid)> = sqlx::query_as(
+            "INSERT INTO book_event
+               (event_set_id, operation, book_id, user_id, title, isbn, read,
+                owned, priority, format, store, book_created_at, book_updated_at)
+             SELECT $1, 'create', id, $2, title, isbn, read, owned, priority,
+                    format, store, created_at, updated_at
+             FROM UNNEST(
+               $3::uuid[], $4::text[], $5::text[], $6::bool[], $7::bool[],
+               $8::int4[], $9::text[], $10::text[], $11::timestamptz[],
+               $12::timestamptz[]
+             ) AS input(id, title, isbn, read, owned, priority, format, store,
+                        created_at, updated_at)
+             RETURNING event_id, book_id",
+        )
+        .bind(tx.event_set_id())
+        .bind(user_id.as_str())
+        .bind(&ids)
+        .bind(&titles)
+        .bind(&isbns)
+        .bind(&reads)
+        .bind(&owneds)
+        .bind(&priorities)
+        .bind(&formats)
+        .bind(&stores)
+        .bind(&created_ats)
+        .bind(&updated_ats)
+        .fetch_all(tx.as_mut())
+        .await?;
+        let event_by_book: HashMap<Uuid, i64> = events
+            .into_iter()
+            .map(|(event_id, book_id)| (book_id, event_id))
+            .collect();
+
+        if !relationships.is_empty() {
+            let mut event_ids = Vec::with_capacity(relationships.len());
+            let mut author_ids = Vec::with_capacity(relationships.len());
+            for (book_id, author_id) in relationships {
+                let event_id = event_by_book.get(&book_id).ok_or_else(|| {
+                    DomainError::Unexpected(format!("missing event for book {book_id}"))
+                })?;
+                event_ids.push(*event_id);
+                author_ids.push(author_id);
+            }
+            sqlx::query(
+                "INSERT INTO book_event_author (event_id, author_id)
+                 SELECT event_id, author_id
+                 FROM UNNEST($1::bigint[], $2::uuid[]) AS input(event_id, author_id)",
+            )
+            .bind(&event_ids)
+            .bind(&author_ids)
+            .execute(tx.as_mut())
+            .await?;
+        }
+
+        Ok(())
+    }
+
     async fn find_by_id(
         &self,
         user_id: &UserId,
