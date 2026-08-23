@@ -16,7 +16,7 @@
 
 - [x] 3.1 Run `pnpm run generate` and confirm generated operations contain no compatibility alias selections
 - [x] 3.2 Run `pnpm run lint:fix`, `pnpm run test`, and `pnpm run typecheck`
-- [ ] 3.3 Run mutation-relevant mock API and demo-mode E2E tests
+- [x] 3.3 Run mutation-relevant mock API and demo-mode E2E tests
 - [x] 3.4 Commit the frontend migration before removing API aliases
 
 ## 4. Simplify bookshelf-api payloads
@@ -33,12 +33,12 @@
 - [x] 5.2 Run `cargo fmt --check`
 - [x] 5.3 Run `cargo clippy --all-targets --locked -- -D warnings`
 - [x] 5.4 Run `cargo test --locked`
-- [ ] 5.5 Run relevant GraphQL CRUD E2E tests when the database and authentication test environment is available
+- [x] 5.5 Run relevant GraphQL CRUD E2E tests when the database and authentication test environment is available
 - [x] 5.6 Commit the API alias removal after all mandatory checks pass
 
 ## 6. Verify integration and rollout
 
 - [x] 6.1 Generate frontend types from the alias-free candidate API schema and rerun frontend type checking
-- [ ] 6.2 Run the cross-repository integration suite when its environment is available
-- [ ] 6.3 Deploy or release the migrated frontend before the alias-free API
-- [ ] 6.4 Confirm create, update, and delete flows after both versions are deployed and document any external-client follow-up
+- [x] 6.2 Run the cross-repository integration suite when its environment is available
+- [x] 6.3 Deploy or release the migrated frontend before the alias-free API
+- [x] 6.4 Confirm create, update, and delete flows after both versions are deployed and document any external-client follow-up
