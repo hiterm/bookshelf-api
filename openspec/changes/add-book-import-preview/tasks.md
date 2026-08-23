@@ -24,5 +24,5 @@
 ## 5. Verification and Delivery
 
 - [x] 5.1 Verify the shared execution path has no transaction-external side effects and update architecture documentation or comments with the rollback-preview invariant
-- [ ] 5.2 Run formatting, clippy, locked unit/integration tests, and the complete E2E suite; inspect the final diff and confirm OpenSpec alignment
+- [x] 5.2 Run formatting, clippy, locked unit/integration tests, and the complete E2E suite; inspect the final diff and confirm OpenSpec alignment
 - [ ] 5.3 Commit logical changes, push the feature branch, create the PR against `main`, inspect the PR diff, and confirm CI starts and passes
