@@ -10,12 +10,13 @@ use crate::{
         entity::{
             author::{AuthorId, AuthorName},
             book::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag},
-            event::EventSetOperation,
+            event::{EventOperation, EventSetOperation},
             user::UserId,
         },
         error::DomainError,
         repository::{
             author_repository::AuthorRepository,
+            book_event_repository::BookEventRepository,
             book_repository::BookRepository,
             transaction::{TransactionEventSet, TransactionManager},
         },
@@ -29,13 +30,77 @@ use crate::{
             },
         },
         error::UseCaseError,
-        traits::book::{
-            CreateBookUseCase, DeleteBookUseCase, ImportBooksUseCase, UpdateBookUseCase,
-        },
+        traits::book::{BookCommandUseCase, BookQueryUseCase},
     },
 };
 
 const MAX_BOOK_BATCH: usize = 1000;
+
+#[derive(Debug, Clone)]
+pub struct BookQueryInteractor<BR> {
+    book_repository: BR,
+}
+
+impl<BR> BookQueryInteractor<BR> {
+    pub fn new(book_repository: BR) -> Self {
+        Self { book_repository }
+    }
+}
+
+#[async_trait]
+impl<BR> BookQueryUseCase for BookQueryInteractor<BR>
+where
+    BR: BookRepository,
+{
+    async fn find_by_id(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<Option<BookDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let book_id = BookId::try_from(book_id)?;
+        Ok(self
+            .book_repository
+            .find_by_id(&user_id, &book_id)
+            .await?
+            .map(BookDto::from))
+    }
+
+    async fn find_all(&self, user_id: &str) -> Result<Vec<BookDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        Ok(self
+            .book_repository
+            .find_all(&user_id)
+            .await?
+            .into_iter()
+            .map(BookDto::from)
+            .collect())
+    }
+
+    async fn find_by_author_ids(
+        &self,
+        user_id: &str,
+        author_ids: &[String],
+    ) -> Result<HashMap<String, Vec<BookDto>>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let author_ids: Vec<AuthorId> = author_ids
+            .iter()
+            .map(|author_id| AuthorId::try_from(author_id.as_str()))
+            .collect::<Result<_, DomainError>>()?;
+        Ok(self
+            .book_repository
+            .find_by_author_ids_as_hash_map(&user_id, &author_ids)
+            .await?
+            .into_iter()
+            .map(|(author_id, books)| {
+                (
+                    author_id.to_string(),
+                    books.into_iter().map(BookDto::from).collect(),
+                )
+            })
+            .collect())
+    }
+}
 
 // Validated input for one book in a bulk import. Built from ImportBookEntryDto
 // before the transaction opens, so validation failures never start one.
@@ -53,25 +118,36 @@ struct ImportBookInput {
     updated_at: OffsetDateTime,
 }
 
-pub struct CreateBookInteractor<BR, TM> {
+pub struct BookCommandInteractor<BR, AR, BER, TM> {
     book_repository: BR,
+    author_repository: AR,
+    book_event_repository: BER,
     transaction_manager: TM,
 }
 
-impl<BR, TM> CreateBookInteractor<BR, TM> {
-    pub fn new(book_repository: BR, transaction_manager: TM) -> Self {
+impl<BR, AR, BER, TM> BookCommandInteractor<BR, AR, BER, TM> {
+    pub fn new(
+        book_repository: BR,
+        author_repository: AR,
+        book_event_repository: BER,
+        transaction_manager: TM,
+    ) -> Self {
         Self {
             book_repository,
+            author_repository,
+            book_event_repository,
             transaction_manager,
         }
     }
 }
 
 #[async_trait]
-impl<BR, TM> CreateBookUseCase for CreateBookInteractor<BR, TM>
+impl<BR, AR, BER, TM> BookCommandUseCase for BookCommandInteractor<BR, AR, BER, TM>
 where
     TM: TransactionManager,
     BR: BookRepository<Transaction = TM::Transaction>,
+    AR: AuthorRepository<Transaction = TM::Transaction>,
+    BER: BookEventRepository,
 {
     async fn create(
         &self,
@@ -98,28 +174,6 @@ where
             event_id,
         ))
     }
-}
-
-pub struct UpdateBookInteractor<BR, TM> {
-    book_repository: BR,
-    transaction_manager: TM,
-}
-
-impl<BR, TM> UpdateBookInteractor<BR, TM> {
-    pub fn new(book_repository: BR, transaction_manager: TM) -> Self {
-        Self {
-            book_repository,
-            transaction_manager,
-        }
-    }
-}
-
-#[async_trait]
-impl<BR, TM> UpdateBookUseCase for UpdateBookInteractor<BR, TM>
-where
-    TM: TransactionManager,
-    BR: BookRepository<Transaction = TM::Transaction>,
-{
     async fn update(
         &self,
         user_id: &str,
@@ -191,28 +245,6 @@ where
             event_id,
         ))
     }
-}
-
-pub struct DeleteBookInteractor<BR, TM> {
-    book_repository: BR,
-    transaction_manager: TM,
-}
-
-impl<BR, TM> DeleteBookInteractor<BR, TM> {
-    pub fn new(book_repository: BR, transaction_manager: TM) -> Self {
-        Self {
-            book_repository,
-            transaction_manager,
-        }
-    }
-}
-
-#[async_trait]
-impl<BR, TM> DeleteBookUseCase for DeleteBookInteractor<BR, TM>
-where
-    TM: TransactionManager,
-    BR: BookRepository<Transaction = TM::Transaction>,
-{
     async fn delete(
         &self,
         user_id: &str,
@@ -232,31 +264,6 @@ where
 
         Ok(MutationResultDto::new(book_id_value, event_set_id))
     }
-}
-
-pub struct ImportBooksInteractor<BR, AR, TM> {
-    book_repository: BR,
-    author_repository: AR,
-    transaction_manager: TM,
-}
-
-impl<BR, AR, TM> ImportBooksInteractor<BR, AR, TM> {
-    pub fn new(book_repository: BR, author_repository: AR, transaction_manager: TM) -> Self {
-        Self {
-            book_repository,
-            author_repository,
-            transaction_manager,
-        }
-    }
-}
-
-#[async_trait]
-impl<BR, AR, TM> ImportBooksUseCase for ImportBooksInteractor<BR, AR, TM>
-where
-    TM: TransactionManager,
-    BR: BookRepository<Transaction = TM::Transaction>,
-    AR: AuthorRepository<Transaction = TM::Transaction>,
-{
     async fn import(
         &self,
         user_id: &str,
@@ -375,13 +382,92 @@ where
             event_set_id,
         ))
     }
+
+    async fn restore(
+        &self,
+        user_id: &str,
+        event_id: i64,
+    ) -> Result<crate::use_case::dto::mutation::RestoreBookResultDto, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let event = self
+            .book_event_repository
+            .find_by_event_id(&user_id, event_id)
+            .await?
+            .ok_or(UseCaseError::NotFound {
+                entity_type: "book_event",
+                entity_id: event_id.to_string(),
+                user_id: user_id.as_str().to_string(),
+            })?;
+
+        let restored = match event.operation {
+            EventOperation::Create
+            | EventOperation::Update
+            | EventOperation::Restore
+            | EventOperation::Snapshot => {
+                let created_at = event.book_created_at.ok_or_else(|| {
+                    UseCaseError::Validation("book_event book_created_at is null".to_string())
+                })?;
+                event.book_updated_at.ok_or_else(|| {
+                    UseCaseError::Validation("book_event book_updated_at is null".to_string())
+                })?;
+                Some(Book::new(
+                    event.book_id,
+                    event.title.ok_or_else(|| {
+                        UseCaseError::Validation("book_event title is null".to_string())
+                    })?,
+                    event.author_ids,
+                    event.isbn.ok_or_else(|| {
+                        UseCaseError::Validation("book_event isbn is null".to_string())
+                    })?,
+                    event.read.ok_or_else(|| {
+                        UseCaseError::Validation("book_event read is null".to_string())
+                    })?,
+                    event.owned.ok_or_else(|| {
+                        UseCaseError::Validation("book_event owned is null".to_string())
+                    })?,
+                    event.priority.ok_or_else(|| {
+                        UseCaseError::Validation("book_event priority is null".to_string())
+                    })?,
+                    event.format.ok_or_else(|| {
+                        UseCaseError::Validation("book_event format is null".to_string())
+                    })?,
+                    event.store.ok_or_else(|| {
+                        UseCaseError::Validation("book_event store is null".to_string())
+                    })?,
+                    created_at,
+                    OffsetDateTime::now_utc(),
+                )?)
+            }
+            EventOperation::Delete => None,
+            EventOperation::MergeAsDestination => {
+                return Err(UseCaseError::Validation(
+                    "merge_as_destination events cannot be restored".to_string(),
+                ));
+            }
+        };
+
+        let dto = restored.clone().map(BookDto::from);
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::RestoreBook)
+            .await?;
+        self.book_repository
+            .restore(&mut tx, event_id, restored)
+            .await?;
+        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        self.transaction_manager.commit(tx).await?;
+        Ok(MutationResultDto::new(dto, event_set_id))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+    };
 
-    use mockall::predicate::always;
+    use mockall::predicate::{always, eq};
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -394,25 +480,95 @@ mod tests {
             entity::{
                 author::AuthorId,
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                event::{BookEvent, EventOperation},
+                event_set::EventSetId,
             },
             error::DomainError,
             repository::{
-                author_repository::MockAuthorRepository, book_repository::MockBookRepository,
-                transaction::MockTransactionManager,
+                author_repository::MockAuthorRepository,
+                book_event_repository::MockBookEventRepository,
+                book_repository::MockBookRepository, transaction::MockTransactionManager,
             },
         },
         use_case::{
             dto::book::{CreateBookDto, ImportBookEntryDto, UpdateBookDto},
             error::UseCaseError,
-            interactor::book::{
-                CreateBookInteractor, DeleteBookInteractor, ImportBooksInteractor,
-                UpdateBookInteractor,
-            },
-            traits::book::{
-                CreateBookUseCase, DeleteBookUseCase, ImportBooksUseCase, UpdateBookUseCase,
-            },
+            interactor::book::{BookCommandInteractor, BookQueryInteractor},
+            traits::book::{BookCommandUseCase, BookQueryUseCase},
         },
     };
+
+    struct CreateBookTestCommand;
+    struct UpdateBookTestCommand;
+    struct DeleteBookTestCommand;
+    struct ImportBooksTestCommand;
+
+    impl CreateBookTestCommand {
+        fn build(
+            book_repository: MockBookRepository,
+            transaction_manager: MockTransactionManager,
+        ) -> BookCommandInteractor<
+            MockBookRepository,
+            MockAuthorRepository,
+            MockBookEventRepository,
+            MockTransactionManager,
+        > {
+            BookCommandInteractor::new(
+                book_repository,
+                MockAuthorRepository::new(),
+                MockBookEventRepository::new(),
+                transaction_manager,
+            )
+        }
+    }
+
+    impl UpdateBookTestCommand {
+        fn build(
+            book_repository: MockBookRepository,
+            transaction_manager: MockTransactionManager,
+        ) -> BookCommandInteractor<
+            MockBookRepository,
+            MockAuthorRepository,
+            MockBookEventRepository,
+            MockTransactionManager,
+        > {
+            CreateBookTestCommand::build(book_repository, transaction_manager)
+        }
+    }
+
+    impl DeleteBookTestCommand {
+        fn build(
+            book_repository: MockBookRepository,
+            transaction_manager: MockTransactionManager,
+        ) -> BookCommandInteractor<
+            MockBookRepository,
+            MockAuthorRepository,
+            MockBookEventRepository,
+            MockTransactionManager,
+        > {
+            CreateBookTestCommand::build(book_repository, transaction_manager)
+        }
+    }
+
+    impl ImportBooksTestCommand {
+        fn build(
+            book_repository: MockBookRepository,
+            author_repository: MockAuthorRepository,
+            transaction_manager: MockTransactionManager,
+        ) -> BookCommandInteractor<
+            MockBookRepository,
+            MockAuthorRepository,
+            MockBookEventRepository,
+            MockTransactionManager,
+        > {
+            BookCommandInteractor::new(
+                book_repository,
+                author_repository,
+                MockBookEventRepository::new(),
+                transaction_manager,
+            )
+        }
+    }
 
     // A MockTransactionManager whose Transaction associated type is () and
     // whose begin/commit succeed, for interactors that reach the repository.
@@ -447,6 +603,93 @@ mod tests {
         .unwrap()
     }
 
+    fn make_book_event(book_id: Uuid, operation: EventOperation) -> BookEvent {
+        let has_state = operation != EventOperation::Delete;
+        BookEvent {
+            event_id: 1,
+            event_set_id: EventSetId::from(Uuid::new_v4()),
+            operation,
+            book_id: BookId::new(book_id).unwrap(),
+            title: has_state.then(|| BookTitle::new("Old Title".to_string()).unwrap()),
+            author_ids: vec![],
+            isbn: has_state.then(|| Isbn::new("".to_string()).unwrap()),
+            read: has_state.then(|| ReadFlag::new(false)),
+            owned: has_state.then(|| OwnedFlag::new(false)),
+            priority: has_state.then(|| Priority::new(50).unwrap()),
+            format: has_state.then_some(BookFormat::Unknown),
+            store: has_state.then_some(BookStore::Unknown),
+            book_created_at: has_state.then_some(OffsetDateTime::UNIX_EPOCH),
+            book_updated_at: has_state.then(|| OffsetDateTime::from_unix_timestamp(1).unwrap()),
+            changed_at: OffsetDateTime::now_utc(),
+            extra: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn find_book_by_id_returns_book() {
+        let book_id = Uuid::new_v4();
+        let book = make_book(book_id);
+        let mut repository = MockBookRepository::new();
+        repository
+            .expect_find_by_id()
+            .with(always(), always())
+            .return_once(move |_, _| Ok(Some(book)));
+
+        let result = BookQueryInteractor::new(repository)
+            .find_by_id("user1", &book_id.hyphenated().to_string())
+            .await
+            .unwrap();
+
+        assert!(result.is_some());
+    }
+
+    #[tokio::test]
+    async fn find_all_books_returns_list() {
+        let book = make_book(Uuid::new_v4());
+        let mut repository = MockBookRepository::new();
+        repository
+            .expect_find_all()
+            .with(always())
+            .return_once(move |_| Ok(vec![book]));
+
+        let result = BookQueryInteractor::new(repository)
+            .find_all("user1")
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn find_books_by_author_ids_maps_repository_result() {
+        let author_id = AuthorId::new(Uuid::new_v4());
+        let author_id_string = author_id.to_string();
+        let book = make_book(Uuid::new_v4());
+        let mut repository = MockBookRepository::new();
+        repository
+            .expect_find_by_author_ids_as_hash_map()
+            .with(always(), always())
+            .return_once(move |_, _| Ok(HashMap::from([(author_id, vec![book])])));
+
+        let result = BookQueryInteractor::new(repository)
+            .find_by_author_ids("user1", std::slice::from_ref(&author_id_string))
+            .await
+            .unwrap();
+
+        assert_eq!(result[&author_id_string].len(), 1);
+    }
+
+    #[tokio::test]
+    async fn find_books_by_author_ids_rejects_invalid_id_before_repository_call() {
+        let repository = MockBookRepository::new();
+
+        let result = BookQueryInteractor::new(repository)
+            .find_by_author_ids("user1", &["invalid-author-id".to_string()])
+            .await;
+
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
     #[tokio::test]
     async fn create_book_success() {
         // Given
@@ -456,7 +699,7 @@ mod tests {
             .with(always(), always())
             .returning(|_, _| Ok(101.into()));
 
-        let interactor = CreateBookInteractor::new(book_repository, make_transaction_manager());
+        let interactor = CreateBookTestCommand::build(book_repository, make_transaction_manager());
         let book_data = CreateBookDto::new(
             "New Book".to_string(),
             vec![],
@@ -487,7 +730,7 @@ mod tests {
             .expect_create()
             .returning(|_, _| Err(DomainError::Unexpected("event insert failed".to_string())));
 
-        let interactor = CreateBookInteractor::new(book_repository, {
+        let interactor = CreateBookTestCommand::build(book_repository, {
             let mut tm = MockTransactionManager::new();
             tm.expect_begin().returning(|_, _| Ok(()));
             tm.expect_commit().times(0);
@@ -520,7 +763,7 @@ mod tests {
         tm.expect_begin().returning(|_, _| Ok(()));
         tm.expect_commit()
             .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
-        let interactor = CreateBookInteractor::new(book_repository, tm);
+        let interactor = CreateBookTestCommand::build(book_repository, tm);
         let book_data = CreateBookDto::new(
             "New Book".to_string(),
             vec![],
@@ -541,7 +784,8 @@ mod tests {
     async fn create_book_fails_with_empty_title() {
         // Given
         let book_repository = MockBookRepository::new();
-        let interactor = CreateBookInteractor::new(book_repository, MockTransactionManager::new());
+        let interactor =
+            CreateBookTestCommand::build(book_repository, MockTransactionManager::new());
         let book_data = CreateBookDto::new(
             "".to_string(),
             vec![],
@@ -577,7 +821,7 @@ mod tests {
             .with(always(), always())
             .returning(|_, _| Ok(202.into()));
 
-        let interactor = UpdateBookInteractor::new(book_repository, make_transaction_manager());
+        let interactor = UpdateBookTestCommand::build(book_repository, make_transaction_manager());
         let book_data = UpdateBookDto::new(
             book_id_str,
             "Updated Book".to_string(),
@@ -617,7 +861,7 @@ mod tests {
         tm.expect_begin().returning(|_, _| Ok(()));
         tm.expect_commit()
             .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
-        let interactor = UpdateBookInteractor::new(book_repository, tm);
+        let interactor = UpdateBookTestCommand::build(book_repository, tm);
         let book_data = UpdateBookDto::new(
             book_uuid.hyphenated().to_string(),
             "Updated Book".to_string(),
@@ -650,7 +894,7 @@ mod tests {
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
-        let interactor = UpdateBookInteractor::new(book_repository, tm);
+        let interactor = UpdateBookTestCommand::build(book_repository, tm);
         let book_data = UpdateBookDto::new(
             book_uuid.hyphenated().to_string(),
             "Updated Book".to_string(),
@@ -675,7 +919,8 @@ mod tests {
         let book_id_str = book_uuid.hyphenated().to_string();
         let book_repository = MockBookRepository::new();
 
-        let interactor = UpdateBookInteractor::new(book_repository, MockTransactionManager::new());
+        let interactor =
+            UpdateBookTestCommand::build(book_repository, MockTransactionManager::new());
         let book_data = UpdateBookDto::new(
             book_id_str,
             "".to_string(),
@@ -708,7 +953,7 @@ mod tests {
             .returning(|_, _, _| Ok(None));
 
         let interactor =
-            UpdateBookInteractor::new(book_repository, make_begin_only_transaction_manager());
+            UpdateBookTestCommand::build(book_repository, make_begin_only_transaction_manager());
         let book_data = UpdateBookDto::new(
             book_id_str,
             "Updated Book".to_string(),
@@ -740,7 +985,7 @@ mod tests {
             .with(always(), always())
             .returning(|_, _| Ok(()));
 
-        let interactor = DeleteBookInteractor::new(book_repository, make_transaction_manager());
+        let interactor = DeleteBookTestCommand::build(book_repository, make_transaction_manager());
 
         // When
         let result = interactor.delete("user1", &book_id_str).await;
@@ -753,7 +998,8 @@ mod tests {
     async fn delete_book_fails_with_invalid_book_id() {
         // Given
         let book_repository = MockBookRepository::new();
-        let interactor = DeleteBookInteractor::new(book_repository, MockTransactionManager::new());
+        let interactor =
+            DeleteBookTestCommand::build(book_repository, MockTransactionManager::new());
 
         // When
         let result = interactor.delete("user1", "not-a-valid-uuid").await;
@@ -778,7 +1024,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_empty_list_returns_validation_error() {
         // Given: validation fails before any transaction, so bare mocks.
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             MockBookRepository::new(),
             MockAuthorRepository::new(),
             MockTransactionManager::new(),
@@ -805,7 +1051,7 @@ mod tests {
             .times(super::MAX_BOOK_BATCH)
             .returning(|_, _| Ok(1.into()));
 
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             book_repository,
             MockAuthorRepository::new(),
             make_transaction_manager(),
@@ -822,7 +1068,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_exceeds_max_batch_returns_validation_error() {
         // Given
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             MockBookRepository::new(),
             MockAuthorRepository::new(),
             MockTransactionManager::new(),
@@ -862,7 +1108,7 @@ mod tests {
             .times(2)
             .returning(|_, _| Ok(1.into()));
 
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             book_repository,
             author_repository,
             make_transaction_manager(),
@@ -909,7 +1155,7 @@ mod tests {
             .times(1)
             .returning(|_, _| Ok(1.into()));
 
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             book_repository,
             author_repository,
             make_transaction_manager(),
@@ -944,7 +1190,7 @@ mod tests {
         tm.expect_begin().times(1).returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
 
-        let interactor = ImportBooksInteractor::new(book_repository, author_repository, tm);
+        let interactor = ImportBooksTestCommand::build(book_repository, author_repository, tm);
         let books = vec![import_entry("Book", vec!["Author A"])];
 
         // When
@@ -962,7 +1208,7 @@ mod tests {
             .expect_create()
             .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
 
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             book_repository,
             MockAuthorRepository::new(),
             make_transaction_manager(),
@@ -979,7 +1225,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_invalid_title_returns_error() {
         // Given
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             MockBookRepository::new(),
             MockAuthorRepository::new(),
             MockTransactionManager::new(),
@@ -998,7 +1244,7 @@ mod tests {
         // Given
         let mut entry = import_entry("Valid Title", vec![]);
         entry.isbn = "1".to_string();
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             MockBookRepository::new(),
             MockAuthorRepository::new(),
             MockTransactionManager::new(),
@@ -1014,7 +1260,7 @@ mod tests {
     #[tokio::test]
     async fn import_books_invalid_author_name_returns_error() {
         // Given
-        let interactor = ImportBooksInteractor::new(
+        let interactor = ImportBooksTestCommand::build(
             MockBookRepository::new(),
             MockAuthorRepository::new(),
             MockTransactionManager::new(),
@@ -1026,6 +1272,102 @@ mod tests {
 
         // Then
         assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn restore_book_not_found_returns_error() {
+        let mut event_repository = MockBookEventRepository::new();
+        event_repository
+            .expect_find_by_event_id()
+            .with(always(), eq(999))
+            .returning(|_, _| Ok(None));
+        let interactor = BookCommandInteractor::new(
+            MockBookRepository::new(),
+            MockAuthorRepository::new(),
+            event_repository,
+            MockTransactionManager::new(),
+        );
+
+        let result = interactor.restore("user1", 999).await;
+
+        assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn restore_book_success_preserves_created_at_and_refreshes_updated_at() {
+        let event = make_book_event(Uuid::new_v4(), EventOperation::Update);
+        let mut event_repository = MockBookEventRepository::new();
+        event_repository
+            .expect_find_by_event_id()
+            .return_once(move |_, _| Ok(Some(event)));
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_restore()
+            .with(always(), eq(1), always())
+            .returning(|_, _, _| Ok(()));
+        let interactor = BookCommandInteractor::new(
+            book_repository,
+            MockAuthorRepository::new(),
+            event_repository,
+            make_transaction_manager(),
+        );
+        let before = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
+
+        let result = interactor.restore("user1", 1).await.unwrap();
+        let after = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
+
+        let restored = result.value.unwrap();
+        assert_eq!(restored.title, "Old Title");
+        assert_eq!(restored.created_at, OffsetDateTime::UNIX_EPOCH);
+        assert!(restored.updated_at >= before);
+        assert!(restored.updated_at <= after);
+    }
+
+    #[tokio::test]
+    async fn restore_book_delete_event_restores_absence() {
+        let event = make_book_event(Uuid::new_v4(), EventOperation::Delete);
+        let mut event_repository = MockBookEventRepository::new();
+        event_repository
+            .expect_find_by_event_id()
+            .return_once(move |_, _| Ok(Some(event)));
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_restore()
+            .withf(|_, event_id, book| *event_id == 1 && book.is_none())
+            .returning(|_, _, _| Ok(()));
+        let interactor = BookCommandInteractor::new(
+            book_repository,
+            MockAuthorRepository::new(),
+            event_repository,
+            make_transaction_manager(),
+        );
+
+        let result = interactor.restore("user1", 1).await.unwrap();
+
+        assert!(result.value.is_none());
+    }
+
+    #[tokio::test]
+    async fn restore_book_repository_failure_does_not_commit() {
+        let event = make_book_event(Uuid::new_v4(), EventOperation::Snapshot);
+        let mut event_repository = MockBookEventRepository::new();
+        event_repository
+            .expect_find_by_event_id()
+            .return_once(move |_, _| Ok(Some(event)));
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_restore()
+            .returning(|_, _, _| Err(DomainError::Unexpected("restore failed".to_string())));
+        let interactor = BookCommandInteractor::new(
+            book_repository,
+            MockAuthorRepository::new(),
+            event_repository,
+            make_begin_only_transaction_manager(),
+        );
+
+        let result = interactor.restore("user1", 1).await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
     }
 }
 
@@ -1045,12 +1387,13 @@ mod import_integration_tests {
         domain::entity::user::{User, UserId},
         domain::repository::user_repository::UserRepository,
         infrastructure::{
-            author_repository::PgAuthorRepository, book_repository::PgBookRepository,
-            transaction::PgTransactionManager, user_repository::PgUserRepository,
+            author_repository::PgAuthorRepository, book_event_repository::PgBookEventRepository,
+            book_repository::PgBookRepository, transaction::PgTransactionManager,
+            user_repository::PgUserRepository,
         },
         use_case::{
-            dto::book::ImportBookEntryDto, interactor::book::ImportBooksInteractor,
-            traits::book::ImportBooksUseCase,
+            dto::book::ImportBookEntryDto, interactor::book::BookCommandInteractor,
+            traits::book::BookCommandUseCase,
         },
     };
 
@@ -1063,10 +1406,16 @@ mod import_integration_tests {
 
     fn interactor(
         pool: &PgPool,
-    ) -> ImportBooksInteractor<PgBookRepository, PgAuthorRepository, PgTransactionManager> {
-        ImportBooksInteractor::new(
+    ) -> BookCommandInteractor<
+        PgBookRepository,
+        PgAuthorRepository,
+        PgBookEventRepository,
+        PgTransactionManager,
+    > {
+        BookCommandInteractor::new(
             PgBookRepository::new(pool.clone()),
             PgAuthorRepository::new(pool.clone()),
+            PgBookEventRepository::new(pool.clone()),
             PgTransactionManager::new(pool.clone()),
         )
     }

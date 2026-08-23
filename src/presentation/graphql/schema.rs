@@ -1,15 +1,28 @@
-use crate::use_case::traits::{mutation::MutationUseCase, query::QueryUseCase};
+use crate::use_case::traits::{
+    author::{AuthorCommandUseCase, AuthorQueryUseCase},
+    book::{BookCommandUseCase, BookQueryUseCase},
+    event::EventQueryUseCase,
+    user::{UserCommandUseCase, UserQueryUseCase},
+};
 
 use super::{mutation::Mutation, query::Query};
 use async_graphql::{EmptySubscription, Schema};
 
-pub fn build_schema<QUC, MUC>(
-    query: Query<QUC>,
-    mutation: Mutation<MUC>,
-) -> Schema<Query<QUC>, Mutation<MUC>, EmptySubscription>
+pub type GraphqlSchema<UQ, BQ, AQ, EQ, UC, BC, AC> =
+    Schema<Query<UQ, BQ, AQ, EQ>, Mutation<UC, BC, AC>, EmptySubscription>;
+
+pub fn build_schema<UQ, BQ, AQ, EQ, UC, BC, AC>(
+    query: Query<UQ, BQ, AQ, EQ>,
+    mutation: Mutation<UC, BC, AC>,
+) -> GraphqlSchema<UQ, BQ, AQ, EQ, UC, BC, AC>
 where
-    QUC: QueryUseCase,
-    MUC: MutationUseCase,
+    UQ: UserQueryUseCase,
+    BQ: BookQueryUseCase,
+    AQ: AuthorQueryUseCase,
+    EQ: EventQueryUseCase,
+    UC: UserCommandUseCase,
+    BC: BookCommandUseCase,
+    AC: AuthorCommandUseCase,
 {
     Schema::build(query, mutation, EmptySubscription).finish()
 }
@@ -25,11 +38,39 @@ mod tests {
         },
         use_case::{
             dto::{author::AuthorDto, mutation::SingleEventMutationResultDto},
-            traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},
+            traits::{
+                author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
+                book::{MockBookCommandUseCase, MockBookQueryUseCase},
+                event::MockEventQueryUseCase,
+                user::{MockUserCommandUseCase, MockUserQueryUseCase},
+            },
         },
     };
 
     use super::build_schema;
+
+    fn query() -> Query<
+        MockUserQueryUseCase,
+        MockBookQueryUseCase,
+        MockAuthorQueryUseCase,
+        MockEventQueryUseCase,
+    > {
+        Query::new(
+            MockUserQueryUseCase::new(),
+            MockBookQueryUseCase::new(),
+            MockAuthorQueryUseCase::new(),
+            MockEventQueryUseCase::new(),
+        )
+    }
+
+    fn mutation()
+    -> Mutation<MockUserCommandUseCase, MockBookCommandUseCase, MockAuthorCommandUseCase> {
+        Mutation::new(
+            MockUserCommandUseCase::new(),
+            MockBookCommandUseCase::new(),
+            MockAuthorCommandUseCase::new(),
+        )
+    }
 
     #[tokio::test]
     async fn execute_query() {
@@ -37,9 +78,9 @@ mod tests {
         let author_id = "d065a358-4fa7-4236-ae19-f6f2f9467c35";
         let author_name = "author1";
 
-        let mut mock_query_use_case = MockQueryUseCase::new();
-        mock_query_use_case
-            .expect_find_author_by_id()
+        let mut author_query = MockAuthorQueryUseCase::new();
+        author_query
+            .expect_find_by_id()
             .with(predicate::eq(user_id), predicate::eq(author_id))
             .times(1)
             .returning(|_user_id, author_id| {
@@ -51,9 +92,13 @@ mod tests {
                     updated_at: time::OffsetDateTime::UNIX_EPOCH,
                 }))
             });
-        let query = Query::new(mock_query_use_case);
-        let mutation_use_case = MockMutationUseCase::new();
-        let mutation = Mutation::new(mutation_use_case);
+        let query = Query::new(
+            MockUserQueryUseCase::new(),
+            MockBookQueryUseCase::new(),
+            author_query,
+            MockEventQueryUseCase::new(),
+        );
+        let mutation = mutation();
         let schema = build_schema(query, mutation);
         let claims = Claims {
             sub: user_id.to_string(),
@@ -76,9 +121,9 @@ mod tests {
 
     #[tokio::test]
     async fn create_author_payload_exposes_numeric_event_id_as_graphql_id() {
-        let mut mutation_use_case = MockMutationUseCase::new();
-        mutation_use_case
-            .expect_create_author()
+        let mut author_command = MockAuthorCommandUseCase::new();
+        author_command
+            .expect_create()
             .with(predicate::eq("user1"), predicate::always())
             .returning(|_, input| {
                 Ok(SingleEventMutationResultDto::new(
@@ -94,8 +139,12 @@ mod tests {
                 ))
             });
         let schema = build_schema(
-            Query::new(MockQueryUseCase::new()),
-            Mutation::new(mutation_use_case),
+            query(),
+            Mutation::new(
+                MockUserCommandUseCase::new(),
+                MockBookCommandUseCase::new(),
+                author_command,
+            ),
         );
         let claims = Claims {
             sub: "user1".to_string(),
@@ -122,8 +171,8 @@ mod tests {
 
     #[test]
     fn mutation_payloads_expose_only_canonical_fields() {
-        let query = Query::new(MockQueryUseCase::new());
-        let mutation = Mutation::new(MockMutationUseCase::new());
+        let query = query();
+        let mutation = mutation();
         let sdl = build_schema(query, mutation).sdl();
 
         assert!(sdl.contains(
@@ -138,10 +187,7 @@ mod tests {
 
     #[test]
     fn author_exposes_non_null_books_field() {
-        let schema = build_schema(
-            Query::new(MockQueryUseCase::new()),
-            Mutation::new(MockMutationUseCase::new()),
-        );
+        let schema = build_schema(query(), mutation());
 
         assert!(schema.sdl().contains("\tbooks: [Book!]!"));
     }
@@ -201,7 +247,7 @@ mod tests {
         .execute(&pool)
         .await?;
 
-        let (query_use_case, schema) = dependency_injection(pool);
+        let (author_query, book_query, schema) = dependency_injection(pool);
         let claims = Claims {
             sub: "user1".to_string(),
             _permissions: None,
@@ -211,11 +257,11 @@ mod tests {
                 async_graphql::Request::from("query { authors { id books { id title } } }")
                     .data(claims.clone())
                     .data(DataLoader::new(
-                        AuthorLoader::new(claims.clone(), query_use_case.clone()),
+                        AuthorLoader::new(claims.clone(), author_query),
                         tokio::spawn,
                     ))
                     .data(DataLoader::new(
-                        BooksByAuthorLoader::new(claims, query_use_case),
+                        BooksByAuthorLoader::new(claims, book_query),
                         tokio::spawn,
                     )),
             )

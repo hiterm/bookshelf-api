@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
 };
 use bookshelf_api::{
-    dependency_injection::{MI, QI, dependency_injection},
+    dependency_injection::dependency_injection,
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
     presentation::handler::user::me_handler,
     presentation::{app_state::AppState, extractor::claims::JwtConfig},
@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     sqlx::migrate!().run(&pool).await?;
 
-    let (query_use_case, schema) = dependency_injection(pool);
+    let (author_query, book_query, schema) = dependency_injection(pool);
 
     let jwt_config = JwtConfig::from_env()?;
     let jwks_cache = moka::future::Cache::builder()
@@ -66,13 +66,14 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/", get(|| async { "OK" }))
         .route("/me", get(me_handler))
-        .route("/graphql", post(graphql_handler::<QI, MI>))
+        .route("/graphql", post(graphql_handler))
         .route("/graphql/playground", get(graphql_playground_handler))
         .route("/health", get(|| async { "OK" }))
         .with_state(state)
         .layer(
             ServiceBuilder::new()
-                .layer(Extension(query_use_case))
+                .layer(Extension(author_query))
+                .layer(Extension(book_query))
                 .layer(Extension(schema))
                 .layer(
                     TraceLayer::new_for_http()

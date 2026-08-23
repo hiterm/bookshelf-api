@@ -1,5 +1,4 @@
 use async_graphql::{
-    EmptySubscription, Schema,
     dataloader::DataLoader,
     http::{GraphQLPlaygroundConfig, playground_source},
 };
@@ -10,34 +9,26 @@ use axum::{
 };
 
 use crate::{
+    dependency_injection::{AQ, AppSchema, BQ},
     presentation::{
         extractor::claims::Claims,
-        graphql::{
-            loader::{AuthorLoader, BooksByAuthorLoader},
-            mutation::Mutation,
-            query::Query,
-        },
+        graphql::loader::{AuthorLoader, BooksByAuthorLoader},
     },
-    use_case::traits::{mutation::MutationUseCase, query::QueryUseCase},
 };
 
-pub async fn graphql_handler<QUC, MUC>(
+pub async fn graphql_handler(
     claims: Claims,
-    schema: Extension<Schema<Query<QUC>, Mutation<MUC>, EmptySubscription>>,
-    Extension(query_use_case): Extension<QUC>,
+    schema: Extension<AppSchema>,
+    Extension(author_query): Extension<AQ>,
+    Extension(book_query): Extension<BQ>,
     req: GraphQLRequest,
-) -> GraphQLResponse
-where
-    QUC: QueryUseCase + Clone,
-    MUC: MutationUseCase,
-{
-    let query_use_case: QUC = query_use_case.clone();
+) -> GraphQLResponse {
     let author_loader = DataLoader::new(
-        AuthorLoader::new(claims.clone(), query_use_case.clone()),
+        AuthorLoader::new(claims.clone(), author_query),
         tokio::spawn,
     );
     let books_by_author_loader = DataLoader::new(
-        BooksByAuthorLoader::new(claims.clone(), query_use_case),
+        BooksByAuthorLoader::new(claims.clone(), book_query),
         tokio::spawn,
     );
 
