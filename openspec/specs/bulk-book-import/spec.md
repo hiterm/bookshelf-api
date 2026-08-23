@@ -1,7 +1,9 @@
 # bulk-book-import Specification
 
 ## Purpose
-TBD - created by archiving change optimize-book-import. Update Purpose after archive.
+Define bounded-query persistence for `importBooks` while preserving its API,
+transaction, relationship, and event-recording semantics.
+
 ## Requirements
 ### Requirement: Import persistence uses bounded database statements
 The system SHALL persist an `importBooks` request with a number of database
@@ -58,4 +60,3 @@ semantics, 1,000-book limit, and single-transaction behavior.
 #### Scenario: Validation fails
 - **WHEN** an import request violates an existing validation rule
 - **THEN** the system returns the existing validation error without beginning a transaction
-
