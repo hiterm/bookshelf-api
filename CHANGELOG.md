@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.2](https://github.com/hiterm/bookshelf-api/compare/2.13.1...2.13.2) - 2026-08-23
+
+### Other Changes
+- Update rust Docker tag to v1.98.0 by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/300
+- Update Rust crate jsonwebtoken to v11 by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/296
+- Optimize bulk book import by @hiterm in https://github.com/hiterm/bookshelf-api/pull/312
+
 ## [2.13.1](https://github.com/hiterm/bookshelf-api/compare/2.13.0...2.13.1) - 2026-08-23
 
 ### Other Changes
