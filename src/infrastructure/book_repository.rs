@@ -665,6 +665,172 @@ impl BookRepository for PgBookRepository {
         Ok(EventId::from(event_id))
     }
 
+    async fn update_all(
+        &self,
+        tx: &mut Self::Transaction,
+        books: &[Book],
+    ) -> Result<(), DomainError> {
+        if books.is_empty() {
+            return Ok(());
+        }
+
+        let user_id = tx.user_id().clone();
+        let ids: Vec<Uuid> = books.iter().map(|book| book.id().to_uuid()).collect();
+        let titles: Vec<&str> = books.iter().map(|book| book.title().as_str()).collect();
+        let isbns: Vec<&str> = books.iter().map(|book| book.isbn().as_str()).collect();
+        let reads: Vec<bool> = books.iter().map(|book| book.read().to_bool()).collect();
+        let owneds: Vec<bool> = books.iter().map(|book| book.owned().to_bool()).collect();
+        let priorities: Vec<i32> = books.iter().map(|book| book.priority().to_i32()).collect();
+        let formats: Vec<String> = books.iter().map(|book| book.format().to_string()).collect();
+        let stores: Vec<String> = books.iter().map(|book| book.store().to_string()).collect();
+        let created_ats: Vec<OffsetDateTime> =
+            books.iter().map(|book| *book.created_at()).collect();
+        let updated_ats: Vec<OffsetDateTime> =
+            books.iter().map(|book| *book.updated_at()).collect();
+
+        let result = sqlx::query(
+            "UPDATE book
+             SET title = input.title,
+                 isbn = input.isbn,
+                 read = input.read,
+                 owned = input.owned,
+                 priority = input.priority,
+                 format = input.format,
+                 store = input.store,
+                 updated_at = input.updated_at
+             FROM UNNEST(
+               $2::uuid[], $3::text[], $4::text[], $5::bool[], $6::bool[],
+               $7::int4[], $8::text[], $9::text[], $10::timestamptz[]
+             ) AS input(id, title, isbn, read, owned, priority, format, store,
+                        updated_at)
+             WHERE book.user_id = $1 AND book.id = input.id",
+        )
+        .bind(user_id.as_str())
+        .bind(&ids)
+        .bind(&titles)
+        .bind(&isbns)
+        .bind(&reads)
+        .bind(&owneds)
+        .bind(&priorities)
+        .bind(&formats)
+        .bind(&stores)
+        .bind(&updated_ats)
+        .execute(tx.as_mut())
+        .await?;
+
+        if result.rows_affected() != books.len() as u64 {
+            let book = &books[0];
+            return Err(DomainError::NotFound {
+                entity_type: "book",
+                entity_id: book.id().to_string(),
+                user_id: user_id.into_string(),
+            });
+        }
+
+        let relationships: Vec<(Uuid, Uuid)> = books
+            .iter()
+            .flat_map(|book| {
+                book.author_ids()
+                    .iter()
+                    .map(move |author_id| (book.id().to_uuid(), author_id.to_uuid()))
+            })
+            .collect();
+        let relationship_book_ids: Vec<Uuid> =
+            relationships.iter().map(|(book_id, _)| *book_id).collect();
+        let author_ids: Vec<Uuid> = relationships
+            .iter()
+            .map(|(_, author_id)| *author_id)
+            .collect();
+
+        sqlx::query(
+            "DELETE FROM book_author existing
+             WHERE existing.user_id = $1
+               AND existing.book_id = ANY($2::uuid[])
+               AND NOT EXISTS (
+                 SELECT 1
+                 FROM UNNEST($3::uuid[], $4::uuid[])
+                   AS final(book_id, author_id)
+                 WHERE final.book_id = existing.book_id
+                   AND final.author_id = existing.author_id
+               )",
+        )
+        .bind(user_id.as_str())
+        .bind(&ids)
+        .bind(&relationship_book_ids)
+        .bind(&author_ids)
+        .execute(tx.as_mut())
+        .await?;
+
+        if !relationships.is_empty() {
+            sqlx::query(
+                "INSERT INTO book_author (user_id, book_id, author_id)
+                 SELECT $1, book_id, author_id
+                 FROM UNNEST($2::uuid[], $3::uuid[]) AS input(book_id, author_id)
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(user_id.as_str())
+            .bind(&relationship_book_ids)
+            .bind(&author_ids)
+            .execute(tx.as_mut())
+            .await?;
+        }
+
+        let events: Vec<(i64, Uuid)> = sqlx::query_as(
+            "INSERT INTO book_event
+               (event_set_id, operation, book_id, user_id, title, isbn, read,
+                owned, priority, format, store, book_created_at, book_updated_at)
+             SELECT $1, 'update', id, $2, title, isbn, read, owned, priority,
+                    format, store, created_at, updated_at
+             FROM UNNEST(
+               $3::uuid[], $4::text[], $5::text[], $6::bool[], $7::bool[],
+               $8::int4[], $9::text[], $10::text[], $11::timestamptz[],
+               $12::timestamptz[]
+             ) AS input(id, title, isbn, read, owned, priority, format, store,
+                        created_at, updated_at)
+             RETURNING event_id, book_id",
+        )
+        .bind(tx.event_set_id())
+        .bind(user_id.as_str())
+        .bind(&ids)
+        .bind(&titles)
+        .bind(&isbns)
+        .bind(&reads)
+        .bind(&owneds)
+        .bind(&priorities)
+        .bind(&formats)
+        .bind(&stores)
+        .bind(&created_ats)
+        .bind(&updated_ats)
+        .fetch_all(tx.as_mut())
+        .await?;
+        let event_by_book: HashMap<Uuid, i64> = events
+            .into_iter()
+            .map(|(event_id, book_id)| (book_id, event_id))
+            .collect();
+
+        if !relationships.is_empty() {
+            let event_ids: Vec<i64> = relationship_book_ids
+                .iter()
+                .map(|book_id| {
+                    event_by_book.get(book_id).copied().ok_or_else(|| {
+                        DomainError::Unexpected(format!("missing event for book {book_id}"))
+                    })
+                })
+                .collect::<Result<_, _>>()?;
+            sqlx::query(
+                "INSERT INTO book_event_author (event_id, author_id)
+                 SELECT event_id, author_id
+                 FROM UNNEST($1::bigint[], $2::uuid[]) AS input(event_id, author_id)",
+            )
+            .bind(&event_ids)
+            .bind(&author_ids)
+            .execute(tx.as_mut())
+            .await?;
+        }
+
+        Ok(())
+    }
+
     async fn delete(
         &self,
         tx: &mut Self::Transaction,
@@ -1187,6 +1353,184 @@ mod tests {
 
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book.clone()));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_all_persists_books_relationships_and_events(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+        let user_id = prepare_user(&user_repository, "user1").await?;
+        let mut author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        author_ids.extend(prepare_authors2(&pool, &user_id, &author_repository).await?);
+
+        let mut book1 = book_entity1(&author_ids[..2])?;
+        let mut book2 = book_entity2(&author_ids[2..])?;
+        create_book(&pool, &book_repository, &user_id, &book1).await?;
+        create_book(&pool, &book_repository, &user_id, &book2).await?;
+
+        let book1_created_at = *book1.created_at();
+        let updated_at = PrimitiveDateTime::new(date!(2026 - 08 - 23), time!(12:34)).assume_utc();
+        book1.update(
+            BookUpdate {
+                title: BookTitle::new("bulk title 1".to_owned())?,
+                author_ids: vec![author_ids[1].clone(), author_ids[2].clone()],
+                isbn: Isbn::new("3333333333333".to_owned())?,
+                read: ReadFlag::new(true),
+                owned: OwnedFlag::new(true),
+                priority: Priority::new(10)?,
+                format: BookFormat::Printed,
+                store: BookStore::Unknown,
+            },
+            updated_at,
+        );
+        book2.update(
+            BookUpdate {
+                title: BookTitle::new("bulk title 2".to_owned())?,
+                author_ids: vec![],
+                isbn: book2.isbn().clone(),
+                read: book2.read().clone(),
+                owned: book2.owned().clone(),
+                priority: book2.priority().clone(),
+                format: book2.format().clone(),
+                store: book2.store().clone(),
+            },
+            updated_at,
+        );
+
+        let tm = PgTransactionManager::new(pool.clone());
+        let mut tx = tm.begin(&user_id, EventSetOperation::MergeAuthor).await?;
+        let event_set_id = tx.event_set_id();
+        book_repository
+            .update_all(&mut tx, &[book1.clone(), book2.clone()])
+            .await?;
+        tm.commit(tx).await?;
+
+        assert_eq!(
+            book_repository.find_by_id(&user_id, book1.id()).await?,
+            Some(book1.clone())
+        );
+        assert_eq!(
+            book_repository.find_by_id(&user_id, book2.id()).await?,
+            Some(book2.clone())
+        );
+        let (created_at,): (OffsetDateTime,) =
+            sqlx::query_as("SELECT created_at FROM book WHERE user_id = $1 AND id = $2")
+                .bind(user_id.as_str())
+                .bind(book1.id().to_uuid())
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(created_at, book1_created_at);
+
+        let events: Vec<(i64, Uuid, String, OffsetDateTime)> = sqlx::query_as(
+            "SELECT event_id, book_id, title, book_updated_at
+             FROM book_event
+             WHERE event_set_id = $1 AND operation = 'update'
+             ORDER BY book_id",
+        )
+        .bind(event_set_id)
+        .fetch_all(&pool)
+        .await?;
+        assert_eq!(events.len(), 2);
+        for (event_id, book_id, title, event_updated_at) in events {
+            let expected = if book_id == book1.id().to_uuid() {
+                &book1
+            } else {
+                &book2
+            };
+            assert_eq!(title, expected.title().as_str());
+            assert_eq!(event_updated_at, *expected.updated_at());
+            let event_author_ids: Vec<Uuid> = sqlx::query_scalar(
+                "SELECT author_id FROM book_event_author WHERE event_id = $1 ORDER BY author_id",
+            )
+            .bind(event_id)
+            .fetch_all(&pool)
+            .await?;
+            let mut expected_author_ids: Vec<Uuid> = expected
+                .author_ids()
+                .iter()
+                .map(AuthorId::to_uuid)
+                .collect();
+            expected_author_ids.sort_unstable();
+            assert_eq!(event_author_ids, expected_author_ids);
+        }
+
+        let event_count_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM book_event")
+            .fetch_one(&pool)
+            .await?;
+        let mut tx = tm.begin(&user_id, EventSetOperation::MergeAuthor).await?;
+        book_repository.update_all(&mut tx, &[]).await?;
+        tm.commit(tx).await?;
+        let event_count_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM book_event")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(event_count_after, event_count_before);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_all_wrong_user_rolls_back_partial_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+        let user1_id = prepare_user(&user_repository, "user1").await?;
+        let user2_id = prepare_user(&user_repository, "user2").await?;
+        let user1_authors = prepare_authors1(&pool, &user1_id, &author_repository).await?;
+        let user2_authors = prepare_authors2(&pool, &user2_id, &author_repository).await?;
+        let mut user1_book = book_entity1(&user1_authors)?;
+        let user2_book = book_entity2(&user2_authors)?;
+        create_book(&pool, &book_repository, &user1_id, &user1_book).await?;
+        create_book(&pool, &book_repository, &user2_id, &user2_book).await?;
+
+        user1_book.update(
+            BookUpdate {
+                title: BookTitle::new("must roll back".to_owned())?,
+                author_ids: user1_book.author_ids().to_vec(),
+                isbn: user1_book.isbn().clone(),
+                read: user1_book.read().clone(),
+                owned: user1_book.owned().clone(),
+                priority: user1_book.priority().clone(),
+                format: user1_book.format().clone(),
+                store: user1_book.store().clone(),
+            },
+            OffsetDateTime::now_utc(),
+        );
+
+        {
+            let tm = PgTransactionManager::new(pool.clone());
+            let mut tx = tm.begin(&user1_id, EventSetOperation::MergeAuthor).await?;
+            let result = book_repository
+                .update_all(&mut tx, &[user1_book, user2_book.clone()])
+                .await;
+            assert!(matches!(result, Err(DomainError::NotFound { .. })));
+        }
+
+        let persisted = book_repository
+            .find_by_id(
+                &user1_id,
+                &BookId::try_from("675bc8d9-3155-42fb-87b0-0a82cb162848")?,
+            )
+            .await?
+            .unwrap();
+        assert_eq!(persisted.title().as_str(), "title1");
+        assert_eq!(
+            book_repository
+                .find_by_id(&user2_id, user2_book.id())
+                .await?,
+            Some(user2_book)
+        );
+        let update_event_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM book_event WHERE operation = 'update'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(update_event_count, 0);
 
         Ok(())
     }
