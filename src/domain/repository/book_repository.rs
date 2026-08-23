@@ -20,6 +20,11 @@ pub trait BookRepository: Send + Sync + 'static {
 
     async fn create(&self, tx: &mut Self::Transaction, book: &Book)
     -> Result<EventId, DomainError>;
+    async fn create_all(
+        &self,
+        tx: &mut Self::Transaction,
+        books: &[Book],
+    ) -> Result<(), DomainError>;
     async fn find_by_id(
         &self,
         user_id: &UserId,
