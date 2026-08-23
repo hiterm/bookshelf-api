@@ -95,7 +95,7 @@ where
     ) -> Result<Option<EventSetDetailDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let event_set_id = EventSetId::try_from(event_set_id).map_err(|error| {
-            UseCaseError::from(crate::domain::error::DomainError::Unexpected(error))
+            UseCaseError::from(crate::domain::error::DomainError::Validation(error))
         })?;
         let Some(event_set) = self
             .event_set_repository
@@ -134,7 +134,10 @@ mod tests {
             book_event_repository::MockBookEventRepository,
             event_set_repository::MockEventSetRepository,
         },
-        use_case::{interactor::event::EventQueryInteractor, traits::event::EventQueryUseCase},
+        use_case::{
+            error::UseCaseError, interactor::event::EventQueryInteractor,
+            traits::event::EventQueryUseCase,
+        },
     };
 
     fn interactor(
@@ -174,7 +177,7 @@ mod tests {
 
         let result = interactor.list_book_events("user1", "invalid").await;
 
-        assert!(result.is_err());
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
     }
 
     #[tokio::test]
@@ -200,6 +203,6 @@ mod tests {
 
         let result = interactor.find_event_set("user1", "invalid").await;
 
-        assert!(result.is_err());
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
     }
 }

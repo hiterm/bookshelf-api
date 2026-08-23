@@ -91,10 +91,73 @@ mod tests {
     use crate::{
         common::types::{BookFormat, BookStore},
         presentation::extractor::claims::Claims,
-        use_case::{dto::book::BookDto, traits::book::MockBookQueryUseCase},
+        use_case::{
+            dto::{author::AuthorDto, book::BookDto},
+            traits::{author::MockAuthorQueryUseCase, book::MockBookQueryUseCase},
+        },
     };
 
-    use super::BooksByAuthorLoader;
+    use super::{AuthorLoader, BooksByAuthorLoader};
+
+    #[tokio::test]
+    async fn author_loader_batches_keys_and_maps_authors() {
+        let author_id1 = "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string();
+        let author_id2 = "93090e87-b7a1-403c-974c-d74d881e83b9".to_string();
+        let expected_keys = vec![author_id1.clone(), author_id2.clone()];
+        let mut author_query = MockAuthorQueryUseCase::new();
+        author_query
+            .expect_find_by_ids()
+            .with(predicate::eq("user1"), predicate::eq(expected_keys.clone()))
+            .times(1)
+            .returning(move |_, _| {
+                Ok(HashMap::from([(
+                    author_id1.clone(),
+                    AuthorDto {
+                        id: author_id1.clone(),
+                        name: "Author 1".to_string(),
+                        yomi: "おーさーわん".to_string(),
+                        created_at: OffsetDateTime::UNIX_EPOCH,
+                        updated_at: OffsetDateTime::UNIX_EPOCH,
+                    },
+                )]))
+            });
+        let loader = AuthorLoader::new(
+            Claims {
+                sub: "user1".to_string(),
+                _permissions: None,
+            },
+            author_query,
+        );
+
+        let result = loader.load(&expected_keys).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[&expected_keys[0]].name, "Author 1");
+        assert_eq!(result[&expected_keys[0]].yomi, "おーさーわん");
+        assert!(!result.contains_key(&expected_keys[1]));
+    }
+
+    #[tokio::test]
+    async fn author_loader_returns_empty_map() {
+        let keys = vec!["006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string()];
+        let mut author_query = MockAuthorQueryUseCase::new();
+        author_query
+            .expect_find_by_ids()
+            .with(predicate::eq("user1"), predicate::eq(keys.clone()))
+            .times(1)
+            .returning(|_, _| Ok(HashMap::new()));
+        let loader = AuthorLoader::new(
+            Claims {
+                sub: "user1".to_string(),
+                _permissions: None,
+            },
+            author_query,
+        );
+
+        let result = loader.load(&keys).await.unwrap();
+
+        assert!(result.is_empty());
+    }
 
     #[tokio::test]
     async fn books_by_author_loader_batches_keys_and_maps_books() {
