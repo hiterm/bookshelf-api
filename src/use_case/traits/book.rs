@@ -5,7 +5,7 @@ use mockall::automock;
 
 use crate::use_case::{
     dto::{
-        book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto},
+        book::{BookDto, CreateBookDto, ImportBookEntryDto, ImportBooksPreviewDto, UpdateBookDto},
         mutation::{
             BookMutationResultDto, DeleteBookResultDto, ImportBooksResultDto, RestoreBookResultDto,
         },
@@ -52,6 +52,11 @@ pub trait BookCommandUseCase: Send + Sync + 'static {
         user_id: &str,
         books: Vec<ImportBookEntryDto>,
     ) -> Result<ImportBooksResultDto, UseCaseError>;
+    async fn preview_import(
+        &self,
+        user_id: &str,
+        books: Vec<ImportBookEntryDto>,
+    ) -> Result<ImportBooksPreviewDto, UseCaseError>;
     async fn restore(
         &self,
         user_id: &str,

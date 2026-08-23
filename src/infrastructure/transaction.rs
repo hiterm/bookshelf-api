@@ -48,6 +48,11 @@ impl PgTransaction {
         self.tx.commit().await?;
         Ok(())
     }
+
+    pub async fn rollback(self) -> Result<(), DomainError> {
+        self.tx.rollback().await?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -89,5 +94,67 @@ impl TransactionManager for PgTransactionManager {
 
     async fn commit(&self, tx: Self::Transaction) -> Result<(), DomainError> {
         tx.commit().await
+    }
+
+    async fn rollback(&self, tx: Self::Transaction) -> Result<(), DomainError> {
+        tx.rollback().await
+    }
+}
+
+#[cfg(all(test, feature = "test-with-database"))]
+mod tests {
+    use sqlx::PgPool;
+
+    use crate::{
+        domain::{
+            entity::{
+                event::EventSetOperation,
+                user::{User, UserId},
+            },
+            repository::{transaction::TransactionManager, user_repository::UserRepository},
+        },
+        infrastructure::{transaction::PgTransactionManager, user_repository::PgUserRepository},
+    };
+
+    async fn user(pool: &PgPool) -> anyhow::Result<UserId> {
+        let id = UserId::new("transaction-user".to_string())?;
+        PgUserRepository::new(pool.clone())
+            .create(&User::new(id.clone()))
+            .await?;
+        Ok(id)
+    }
+
+    #[sqlx::test]
+    async fn rollback_removes_event_set(pool: PgPool) -> anyhow::Result<()> {
+        let user_id = user(&pool).await?;
+        let manager = PgTransactionManager::new(pool.clone());
+        let tx = manager
+            .begin(&user_id, EventSetOperation::ImportBooks)
+            .await?;
+        manager.rollback(tx).await?;
+
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
+            .bind(user_id.as_str())
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(count, 0);
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn commit_keeps_event_set(pool: PgPool) -> anyhow::Result<()> {
+        let user_id = user(&pool).await?;
+        let manager = PgTransactionManager::new(pool.clone());
+        let tx = manager
+            .begin(&user_id, EventSetOperation::ImportBooks)
+            .await?;
+        manager.commit(tx).await?;
+
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
+            .bind(user_id.as_str())
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(count, 1);
+        Ok(())
     }
 }

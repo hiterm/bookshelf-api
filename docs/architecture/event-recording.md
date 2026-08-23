@@ -27,6 +27,13 @@ the user from the transaction opened by `begin`; callers do not pass a second
 repositories (e.g. the bulk import composes `BookRepository` and
 `AuthorRepository`) inside one transaction.
 
+`previewBookImport` deliberately follows the same author, book, relationship,
+and event write path as `importBooks`, then consumes the transaction through
+`TransactionManager::rollback`. The shared path must therefore contain no
+transaction-external side effects. Validation remains before `begin`, and an
+execution error leaves the uncommitted sqlx transaction to roll back on drop;
+successful preview execution always uses explicit rollback.
+
 The use-case layer knows two event concepts: the `EventSetOperation` passed
 to `begin`, and the generated `event_set.id` exposed by the transaction so
 mutation results can return an `eventSetId` after a successful commit. Event

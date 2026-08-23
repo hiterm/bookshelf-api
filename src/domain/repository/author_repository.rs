@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use mockall::automock;
@@ -16,6 +16,27 @@ use crate::domain::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteAuthorEventExtra {
     Merge { destination_author_id: AuthorId },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindOrCreateAuthorsResult {
+    pub authors_by_name: HashMap<String, AuthorId>,
+    pub created_author_ids: HashSet<AuthorId>,
+}
+
+impl From<HashMap<String, AuthorId>> for FindOrCreateAuthorsResult {
+    fn from(authors_by_name: HashMap<String, AuthorId>) -> Self {
+        Self {
+            authors_by_name,
+            created_author_ids: HashSet::new(),
+        }
+    }
+}
+
+impl FromIterator<(String, AuthorId)> for FindOrCreateAuthorsResult {
+    fn from_iter<T: IntoIterator<Item = (String, AuthorId)>>(iter: T) -> Self {
+        HashMap::from_iter(iter).into()
+    }
 }
 
 #[automock(type Transaction = ();)]
@@ -58,7 +79,7 @@ pub trait AuthorRepository: Send + Sync + 'static {
         tx: &mut Self::Transaction,
         names: &[AuthorName],
         created_at: OffsetDateTime,
-    ) -> Result<HashMap<String, AuthorId>, DomainError>;
+    ) -> Result<FindOrCreateAuthorsResult, DomainError>;
     async fn update(
         &self,
         tx: &mut Self::Transaction,

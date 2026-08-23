@@ -126,6 +126,16 @@ type EventSetEntry {
 	createdAt: Int!
 }
 
+type ImportAuthorPreview {
+	name: String!
+	status: ImportAuthorStatus!
+}
+
+enum ImportAuthorStatus {
+	EXISTING
+	NEW
+}
+
 input ImportBookInput {
 	"""
 	Title of the book.
@@ -161,9 +171,24 @@ input ImportBookInput {
 	store: BookStore!
 }
 
+type ImportBookPreview {
+	title: String!
+	authors: [ImportAuthorPreview!]!
+	isbn: String!
+	read: Boolean!
+	owned: Boolean!
+	priority: Int!
+	format: BookFormat!
+	store: BookStore!
+}
+
 type ImportBooksPayload {
 	books: [Book!]!
 	eventSetId: ID!
+}
+
+type ImportBooksPreview {
+	books: [ImportBookPreview!]!
 }
 
 """
@@ -191,6 +216,10 @@ type Mutation {
 	Imports multiple books. Creates authors if they do not exist.
 	"""
 	importBooks(books: [ImportBookInput!]!): ImportBooksPayload!
+	"""
+	Executes the book import path and rolls the complete transaction back.
+	"""
+	previewBookImport(books: [ImportBookInput!]!): ImportBooksPreview!
 }
 
 type Query {

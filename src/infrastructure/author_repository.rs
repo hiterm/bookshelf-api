@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
@@ -14,7 +14,9 @@ use crate::domain::{
         user::UserId,
     },
     error::DomainError,
-    repository::author_repository::{AuthorRepository, DeleteAuthorEventExtra},
+    repository::author_repository::{
+        AuthorRepository, DeleteAuthorEventExtra, FindOrCreateAuthorsResult,
+    },
 };
 use crate::infrastructure::transaction::PgTransaction;
 
@@ -180,9 +182,12 @@ impl AuthorRepository for PgAuthorRepository {
         tx: &mut Self::Transaction,
         names: &[AuthorName],
         created_at: OffsetDateTime,
-    ) -> Result<HashMap<String, AuthorId>, DomainError> {
+    ) -> Result<FindOrCreateAuthorsResult, DomainError> {
         if names.is_empty() {
-            return Ok(HashMap::new());
+            return Ok(FindOrCreateAuthorsResult {
+                authors_by_name: HashMap::new(),
+                created_author_ids: HashSet::new(),
+            });
         }
 
         let user_id = tx.user_id().clone();
@@ -248,10 +253,19 @@ impl AuthorRepository for PgAuthorRepository {
             )));
         }
 
-        Ok(resolved
+        let created_author_ids = created
+            .into_iter()
+            .map(|author| AuthorId::new(author.id))
+            .collect();
+        let authors_by_name = resolved
             .into_iter()
             .map(|(id, name)| (name, AuthorId::new(id)))
-            .collect())
+            .collect();
+
+        Ok(FindOrCreateAuthorsResult {
+            authors_by_name,
+            created_author_ids,
+        })
     }
 
     async fn find_by_id(
@@ -1363,6 +1377,53 @@ mod tests {
         assert_eq!(found.created_at(), &OffsetDateTime::UNIX_EPOCH);
         assert_eq!(found.updated_at(), &OffsetDateTime::UNIX_EPOCH);
 
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_or_create_by_names_reports_created_ids_and_rolls_back(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let user_id = prepare_user(&user_repository, "bulk-status-user").await?;
+        let existing_id = AuthorId::new(Uuid::new_v4());
+        let existing = new_author(
+            existing_id.clone(),
+            AuthorName::new("Existing".to_string())?,
+        )?;
+        create_author(&pool, &author_repository, &user_id, &existing).await?;
+
+        let manager = PgTransactionManager::new(pool.clone());
+        let mut tx = manager
+            .begin(&user_id, EventSetOperation::ImportBooks)
+            .await?;
+        let names = vec![
+            AuthorName::new("Existing".to_string())?,
+            AuthorName::new("New".to_string())?,
+        ];
+        let result = author_repository
+            .find_or_create_by_names(&mut tx, &names, OffsetDateTime::now_utc())
+            .await?;
+
+        assert_eq!(result.authors_by_name["Existing"], existing_id);
+        assert!(!result.created_author_ids.contains(&existing_id));
+        let new_id = result.authors_by_name["New"].clone();
+        assert!(result.created_author_ids.contains(&new_id));
+        manager.rollback(tx).await?;
+
+        assert!(
+            author_repository
+                .find_by_id(&user_id, &new_id)
+                .await?
+                .is_none()
+        );
+        assert!(
+            author_repository
+                .find_by_id(&user_id, &existing_id)
+                .await?
+                .is_some()
+        );
         Ok(())
     }
 }
