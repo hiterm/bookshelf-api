@@ -1,6 +1,6 @@
 [package]
 name = "bookshelf-api"
-version = "2.13.0"
+version = "2.13.1"
 edition = "2024"
 default-run = "bookshelf-api"
 
