@@ -30,7 +30,7 @@
 
 ## 6. Live Release Verification
 
-- [ ] 6.1 Confirm a release PR shows all three statuses moving independently from pending to terminal states.
-- [ ] 6.2 Confirm API E2E failure prevents GHCR push and Render deployment.
-- [ ] 6.3 Confirm frontend integration failure still allows GHCR push and Render deployment to complete.
-- [ ] 6.4 Compare build logs and image digests to confirm the validated and published images are identical.
+- [x] 6.1 Confirm a release PR shows all three statuses moving independently from pending to terminal states.
+- [x] 6.2 Confirm API E2E failure prevents GHCR push and Render deployment.
+- [x] 6.3 Confirm frontend integration failure still allows GHCR push and Render deployment to complete.
+- [x] 6.4 Compare build logs and image digests to confirm the validated and published images are identical.
