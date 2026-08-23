@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.13.1](https://github.com/hiterm/bookshelf-api/compare/2.13.0...2.13.1) - 2026-08-23
+
+### Other Changes
+- Archive completed OpenSpec changes by @hiterm in https://github.com/hiterm/bookshelf-api/pull/308
+- Reorganize use cases by entity by @hiterm in https://github.com/hiterm/bookshelf-api/pull/310
+
 ## [2.13.0](https://github.com/hiterm/bookshelf-api/compare/2.12.0...2.13.0) - 2026-08-22
 
 ### Other Changes
