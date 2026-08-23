@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.13.3](https://github.com/hiterm/bookshelf-api/compare/2.13.2...2.13.3) - 2026-08-23
+
+### Other Changes
+- Document OpenSpec ExecPlan exception by @hiterm in https://github.com/hiterm/bookshelf-api/pull/313
+- Bulk update Books during author merge by @hiterm in https://github.com/hiterm/bookshelf-api/pull/315
+
 ## [2.13.2](https://github.com/hiterm/bookshelf-api/compare/2.13.1...2.13.2) - 2026-08-23
 
 ### Other Changes
