@@ -128,11 +128,24 @@ where
 
 #[cfg(test)]
 mod tests {
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
     use crate::{
-        domain::repository::{
-            author_event_repository::MockAuthorEventRepository,
-            book_event_repository::MockBookEventRepository,
-            event_set_repository::MockEventSetRepository,
+        common::types::{BookFormat, BookStore},
+        domain::{
+            entity::{
+                author::AuthorId,
+                book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+                event::{AuthorEvent, BookEvent, EventOperation, EventSetOperation},
+                event_set::{EventSet, EventSetId},
+                user::UserId,
+            },
+            repository::{
+                author_event_repository::MockAuthorEventRepository,
+                book_event_repository::MockBookEventRepository,
+                event_set_repository::MockEventSetRepository,
+            },
         },
         use_case::{
             error::UseCaseError, interactor::event::EventQueryInteractor,
@@ -152,6 +165,42 @@ mod tests {
         EventQueryInteractor::new(book_events, author_events, event_sets)
     }
 
+    fn book_event(event_set_id: EventSetId, book_id: Uuid) -> BookEvent {
+        BookEvent {
+            event_id: 1,
+            event_set_id,
+            operation: EventOperation::Update,
+            book_id: BookId::new(book_id).unwrap(),
+            title: Some(BookTitle::new("Old Title".to_string()).unwrap()),
+            author_ids: Vec::new(),
+            isbn: Some(Isbn::new(String::new()).unwrap()),
+            read: Some(ReadFlag::new(false)),
+            owned: Some(OwnedFlag::new(false)),
+            priority: Some(Priority::new(50).unwrap()),
+            format: Some(BookFormat::Unknown),
+            store: Some(BookStore::Unknown),
+            book_created_at: Some(OffsetDateTime::UNIX_EPOCH),
+            book_updated_at: Some(OffsetDateTime::UNIX_EPOCH),
+            changed_at: OffsetDateTime::UNIX_EPOCH,
+            extra: None,
+        }
+    }
+
+    fn author_event(event_set_id: EventSetId, author_id: Uuid) -> AuthorEvent {
+        AuthorEvent {
+            event_id: 2,
+            event_set_id,
+            operation: EventOperation::Update,
+            author_id: AuthorId::new(author_id),
+            name: Some("Old Name".to_string()),
+            yomi: Some(String::new()),
+            author_created_at: Some(OffsetDateTime::UNIX_EPOCH),
+            author_updated_at: Some(OffsetDateTime::UNIX_EPOCH),
+            changed_at: OffsetDateTime::UNIX_EPOCH,
+            extra: None,
+        }
+    }
+
     #[tokio::test]
     async fn list_event_sets_returns_empty_list() {
         let mut event_sets = MockEventSetRepository::new();
@@ -165,6 +214,95 @@ mod tests {
         let result = interactor.list_event_sets("user1").await.unwrap();
 
         assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_book_events_converts_repository_result_to_dto() {
+        let book_id = Uuid::new_v4();
+        let mut book_events = MockBookEventRepository::new();
+        book_events
+            .expect_find_by_book()
+            .return_once(move |_, _| Ok(vec![book_event(EventSetId::new(), book_id)]));
+        let interactor = interactor(
+            book_events,
+            MockAuthorEventRepository::new(),
+            MockEventSetRepository::new(),
+        );
+
+        let result = interactor
+            .list_book_events("user1", &book_id.to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].book_id, book_id.to_string());
+        assert_eq!(result[0].title.as_deref(), Some("Old Title"));
+        assert_eq!(result[0].operation, "update");
+    }
+
+    #[tokio::test]
+    async fn list_author_events_converts_repository_result_to_dto() {
+        let author_id = Uuid::new_v4();
+        let mut author_events = MockAuthorEventRepository::new();
+        author_events
+            .expect_find_by_author()
+            .return_once(move |_, _| Ok(vec![author_event(EventSetId::new(), author_id)]));
+        let interactor = interactor(
+            MockBookEventRepository::new(),
+            author_events,
+            MockEventSetRepository::new(),
+        );
+
+        let result = interactor
+            .list_author_events("user1", &author_id.to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].author_id, author_id.to_string());
+        assert_eq!(result[0].name.as_deref(), Some("Old Name"));
+        assert_eq!(result[0].operation, "update");
+    }
+
+    #[tokio::test]
+    async fn find_event_set_combines_event_set_and_events() {
+        let event_set_id = EventSetId::new();
+        let event_set_id_string = event_set_id.to_string();
+        let book_id = Uuid::new_v4();
+        let author_id = Uuid::new_v4();
+        let mut event_sets = MockEventSetRepository::new();
+        event_sets.expect_find_by_id().return_once(move |_, _| {
+            Ok(Some(EventSet {
+                id: event_set_id,
+                user_id: UserId::new("user1".to_string()).unwrap(),
+                operation: EventSetOperation::CreateBook,
+                created_at: OffsetDateTime::UNIX_EPOCH,
+            }))
+        });
+        let detail_event_set_id = EventSetId::try_from(event_set_id_string.as_str()).unwrap();
+        let mut book_events = MockBookEventRepository::new();
+        book_events
+            .expect_find_by_event_set()
+            .return_once(move |_, _| Ok(vec![book_event(detail_event_set_id, book_id)]));
+        let detail_event_set_id = EventSetId::try_from(event_set_id_string.as_str()).unwrap();
+        let mut author_events = MockAuthorEventRepository::new();
+        author_events
+            .expect_find_by_event_set()
+            .return_once(move |_, _| Ok(vec![author_event(detail_event_set_id, author_id)]));
+        let interactor = interactor(book_events, author_events, event_sets);
+
+        let result = interactor
+            .find_event_set("user1", &event_set_id_string)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(result.id, event_set_id_string);
+        assert_eq!(result.operation, "create_book");
+        assert_eq!(result.book_events.len(), 1);
+        assert_eq!(result.book_events[0].book_id, book_id.to_string());
+        assert_eq!(result.author_events.len(), 1);
+        assert_eq!(result.author_events[0].author_id, author_id.to_string());
     }
 
     #[tokio::test]
