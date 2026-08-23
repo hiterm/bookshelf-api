@@ -4,47 +4,58 @@ use async_graphql::{Context, ID, Object};
 
 use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
-    use_case::traits::query::QueryUseCase,
+    use_case::traits::{
+        author::AuthorQueryUseCase, book::BookQueryUseCase, event::EventQueryUseCase,
+        user::UserQueryUseCase,
+    },
 };
 
 use super::object::{
     Author, AuthorEventEntry, Book, BookEventEntry, EventSetDetail, EventSetEntry, User,
 };
 
-pub struct Query<QUC> {
-    query_use_case: QUC,
+pub struct Query<UQ, BQ, AQ, EQ> {
+    user_query: UQ,
+    book_query: BQ,
+    author_query: AQ,
+    event_query: EQ,
 }
 
-impl<QUC> Query<QUC> {
-    pub fn new(query_use_case: QUC) -> Self {
-        Query { query_use_case }
+impl<UQ, BQ, AQ, EQ> Query<UQ, BQ, AQ, EQ> {
+    pub fn new(user_query: UQ, book_query: BQ, author_query: AQ, event_query: EQ) -> Self {
+        Self {
+            user_query,
+            book_query,
+            author_query,
+            event_query,
+        }
     }
 }
 
 #[Object]
-impl<QUC> Query<QUC>
+impl<UQ, BQ, AQ, EQ> Query<UQ, BQ, AQ, EQ>
 where
-    QUC: QueryUseCase,
+    UQ: UserQueryUseCase,
+    BQ: BookQueryUseCase,
+    AQ: AuthorQueryUseCase,
+    EQ: EventQueryUseCase,
 {
     async fn logged_in_user(&self, ctx: &Context<'_>) -> Result<Option<User>, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let user = self.query_use_case.find_user_by_id(&claims.sub).await?;
+        let user = self.user_query.find_by_id(&claims.sub).await?;
         Ok(user.map(|user| User::new(ID(user.id))))
     }
 
     async fn book(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Book>, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let book = self
-            .query_use_case
-            .find_book_by_id(&claims.sub, id.as_str())
-            .await?;
+        let book = self.book_query.find_by_id(&claims.sub, id.as_str()).await?;
 
         Ok(book.map(Book::from))
     }
 
     async fn books(&self, ctx: &Context<'_>) -> Result<Vec<Book>, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let books = self.query_use_case.find_all_books(&claims.sub).await?;
+        let books = self.book_query.find_all(&claims.sub).await?;
         let books: Vec<Book> = books.into_iter().map(Book::from).collect();
 
         Ok(books)
@@ -57,15 +68,15 @@ where
     ) -> Result<Option<Author>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let author = self
-            .query_use_case
-            .find_author_by_id(&claims.sub, id.as_str())
+            .author_query
+            .find_by_id(&claims.sub, id.as_str())
             .await?;
         Ok(author.map(Author::from))
     }
 
     async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let authors = self.query_use_case.find_all_authors(&claims.sub).await?;
+        let authors = self.author_query.find_all(&claims.sub).await?;
         let authors: Vec<Author> = authors.into_iter().map(Author::from).collect();
         Ok(authors)
     }
@@ -79,7 +90,7 @@ where
     ) -> Result<Vec<BookEventEntry>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let entries = self
-            .query_use_case
+            .event_query
             .list_book_events(&claims.sub, book_id.as_str())
             .await?;
         Ok(entries.into_iter().map(BookEventEntry::from).collect())
@@ -94,7 +105,7 @@ where
     ) -> Result<Vec<AuthorEventEntry>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let entries = self
-            .query_use_case
+            .event_query
             .list_author_events(&claims.sub, author_id.as_str())
             .await?;
         Ok(entries.into_iter().map(AuthorEventEntry::from).collect())
@@ -106,7 +117,7 @@ where
         ctx: &Context<'_>,
     ) -> Result<Vec<EventSetEntry>, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let sets = self.query_use_case.list_event_sets(&claims.sub).await?;
+        let sets = self.event_query.list_event_sets(&claims.sub).await?;
         Ok(sets.into_iter().map(EventSetEntry::from).collect())
     }
 
@@ -118,7 +129,7 @@ where
     ) -> Result<Option<EventSetDetail>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let detail = self
-            .query_use_case
+            .event_query
             .find_event_set(&claims.sub, id.as_str())
             .await?;
         Ok(detail.map(EventSetDetail::from))

@@ -5,7 +5,7 @@ use serde_json::Value;
 use time::OffsetDateTime;
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
-use crate::dependency_injection::QI;
+use crate::dependency_injection::{AQ, BQ};
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto};
 use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
@@ -126,8 +126,7 @@ impl Book {
 #[ComplexObject]
 impl Book {
     async fn authors(&self, ctx: &Context<'_>) -> Result<Vec<Author>> {
-        // QIの型はGenericにできないか
-        let loader = ctx.data_unchecked::<DataLoader<AuthorLoader<QI>>>();
+        let loader = ctx.data_unchecked::<DataLoader<AuthorLoader<AQ>>>();
         let authors: Vec<Author> = loader
             .load_many(self.author_ids.clone()) // TODO cloneやめる
             .await?
@@ -248,7 +247,7 @@ pub struct Author {
 #[ComplexObject]
 impl Author {
     async fn books(&self, ctx: &Context<'_>) -> Result<Vec<Book>> {
-        let loader = ctx.data_unchecked::<DataLoader<BooksByAuthorLoader<QI>>>();
+        let loader = ctx.data_unchecked::<DataLoader<BooksByAuthorLoader<BQ>>>();
         Ok(loader
             .load_one(self.id.to_string())
             .await?

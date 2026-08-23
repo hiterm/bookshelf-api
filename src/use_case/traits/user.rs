@@ -5,6 +5,12 @@ use crate::use_case::{dto::user::UserDto, error::UseCaseError};
 
 #[automock]
 #[async_trait]
-pub trait RegisterUserUseCase: Send + Sync + 'static {
-    async fn register_user(&self, user_id: &str) -> Result<UserDto, UseCaseError>;
+pub trait UserQueryUseCase: Send + Sync + 'static {
+    async fn find_by_id(&self, user_id: &str) -> Result<Option<UserDto>, UseCaseError>;
+}
+
+#[automock]
+#[async_trait]
+pub trait UserCommandUseCase: Send + Sync + 'static {
+    async fn register(&self, user_id: &str) -> Result<UserDto, UseCaseError>;
 }

@@ -4,43 +4,28 @@ use mockall::automock;
 use crate::use_case::{
     dto::{
         event::{AuthorEventDto, BookEventDto},
-        mutation::{RestoreAuthorResultDto, RestoreBookResultDto},
+        event_set::{EventSetDetailDto, EventSetDto},
     },
     error::UseCaseError,
 };
 
 #[automock]
 #[async_trait]
-pub trait ListBookEventsUseCase: Send + Sync + 'static {
-    async fn list(&self, user_id: &str, book_id: &str) -> Result<Vec<BookEventDto>, UseCaseError>;
-}
-
-#[automock]
-#[async_trait]
-pub trait ListAuthorEventsUseCase: Send + Sync + 'static {
-    async fn list(
+pub trait EventQueryUseCase: Send + Sync + 'static {
+    async fn list_book_events(
+        &self,
+        user_id: &str,
+        book_id: &str,
+    ) -> Result<Vec<BookEventDto>, UseCaseError>;
+    async fn list_author_events(
         &self,
         user_id: &str,
         author_id: &str,
     ) -> Result<Vec<AuthorEventDto>, UseCaseError>;
-}
-
-#[automock]
-#[async_trait]
-pub trait RestoreBookUseCase: Send + Sync + 'static {
-    async fn restore(
+    async fn list_event_sets(&self, user_id: &str) -> Result<Vec<EventSetDto>, UseCaseError>;
+    async fn find_event_set(
         &self,
         user_id: &str,
-        event_id: i64,
-    ) -> Result<RestoreBookResultDto, UseCaseError>;
-}
-
-#[automock]
-#[async_trait]
-pub trait RestoreAuthorUseCase: Send + Sync + 'static {
-    async fn restore(
-        &self,
-        user_id: &str,
-        event_id: i64,
-    ) -> Result<RestoreAuthorResultDto, UseCaseError>;
+        event_set_id: &str,
+    ) -> Result<Option<EventSetDetailDto>, UseCaseError>;
 }

@@ -1,16 +1,28 @@
 use bookshelf_api::{
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
-    use_case::traits::{mutation::MockMutationUseCase, query::MockQueryUseCase},
+    use_case::traits::{
+        author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
+        book::{MockBookCommandUseCase, MockBookQueryUseCase},
+        event::MockEventQueryUseCase,
+        user::{MockUserCommandUseCase, MockUserQueryUseCase},
+    },
 };
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
 
-    let query_use_case = MockQueryUseCase::new();
-    let query = Query::new(query_use_case);
-    let mutation_use_case = MockMutationUseCase::new();
-    let mutation = Mutation::new(mutation_use_case);
+    let query = Query::new(
+        MockUserQueryUseCase::new(),
+        MockBookQueryUseCase::new(),
+        MockAuthorQueryUseCase::new(),
+        MockEventQueryUseCase::new(),
+    );
+    let mutation = Mutation::new(
+        MockUserCommandUseCase::new(),
+        MockBookCommandUseCase::new(),
+        MockAuthorCommandUseCase::new(),
+    );
     let schema = build_schema(query, mutation);
     println!("{}", schema.sdl());
 }

@@ -4,41 +4,38 @@ use async_graphql::dataloader::Loader;
 
 use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
-    use_case::traits::query::QueryUseCase,
+    use_case::traits::{author::AuthorQueryUseCase, book::BookQueryUseCase},
 };
 
 use super::object::{Author, Book};
 
-pub struct AuthorLoader<QUC> {
+pub struct AuthorLoader<AQ> {
     claims: Claims,
-    query_use_case: QUC,
+    author_query: AQ,
 }
 
-pub struct BooksByAuthorLoader<QUC> {
+pub struct BooksByAuthorLoader<BQ> {
     claims: Claims,
-    query_use_case: QUC,
+    book_query: BQ,
 }
 
-impl<QUC> BooksByAuthorLoader<QUC> {
-    pub fn new(claims: Claims, query_use_case: QUC) -> Self {
-        Self {
-            claims,
-            query_use_case,
-        }
+impl<BQ> BooksByAuthorLoader<BQ> {
+    pub fn new(claims: Claims, book_query: BQ) -> Self {
+        Self { claims, book_query }
     }
 }
 
-impl<QUC> Loader<String> for BooksByAuthorLoader<QUC>
+impl<BQ> Loader<String> for BooksByAuthorLoader<BQ>
 where
-    QUC: QueryUseCase,
+    BQ: BookQueryUseCase,
 {
     type Value = Vec<Book>;
     type Error = PresentationalError;
 
     async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
         let books_by_author = self
-            .query_use_case
-            .find_books_by_author_ids_as_hash_map(&self.claims.sub, keys)
+            .book_query
+            .find_by_author_ids(&self.claims.sub, keys)
             .await?;
 
         Ok(books_by_author
@@ -53,26 +50,26 @@ where
     }
 }
 
-impl<QUC> AuthorLoader<QUC> {
-    pub fn new(claims: Claims, query_use_case: QUC) -> Self {
+impl<AQ> AuthorLoader<AQ> {
+    pub fn new(claims: Claims, author_query: AQ) -> Self {
         Self {
             claims,
-            query_use_case,
+            author_query,
         }
     }
 }
 
-impl<QUC> Loader<String> for AuthorLoader<QUC>
+impl<AQ> Loader<String> for AuthorLoader<AQ>
 where
-    QUC: QueryUseCase,
+    AQ: AuthorQueryUseCase,
 {
     type Value = Author;
     type Error = PresentationalError;
 
     async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
         let authors_map = self
-            .query_use_case
-            .find_author_by_ids_as_hash_map(&self.claims.sub, keys)
+            .author_query
+            .find_by_ids(&self.claims.sub, keys)
             .await?;
         let authors_map: HashMap<String, Author> = authors_map
             .into_iter()
@@ -94,19 +91,82 @@ mod tests {
     use crate::{
         common::types::{BookFormat, BookStore},
         presentation::extractor::claims::Claims,
-        use_case::{dto::book::BookDto, traits::query::MockQueryUseCase},
+        use_case::{
+            dto::{author::AuthorDto, book::BookDto},
+            traits::{author::MockAuthorQueryUseCase, book::MockBookQueryUseCase},
+        },
     };
 
-    use super::BooksByAuthorLoader;
+    use super::{AuthorLoader, BooksByAuthorLoader};
+
+    #[tokio::test]
+    async fn author_loader_batches_keys_and_maps_authors() {
+        let author_id1 = "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string();
+        let author_id2 = "93090e87-b7a1-403c-974c-d74d881e83b9".to_string();
+        let expected_keys = vec![author_id1.clone(), author_id2.clone()];
+        let mut author_query = MockAuthorQueryUseCase::new();
+        author_query
+            .expect_find_by_ids()
+            .with(predicate::eq("user1"), predicate::eq(expected_keys.clone()))
+            .times(1)
+            .returning(move |_, _| {
+                Ok(HashMap::from([(
+                    author_id1.clone(),
+                    AuthorDto {
+                        id: author_id1.clone(),
+                        name: "Author 1".to_string(),
+                        yomi: "おーさーわん".to_string(),
+                        created_at: OffsetDateTime::UNIX_EPOCH,
+                        updated_at: OffsetDateTime::UNIX_EPOCH,
+                    },
+                )]))
+            });
+        let loader = AuthorLoader::new(
+            Claims {
+                sub: "user1".to_string(),
+                _permissions: None,
+            },
+            author_query,
+        );
+
+        let result = loader.load(&expected_keys).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[&expected_keys[0]].name, "Author 1");
+        assert_eq!(result[&expected_keys[0]].yomi, "おーさーわん");
+        assert!(!result.contains_key(&expected_keys[1]));
+    }
+
+    #[tokio::test]
+    async fn author_loader_returns_empty_map() {
+        let keys = vec!["006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string()];
+        let mut author_query = MockAuthorQueryUseCase::new();
+        author_query
+            .expect_find_by_ids()
+            .with(predicate::eq("user1"), predicate::eq(keys.clone()))
+            .times(1)
+            .returning(|_, _| Ok(HashMap::new()));
+        let loader = AuthorLoader::new(
+            Claims {
+                sub: "user1".to_string(),
+                _permissions: None,
+            },
+            author_query,
+        );
+
+        let result = loader.load(&keys).await.unwrap();
+
+        assert!(result.is_empty());
+    }
 
     #[tokio::test]
     async fn books_by_author_loader_batches_keys_and_maps_books() {
         let author_id1 = "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string();
         let author_id2 = "93090e87-b7a1-403c-974c-d74d881e83b9".to_string();
         let expected_keys = vec![author_id1.clone(), author_id2.clone()];
-        let mut query_use_case = MockQueryUseCase::new();
-        query_use_case
-            .expect_find_books_by_author_ids_as_hash_map()
+        let mut book_query = MockBookQueryUseCase::new();
+        book_query
+            .expect_find_by_author_ids()
             .with(predicate::eq("user1"), predicate::eq(expected_keys.clone()))
             .times(1)
             .returning(move |_, _| {
@@ -135,7 +195,7 @@ mod tests {
                 sub: "user1".to_string(),
                 _permissions: None,
             },
-            query_use_case,
+            book_query,
         );
 
         let result = loader.load(&expected_keys).await.unwrap();

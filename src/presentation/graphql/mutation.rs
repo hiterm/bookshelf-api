@@ -4,7 +4,9 @@ use async_graphql::{Context, ID, Object};
 
 use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
-    use_case::traits::mutation::MutationUseCase,
+    use_case::traits::{
+        author::AuthorCommandUseCase, book::BookCommandUseCase, user::UserCommandUseCase,
+    },
 };
 
 use super::object::{
@@ -14,24 +16,32 @@ use super::object::{
     UpdateBookInput, User,
 };
 
-pub struct Mutation<MUC> {
-    mutation_use_case: MUC,
+pub struct Mutation<UC, BC, AC> {
+    user_command: UC,
+    book_command: BC,
+    author_command: AC,
 }
 
-impl<MUC> Mutation<MUC> {
-    pub fn new(mutation_use_case: MUC) -> Self {
-        Self { mutation_use_case }
+impl<UC, BC, AC> Mutation<UC, BC, AC> {
+    pub fn new(user_command: UC, book_command: BC, author_command: AC) -> Self {
+        Self {
+            user_command,
+            book_command,
+            author_command,
+        }
     }
 }
 
 #[Object]
-impl<MUC> Mutation<MUC>
+impl<UC, BC, AC> Mutation<UC, BC, AC>
 where
-    MUC: MutationUseCase,
+    UC: UserCommandUseCase,
+    BC: BookCommandUseCase,
+    AC: AuthorCommandUseCase,
 {
     async fn register_user(&self, ctx: &Context<'_>) -> Result<User, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let user = self.mutation_use_case.register_user(&claims.sub).await?;
+        let user = self.user_command.register(&claims.sub).await?;
         Ok(User::new(ID(user.id)))
     }
 
@@ -42,8 +52,8 @@ where
     ) -> Result<BookMutationPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let book = self
-            .mutation_use_case
-            .create_book(&claims.sub, book_data.into())
+            .book_command
+            .create(&claims.sub, book_data.into())
             .await?;
 
         Ok(BookMutationPayload::new(
@@ -60,8 +70,8 @@ where
     ) -> Result<BookMutationPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let book = self
-            .mutation_use_case
-            .update_book(&claims.sub, book_data.into())
+            .book_command
+            .update(&claims.sub, book_data.into())
             .await?;
 
         Ok(BookMutationPayload::new(
@@ -78,8 +88,8 @@ where
     ) -> Result<DeleteBookPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let result = self
-            .mutation_use_case
-            .delete_book(&claims.sub, book_id.as_str())
+            .book_command
+            .delete(&claims.sub, book_id.as_str())
             .await?;
 
         Ok(DeleteBookPayload {
@@ -95,8 +105,8 @@ where
     ) -> Result<AuthorMutationPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let author = self
-            .mutation_use_case
-            .create_author(&claims.sub, author_data.into())
+            .author_command
+            .create(&claims.sub, author_data.into())
             .await?;
         Ok(AuthorMutationPayload::new(
             author.value.into(),
@@ -112,8 +122,8 @@ where
     ) -> Result<AuthorMutationPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let author = self
-            .mutation_use_case
-            .update_author(&claims.sub, author_data.into())
+            .author_command
+            .update(&claims.sub, author_data.into())
             .await?;
         Ok(AuthorMutationPayload::new(
             author.value.into(),
@@ -129,8 +139,8 @@ where
     ) -> Result<DeleteAuthorPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let result = self
-            .mutation_use_case
-            .delete_author(&claims.sub, author_id.as_str())
+            .author_command
+            .delete(&claims.sub, author_id.as_str())
             .await?;
         Ok(DeleteAuthorPayload {
             author_id: ID(result.value),
@@ -146,8 +156,8 @@ where
     ) -> Result<MergeAuthorPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let result = self
-            .mutation_use_case
-            .merge_author(
+            .author_command
+            .merge(
                 &claims.sub,
                 crate::use_case::dto::author::MergeAuthorInputDto {
                     source_author_id: source_author_id.to_string(),
@@ -172,10 +182,7 @@ where
                 "event_id must be an integer"
             )))
         })?;
-        let book = self
-            .mutation_use_case
-            .restore_book(&claims.sub, eid)
-            .await?;
+        let book = self.book_command.restore(&claims.sub, eid).await?;
         Ok(RestoreBookPayload {
             book: book.value.map(Book::from),
             event_set_id: ID(book.event_set_id),
@@ -193,10 +200,7 @@ where
                 "event_id must be an integer"
             )))
         })?;
-        let author = self
-            .mutation_use_case
-            .restore_author(&claims.sub, eid)
-            .await?;
+        let author = self.author_command.restore(&claims.sub, eid).await?;
         Ok(RestoreAuthorPayload {
             author: author.value.map(Author::from),
             event_set_id: ID(author.event_set_id),
@@ -211,8 +215,8 @@ where
     ) -> Result<ImportBooksPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
         let books = self
-            .mutation_use_case
-            .import_books(&claims.sub, books.into_iter().map(Into::into).collect())
+            .book_command
+            .import(&claims.sub, books.into_iter().map(Into::into).collect())
             .await?;
         Ok(ImportBooksPayload {
             books: books.value.into_iter().map(Book::from).collect(),
