@@ -50,6 +50,11 @@ pub trait BookRepository: Send + Sync + 'static {
     ) -> Result<Vec<Book>, DomainError>;
     async fn update(&self, tx: &mut Self::Transaction, book: &Book)
     -> Result<EventId, DomainError>;
+    async fn update_all(
+        &self,
+        tx: &mut Self::Transaction,
+        books: &[Book],
+    ) -> Result<(), DomainError>;
     async fn delete(&self, tx: &mut Self::Transaction, book_id: &BookId)
     -> Result<(), DomainError>;
     // Upserts or deletes the entity and records a restore event in one transaction.

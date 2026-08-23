@@ -123,7 +123,29 @@ async fn e2e_graphql_merge_author_moves_books_and_returns_destination() -> Resul
     let (_user_id, token) = create_test_user().await?;
     let source_id = create_test_author("Merge Source", &token).await?;
     let destination_id = create_test_author("Merge Destination", &token).await?;
-    let book_id = create_test_book("Merged Book", &source_id, &token).await?;
+    let book1_id = create_test_book("Merged Book 1", &source_id, &token).await?;
+    let book2_id = create_test_book("Merged Book 2", &source_id, &token).await?;
+    let create_shared_book = format!(
+        r#"mutation {{
+            createBook(bookData: {{
+                title: "Merged Book With Destination"
+                authorIds: ["{}", "{}"]
+                isbn: ""
+                read: false
+                owned: false
+                priority: 50
+                format: E_BOOK
+                store: KINDLE
+            }}) {{ book {{ id }} }}
+        }}"#,
+        source_id, destination_id
+    );
+    let (_, response) = graphql_request(&create_shared_book, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "create merge book with destination");
+    let shared_book_id = response["data"]["createBook"]["book"]["id"]
+        .as_str()
+        .context("shared merge book id should be a string")?
+        .to_owned();
 
     let mutation = format!(
         r#"mutation {{ mergeAuthor(sourceAuthorId: "{}", destinationAuthorId: "{}") {{ author {{ id name books {{ id }} }} eventSetId }} }}"#,
@@ -136,11 +158,21 @@ async fn e2e_graphql_merge_author_moves_books_and_returns_destination() -> Resul
         payload["author"]["id"].as_str(),
         Some(destination_id.as_str())
     );
+    let merged_book_ids: std::collections::HashSet<&str> = payload["author"]["books"]
+        .as_array()
+        .context("merged destination books should be an array")?
+        .iter()
+        .filter_map(|book| book["id"].as_str())
+        .collect();
     assert_eq!(
-        payload["author"]["books"][0]["id"].as_str(),
-        Some(book_id.as_str())
+        merged_book_ids,
+        [&*book1_id, &*book2_id, &*shared_book_id]
+            .into_iter()
+            .collect()
     );
-    assert!(payload["eventSetId"].as_str().is_some());
+    let event_set_id = payload["eventSetId"]
+        .as_str()
+        .context("merge should return eventSetId")?;
     assert!(payload.get("eventId").is_none());
 
     let query = format!(
@@ -150,11 +182,52 @@ async fn e2e_graphql_merge_author_moves_books_and_returns_destination() -> Resul
     let (_, response) = graphql_request(&query, Some(&token)).await?;
     assert!(response["data"]["source"].is_null());
     assert_eq!(
-        response["data"]["destination"]["books"][0]["id"].as_str(),
-        Some(book_id.as_str())
+        response["data"]["destination"]["books"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
     );
 
-    delete_test_book(&book_id, &token).await?;
+    let event_set_query = format!(
+        r#"{{ eventSet(id: "{}") {{
+            operation
+            bookEvents {{ bookId operation authorIds }}
+            authorEvents {{ authorId operation extra }}
+        }} }}"#,
+        event_set_id
+    );
+    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "merge event set");
+    let event_set = &response["data"]["eventSet"];
+    assert_eq!(event_set["operation"].as_str(), Some("merge_author"));
+    let book_events = event_set["bookEvents"]
+        .as_array()
+        .context("merge book events should be an array")?;
+    assert_eq!(book_events.len(), 3);
+    for event in book_events {
+        assert_eq!(event["operation"].as_str(), Some("update"));
+        assert_eq!(
+            event["authorIds"].as_array().unwrap(),
+            &[serde_json::Value::String(destination_id.clone())]
+        );
+    }
+    let author_events = event_set["authorEvents"]
+        .as_array()
+        .context("merge author events should be an array")?;
+    assert_eq!(author_events.len(), 2);
+    assert!(author_events.iter().any(|event| {
+        event["authorId"].as_str() == Some(source_id.as_str())
+            && event["operation"].as_str() == Some("delete")
+    }));
+    assert!(author_events.iter().any(|event| {
+        event["authorId"].as_str() == Some(destination_id.as_str())
+            && event["operation"].as_str() == Some("merge_as_destination")
+    }));
+
+    for book_id in [&book1_id, &book2_id, &shared_book_id] {
+        delete_test_book(book_id, &token).await?;
+    }
     delete_test_author(&destination_id, &token).await?;
     Ok(())
 }

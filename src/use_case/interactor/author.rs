@@ -148,7 +148,7 @@ where
         // Book updates lock their Book row before book_author inserts acquire
         // foreign-key locks on Author rows. Merge uses the same Book -> Author
         // order to avoid a deadlock cycle with a concurrent updateBook.
-        let books = self
+        let mut books = self
             .book_repository
             .find_by_author_id_with_tx(&mut tx, &user_id, &source_id)
             .await?;
@@ -185,7 +185,7 @@ where
             )
         };
 
-        for mut book in books {
+        for book in &mut books {
             let mut author_ids: Vec<_> = book
                 .author_ids()
                 .iter()
@@ -208,8 +208,8 @@ where
                 },
                 OffsetDateTime::now_utc(),
             );
-            self.book_repository.update(&mut tx, &book).await?;
         }
+        self.book_repository.update_all(&mut tx, &books).await?;
 
         self.author_repository
             .delete(
@@ -1065,6 +1065,11 @@ mod tests {
             .times(2)
             .in_sequence(&mut sequence)
             .returning(move |_, _, _| Ok(Some(locked.next().unwrap())));
+        book_repository
+            .expect_update_all()
+            .withf(|_, books| books.is_empty())
+            .times(1)
+            .returning(|_, _| Ok(()));
         author_repository
             .expect_delete()
             .withf(move |_, author_id, extra| {
@@ -1193,19 +1198,28 @@ mod tests {
         let expected_destination = destination_author_id.clone();
         let expected_other = other_id.clone();
         book_repository
-            .expect_update()
-            .times(2)
-            .withf(move |_, book| {
-                !book.author_ids().contains(&expected_source)
-                    && book
-                        .author_ids()
+            .expect_update_all()
+            .times(1)
+            .withf(move |_, books| {
+                books.len() == 2
+                    && books.iter().all(|book| {
+                        !book.author_ids().contains(&expected_source)
+                            && book
+                                .author_ids()
+                                .iter()
+                                .filter(|id| *id == &expected_destination)
+                                .count()
+                                == 1
+                            && book.author_ids().contains(&expected_other)
+                    })
+                    && books
                         .iter()
-                        .filter(|id| *id == &expected_destination)
-                        .count()
-                        == 1
-                    && book.author_ids().contains(&expected_other)
+                        .any(|book| book.title().as_str() == "Needs destination")
+                    && books
+                        .iter()
+                        .any(|book| book.title().as_str() == "Already has destination")
             })
-            .returning(|_, _| Ok(1.into()));
+            .returning(|_, _| Ok(()));
         let mut event_repository = MockAuthorEventRepository::new();
         event_repository
             .expect_append()
