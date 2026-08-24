@@ -20,7 +20,7 @@
 ## 4. API Validation
 
 - [x] 4.1 Run OpenSpec validation and confirm the implementation matches the event-set query-model scenarios
-- [x] 4.2 Run formatting, clippy, locked unit/integration tests, and the existing event-history E2E regression suite
+- [x] 4.2 Confirm existing event-history E2E regression coverage is sufficient for this GraphQL contract change, add no dedicated E2E scenario, and run formatting, clippy, locked unit/integration tests, and the regression suite
 
 ## 5. Frontend Schema Follow-Up
 

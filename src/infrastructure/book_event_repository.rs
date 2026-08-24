@@ -606,6 +606,7 @@ mod tests {
         let book_repo = PgBookRepository::new(pool.clone());
         let event_repo = PgBookEventRepository::new(pool.clone());
         let user_id = prepare_user(&user_repo, "user1").await?;
+        let other_user_id = prepare_user(&user_repo, "user2").await?;
         let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
         create_author(
             &pool,
@@ -625,11 +626,27 @@ mod tests {
             let book = make_book(id, title, std::slice::from_ref(&author_id))?;
             create_book(&pool, &book_repo, &user_id, &book).await?;
         }
-        let ids: Vec<(Uuid,)> =
-            sqlx::query_as("SELECT event_set_id FROM book_event WHERE user_id = $1")
-                .bind(user_id.as_str())
-                .fetch_all(&pool)
-                .await?;
+        let other_author_id = AuthorId::try_from("45fb525f-8dc4-4c0d-a27a-96bff8fdde28")?;
+        create_author(
+            &pool,
+            &author_repo,
+            &other_user_id,
+            &Author::new(
+                other_author_id.clone(),
+                AuthorName::new("other author".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
+        )
+        .await?;
+        let other_book = make_book(
+            "4a7b4494-887c-44ef-a656-8b664b2585f4",
+            "other user's book",
+            std::slice::from_ref(&other_author_id),
+        )?;
+        create_book(&pool, &book_repo, &other_user_id, &other_book).await?;
+        let ids: Vec<(Uuid,)> = sqlx::query_as("SELECT event_set_id FROM book_event")
+            .fetch_all(&pool)
+            .await?;
         let ids: Vec<EventSetId> = ids
             .into_iter()
             .map(|(id,)| EventSetId::from(id))
@@ -639,6 +656,7 @@ mod tests {
         let events = event_repo.find_by_event_set_ids(&user_id, &ids).await?;
 
         assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|event| &event.book_id != other_book.id()));
         Ok(())
     }
 

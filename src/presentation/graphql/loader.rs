@@ -176,7 +176,11 @@ mod tests {
         common::types::{BookFormat, BookStore},
         presentation::extractor::claims::Claims,
         use_case::{
-            dto::{author::AuthorDto, book::BookDto},
+            dto::{
+                author::AuthorDto,
+                book::BookDto,
+                event::{AuthorEventDto, BookEventDto},
+            },
             traits::{
                 author::MockAuthorQueryUseCase, book::MockBookQueryUseCase,
                 event::MockEventQueryUseCase,
@@ -195,25 +199,70 @@ mod tests {
         }
     }
 
+    fn book_event(event_id: i64, event_set_id: String) -> BookEventDto {
+        BookEventDto {
+            event_id,
+            event_set_id,
+            operation: "create".to_string(),
+            book_id: format!("book-{event_id}"),
+            title: Some(format!("Book {event_id}")),
+            author_ids: Vec::new(),
+            isbn: None,
+            read: None,
+            owned: None,
+            priority: None,
+            format: None,
+            store: None,
+            book_created_at: None,
+            book_updated_at: None,
+            changed_at: OffsetDateTime::UNIX_EPOCH,
+            extra: None,
+        }
+    }
+
+    fn author_event(event_id: i64, event_set_id: String) -> AuthorEventDto {
+        AuthorEventDto {
+            event_id,
+            event_set_id,
+            operation: "create".to_string(),
+            author_id: format!("author-{event_id}"),
+            name: Some(format!("Author {event_id}")),
+            yomi: None,
+            author_created_at: None,
+            author_updated_at: None,
+            changed_at: OffsetDateTime::UNIX_EPOCH,
+            extra: None,
+        }
+    }
+
     #[tokio::test]
     async fn book_events_loader_batches_keys_and_includes_empty_values() {
         let keys = vec![
             "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
             "93090e87-b7a1-403c-974c-d74d881e83b9".to_string(),
+            "278935cf-ed83-4346-9b35-b84bbdb630c0".to_string(),
         ];
         let expected_keys = keys.clone();
+        let returned_keys = keys.clone();
         let mut event_query = MockEventQueryUseCase::new();
         event_query
             .expect_list_book_events_by_event_set_ids()
             .with(predicate::eq("user1"), predicate::eq(expected_keys))
             .times(1)
-            .return_once(|_, _| Ok(Vec::new()));
+            .return_once(move |_, _| {
+                Ok(vec![
+                    book_event(1, returned_keys[0].clone()),
+                    book_event(2, returned_keys[1].clone()),
+                ])
+            });
         let loader = BookEventsByEventSetLoader::new(claims(), event_query);
 
         let result = loader.load(&keys).await.unwrap();
 
-        assert_eq!(result.len(), 2);
-        assert!(result.values().all(Vec::is_empty));
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[&keys[0]][0].event_id.as_str(), "1");
+        assert_eq!(result[&keys[1]][0].event_id.as_str(), "2");
+        assert!(result[&keys[2]].is_empty());
     }
 
     #[tokio::test]
@@ -221,20 +270,29 @@ mod tests {
         let keys = vec![
             "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
             "93090e87-b7a1-403c-974c-d74d881e83b9".to_string(),
+            "278935cf-ed83-4346-9b35-b84bbdb630c0".to_string(),
         ];
         let expected_keys = keys.clone();
+        let returned_keys = keys.clone();
         let mut event_query = MockEventQueryUseCase::new();
         event_query
             .expect_list_author_events_by_event_set_ids()
             .with(predicate::eq("user1"), predicate::eq(expected_keys))
             .times(1)
-            .return_once(|_, _| Ok(Vec::new()));
+            .return_once(move |_, _| {
+                Ok(vec![
+                    author_event(1, returned_keys[0].clone()),
+                    author_event(2, returned_keys[1].clone()),
+                ])
+            });
         let loader = AuthorEventsByEventSetLoader::new(claims(), event_query);
 
         let result = loader.load(&keys).await.unwrap();
 
-        assert_eq!(result.len(), 2);
-        assert!(result.values().all(Vec::is_empty));
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[&keys[0]][0].event_id.as_str(), "1");
+        assert_eq!(result[&keys[1]][0].event_id.as_str(), "2");
+        assert!(result[&keys[2]].is_empty());
     }
 
     #[tokio::test]
