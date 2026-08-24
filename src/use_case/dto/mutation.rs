@@ -16,14 +16,6 @@ impl<T> MutationResultDto<T> {
     }
 }
 
-impl<T> std::ops::Deref for MutationResultDto<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.value
-    }
-}
-
 /// Result of a mutation that produces exactly one event for the mutated entity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SingleEventMutationResultDto<T> {
@@ -39,14 +31,6 @@ impl<T> SingleEventMutationResultDto<T> {
             event_set_id,
             event_id,
         }
-    }
-}
-
-impl<T> std::ops::Deref for SingleEventMutationResultDto<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.value
     }
 }
 

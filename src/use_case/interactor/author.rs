@@ -610,11 +610,11 @@ mod tests {
         // Then
         assert!(result.is_ok());
         let dto = result.unwrap();
-        assert_eq!(dto.name, "Test Author");
-        assert_eq!(dto.yomi, "てすと・おーさー1");
-        assert_eq!(dto.created_at, dto.updated_at);
-        assert!(dto.created_at >= before);
-        assert!(dto.created_at <= after);
+        assert_eq!(dto.value.name, "Test Author");
+        assert_eq!(dto.value.yomi, "てすと・おーさー1");
+        assert_eq!(dto.value.created_at, dto.value.updated_at);
+        assert!(dto.value.created_at >= before);
+        assert!(dto.value.created_at <= after);
         assert_eq!(dto.event_id.value(), 303);
     }
 
@@ -734,12 +734,12 @@ mod tests {
         // Then
         assert!(result.is_ok());
         let updated = result.unwrap();
-        assert_eq!(updated.name, "New Name");
-        assert_eq!(updated.yomi, "もとのよみ");
-        assert_eq!(updated.created_at, created_at);
-        assert!(updated.updated_at >= previous_updated_at);
-        assert!(updated.updated_at >= before);
-        assert!(updated.updated_at <= after);
+        assert_eq!(updated.value.name, "New Name");
+        assert_eq!(updated.value.yomi, "もとのよみ");
+        assert_eq!(updated.value.created_at, created_at);
+        assert!(updated.value.updated_at >= previous_updated_at);
+        assert!(updated.value.updated_at >= before);
+        assert!(updated.value.updated_at <= after);
         assert_eq!(updated.event_id.value(), 404);
     }
 
@@ -827,7 +827,7 @@ mod tests {
 
         let result = interactor.update("user1", author_data).await.unwrap();
 
-        assert_eq!(result.yomi, "");
+        assert_eq!(result.value.yomi, "");
     }
 
     #[tokio::test]

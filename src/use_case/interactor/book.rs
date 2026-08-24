@@ -775,9 +775,9 @@ mod tests {
         // Then
         assert!(result.is_ok());
         let dto = result.unwrap();
-        assert_eq!(dto.title, "New Book");
-        assert!(dto.owned);
-        assert_eq!(dto.created_at, dto.updated_at);
+        assert_eq!(dto.value.title, "New Book");
+        assert!(dto.value.owned);
+        assert_eq!(dto.value.created_at, dto.value.updated_at);
         assert_eq!(dto.event_id.value(), 101);
     }
 
@@ -898,8 +898,8 @@ mod tests {
         // Then
         assert!(result.is_ok());
         let dto = result.unwrap();
-        assert_eq!(dto.title, "Updated Book");
-        assert_eq!(dto.priority, 70);
+        assert_eq!(dto.value.title, "Updated Book");
+        assert_eq!(dto.value.priority, 70);
         assert_eq!(dto.event_id.value(), 202);
     }
 
@@ -1192,14 +1192,14 @@ mod tests {
         // Then
         assert!(result.is_ok());
         let dtos = result.unwrap();
-        assert_eq!(dtos.len(), 2);
-        assert_eq!(dtos[0].created_at, dtos[0].updated_at);
-        assert_eq!(dtos[1].created_at, dtos[1].updated_at);
-        assert_eq!(dtos[0].created_at, dtos[1].created_at);
+        assert_eq!(dtos.value.len(), 2);
+        assert_eq!(dtos.value[0].created_at, dtos.value[0].updated_at);
+        assert_eq!(dtos.value[1].created_at, dtos.value[1].updated_at);
+        assert_eq!(dtos.value[0].created_at, dtos.value[1].created_at);
         let author_times = author_times.lock().unwrap();
         assert_eq!(
             normalize_timestamp_for_persistence(author_times[0]),
-            dtos[0].created_at
+            dtos.value[0].created_at
         );
     }
 
@@ -1630,7 +1630,7 @@ mod import_integration_tests {
                 ],
             )
             .await?;
-        assert_eq!(result.len(), 2);
+        assert_eq!(result.value.len(), 2);
 
         // Exactly two authors exist (Existing Author reused, New Author added).
         let author_rows: Vec<(String,)> =
@@ -1671,7 +1671,7 @@ mod import_integration_tests {
                 ],
             )
             .await?;
-        assert_eq!(result.len(), 2);
+        assert_eq!(result.value.len(), 2);
 
         let (author_count,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM author WHERE user_id = $1")
@@ -1700,7 +1700,7 @@ mod import_integration_tests {
                 vec![entry("Imported Book", vec!["Author A"])],
             )
             .await?;
-        assert_eq!(result.len(), 1);
+        assert_eq!(result.value.len(), 1);
 
         // event_set has the import_books row.
         let (es_op,): (String,) = sqlx::query_as(
@@ -1811,7 +1811,7 @@ mod import_integration_tests {
                 vec![entry("Book With No Authors", vec![])],
             )
             .await?;
-        assert_eq!(result.len(), 1);
+        assert_eq!(result.value.len(), 1);
 
         let (book_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book WHERE user_id = $1")
             .bind(user_id.as_str())
@@ -1855,7 +1855,7 @@ mod import_integration_tests {
             .collect();
 
         let result = interactor(&pool).import(user_id.as_str(), books).await?;
-        assert_eq!(result.len(), super::MAX_BOOK_BATCH);
+        assert_eq!(result.value.len(), super::MAX_BOOK_BATCH);
 
         let (book_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book WHERE user_id = $1")
             .bind(user_id.as_str())
