@@ -1630,7 +1630,7 @@ mod import_integration_tests {
                 ],
             )
             .await?;
-        assert_eq!(result.len(), 2);
+        assert_eq!(result.value.len(), 2);
 
         // Exactly two authors exist (Existing Author reused, New Author added).
         let author_rows: Vec<(String,)> =
@@ -1671,7 +1671,7 @@ mod import_integration_tests {
                 ],
             )
             .await?;
-        assert_eq!(result.len(), 2);
+        assert_eq!(result.value.len(), 2);
 
         let (author_count,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM author WHERE user_id = $1")
@@ -1700,7 +1700,7 @@ mod import_integration_tests {
                 vec![entry("Imported Book", vec!["Author A"])],
             )
             .await?;
-        assert_eq!(result.len(), 1);
+        assert_eq!(result.value.len(), 1);
 
         // event_set has the import_books row.
         let (es_op,): (String,) = sqlx::query_as(
@@ -1811,7 +1811,7 @@ mod import_integration_tests {
                 vec![entry("Book With No Authors", vec![])],
             )
             .await?;
-        assert_eq!(result.len(), 1);
+        assert_eq!(result.value.len(), 1);
 
         let (book_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book WHERE user_id = $1")
             .bind(user_id.as_str())
@@ -1855,7 +1855,7 @@ mod import_integration_tests {
             .collect();
 
         let result = interactor(&pool).import(user_id.as_str(), books).await?;
-        assert_eq!(result.len(), super::MAX_BOOK_BATCH);
+        assert_eq!(result.value.len(), super::MAX_BOOK_BATCH);
 
         let (book_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM book WHERE user_id = $1")
             .bind(user_id.as_str())

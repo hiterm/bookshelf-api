@@ -59,3 +59,6 @@ During implementation, all production and presentation call sites were found
 to use explicit result fields already. Existing author and book interactor unit
 tests still relied on implicit inner-field access, including vector methods and
 indexing for import results, so only those assertions require `.value` updates.
+CI additionally found five implicit `len` calls in database-feature import
+tests, which are compiled only by the all-features suite; those assertions also
+require explicit `.value` access.
