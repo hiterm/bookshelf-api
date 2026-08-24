@@ -5,16 +5,18 @@ use serde_json::Value;
 use time::OffsetDateTime;
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
-use crate::dependency_injection::{AQ, BQ};
+use crate::dependency_injection::{AQ, BQ, EQ};
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{
     BookDto, CreateBookDto, ImportAuthorPreviewDto, ImportAuthorStatus as ImportAuthorStatusDto,
     ImportBookEntryDto, ImportBookPreviewDto, ImportBooksPreviewDto, UpdateBookDto,
 };
 use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
-use crate::use_case::dto::event_set::{EventSetDetailDto, EventSetDto};
+use crate::use_case::dto::event_set::EventSetDto;
 
-use super::loader::{AuthorLoader, BooksByAuthorLoader};
+use super::loader::{
+    AuthorEventsByEventSetLoader, AuthorLoader, BookEventsByEventSetLoader, BooksByAuthorLoader,
+};
 
 #[derive(SimpleObject)]
 pub struct User {
@@ -362,7 +364,7 @@ impl From<ImportBookInput> for ImportBookEntryDto {
     }
 }
 
-#[derive(SimpleObject)]
+#[derive(Clone, SimpleObject)]
 pub struct BookEventEntry {
     pub event_id: ID,
     pub event_set_id: ID,
@@ -405,7 +407,7 @@ impl From<BookEventDto> for BookEventEntry {
     }
 }
 
-#[derive(SimpleObject)]
+#[derive(Clone, SimpleObject)]
 pub struct AuthorEventEntry {
     pub event_id: ID,
     pub event_set_id: ID,
@@ -437,13 +439,14 @@ impl From<AuthorEventDto> for AuthorEventEntry {
 }
 
 #[derive(SimpleObject)]
-pub struct EventSetEntry {
+#[graphql(complex)]
+pub struct EventSet {
     pub id: ID,
     pub operation: String,
     pub created_at: i64,
 }
 
-impl From<EventSetDto> for EventSetEntry {
+impl From<EventSetDto> for EventSet {
     fn from(dto: EventSetDto) -> Self {
         Self {
             id: ID(dto.id),
@@ -453,32 +456,22 @@ impl From<EventSetDto> for EventSetEntry {
     }
 }
 
-#[derive(SimpleObject)]
-pub struct EventSetDetail {
-    pub id: ID,
-    pub operation: String,
-    pub created_at: i64,
-    pub book_events: Vec<BookEventEntry>,
-    pub author_events: Vec<AuthorEventEntry>,
-}
+#[ComplexObject]
+impl EventSet {
+    async fn book_events(&self, ctx: &Context<'_>) -> Result<Vec<BookEventEntry>> {
+        let loader = ctx.data_unchecked::<DataLoader<BookEventsByEventSetLoader<EQ>>>();
+        Ok(loader
+            .load_one(self.id.to_string())
+            .await?
+            .unwrap_or_default())
+    }
 
-impl From<EventSetDetailDto> for EventSetDetail {
-    fn from(dto: EventSetDetailDto) -> Self {
-        Self {
-            id: ID(dto.id),
-            operation: dto.operation,
-            created_at: dto.created_at.unix_timestamp(),
-            book_events: dto
-                .book_events
-                .into_iter()
-                .map(BookEventEntry::from)
-                .collect(),
-            author_events: dto
-                .author_events
-                .into_iter()
-                .map(AuthorEventEntry::from)
-                .collect(),
-        }
+    async fn author_events(&self, ctx: &Context<'_>) -> Result<Vec<AuthorEventEntry>> {
+        let loader = ctx.data_unchecked::<DataLoader<AuthorEventsByEventSetLoader<EQ>>>();
+        Ok(loader
+            .load_one(self.id.to_string())
+            .await?
+            .unwrap_or_default())
     }
 }
 

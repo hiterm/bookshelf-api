@@ -192,6 +192,19 @@ mod tests {
         assert!(schema.sdl().contains("\tbooks: [Book!]!"));
     }
 
+    #[test]
+    fn event_set_uses_one_graphql_type_for_list_and_detail() {
+        let sdl = build_schema(query(), mutation()).sdl();
+
+        assert!(sdl.contains("type EventSet {"));
+        assert!(!sdl.contains("type EventSetEntry"));
+        assert!(!sdl.contains("type EventSetDetail"));
+        assert!(sdl.contains("\teventSets: [EventSet!]!"));
+        assert!(sdl.contains("\teventSet(id: ID!): EventSet"));
+        assert!(sdl.contains("\tbookEvents: [BookEventEntry!]!"));
+        assert!(sdl.contains("\tauthorEvents: [AuthorEventEntry!]!"));
+    }
+
     #[cfg(feature = "test-with-database")]
     #[sqlx::test]
     async fn authors_resolve_populated_shared_and_empty_book_lists(
@@ -247,7 +260,7 @@ mod tests {
         .execute(&pool)
         .await?;
 
-        let (author_query, book_query, schema) = dependency_injection(pool);
+        let (author_query, book_query, _event_query, schema) = dependency_injection(pool);
         let claims = Claims {
             sub: "user1".to_string(),
             _permissions: None,

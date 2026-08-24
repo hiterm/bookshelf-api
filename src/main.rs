@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     sqlx::migrate!().run(&pool).await?;
 
-    let (author_query, book_query, schema) = dependency_injection(pool);
+    let (author_query, book_query, event_query, schema) = dependency_injection(pool);
 
     let jwt_config = JwtConfig::from_env()?;
     let jwks_cache = moka::future::Cache::builder()
@@ -74,6 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
             ServiceBuilder::new()
                 .layer(Extension(author_query))
                 .layer(Extension(book_query))
+                .layer(Extension(event_query))
                 .layer(Extension(schema))
                 .layer(
                     TraceLayer::new_for_http()

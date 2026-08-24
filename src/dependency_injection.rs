@@ -40,7 +40,7 @@ pub type AppQuery = Query<UQ, BQ, AQ, EQ>;
 pub type AppMutation = Mutation<UC, BC, AC>;
 pub type AppSchema = Schema<AppQuery, AppMutation, EmptySubscription>;
 
-pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, AppSchema) {
+pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, EQ, AppSchema) {
     let user_repository = PgUserRepository::new(pool.clone());
     let book_repository = PgBookRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
@@ -75,10 +75,10 @@ pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, AppSchema) {
         user_query,
         book_query.clone(),
         author_query.clone(),
-        event_query,
+        event_query.clone(),
     );
     let mutation = Mutation::new(user_command, book_command, author_command);
     let schema = build_schema(query, mutation);
 
-    (author_query, book_query, schema)
+    (author_query, book_query, event_query, schema)
 }

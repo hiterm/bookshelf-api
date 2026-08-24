@@ -149,6 +149,30 @@ impl AuthorEventRepository for PgAuthorEventRepository {
 
         rows.into_iter().map(row_to_author_event).collect()
     }
+
+    async fn find_by_event_set_ids(
+        &self,
+        user_id: &UserId,
+        event_set_ids: &[EventSetId],
+    ) -> Result<Vec<AuthorEvent>, DomainError> {
+        if event_set_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let event_set_ids: Vec<Uuid> = event_set_ids.iter().map(EventSetId::to_uuid).collect();
+        let rows: Vec<AuthorEventRow> = sqlx::query_as(
+            "SELECT event_id, event_set_id, operation, author_id, name, yomi,
+                    author_created_at, author_updated_at, changed_at, extra
+             FROM author_event
+             WHERE user_id = $1 AND event_set_id = ANY($2)
+             ORDER BY changed_at DESC",
+        )
+        .bind(user_id.as_str())
+        .bind(&event_set_ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter().map(row_to_author_event).collect()
+    }
 }
 
 #[cfg(feature = "test-with-database")]
@@ -276,6 +300,66 @@ mod tests {
             .await?;
         assert!(entries.is_empty());
 
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_event_set_ids_batches_and_remains_user_scoped(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repo = PgUserRepository::new(pool.clone());
+        let author_repo = PgAuthorRepository::new(pool.clone());
+        let event_repo = PgAuthorEventRepository::new(pool.clone());
+        let user1 = prepare_user(&user_repo, "user1").await?;
+        let user2 = prepare_user(&user_repo, "user2").await?;
+        for (user, id, name) in [
+            (&user1, "278935cf-ed83-4346-9b35-b84bbdb630c0", "Author 1"),
+            (&user1, "006099b4-6c42-4ec4-8645-f6bd5b63eddc", "Author 2"),
+            (&user2, "93090e87-b7a1-403c-974c-d74d881e83b9", "Other User"),
+        ] {
+            create_author(
+                &pool,
+                &author_repo,
+                user,
+                &Author::new(
+                    AuthorId::try_from(id)?,
+                    AuthorName::new(name.to_string())?,
+                    OffsetDateTime::UNIX_EPOCH,
+                )?,
+            )
+            .await?;
+        }
+        let ids: Vec<(Uuid,)> = sqlx::query_as("SELECT event_set_id FROM author_event")
+            .fetch_all(&pool)
+            .await?;
+        let ids: Vec<EventSetId> = ids
+            .into_iter()
+            .map(|(id,)| EventSetId::from(id))
+            .chain(std::iter::once(EventSetId::new()))
+            .collect();
+
+        let events = event_repo.find_by_event_set_ids(&user1, &ids).await?;
+
+        assert_eq!(events.len(), 2);
+        assert!(
+            events
+                .iter()
+                .all(|event| event.name.as_deref() != Some("Other User"))
+        );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_event_set_ids_accepts_empty_ids(pool: PgPool) -> anyhow::Result<()> {
+        let event_repo = PgAuthorEventRepository::new(pool);
+        let user_id = UserId::new("user1".to_string())?;
+
+        assert!(
+            event_repo
+                .find_by_event_set_ids(&user_id, &[])
+                .await?
+                .is_empty()
+        );
         Ok(())
     }
 }
