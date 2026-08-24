@@ -1,3 +1,9 @@
+## Purpose
+
+Define entity-scoped Query and Command UseCase boundaries that reduce application
+layer coupling while preserving static dispatch, mutation invariants, and the
+externally observable GraphQL behavior.
+
 ## Requirements
 
 ### Requirement: Entity-scoped application boundaries
