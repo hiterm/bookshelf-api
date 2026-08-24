@@ -12,8 +12,8 @@ use crate::{
 use super::object::{
     Author, AuthorMutationPayload, Book, BookMutationPayload, CreateAuthorInput, CreateBookInput,
     DeleteAuthorPayload, DeleteBookPayload, ImportBookInput, ImportBooksPayload,
-    MergeAuthorPayload, RestoreAuthorPayload, RestoreBookPayload, UpdateAuthorInput,
-    UpdateBookInput, User,
+    ImportBooksPreview, MergeAuthorPayload, RestoreAuthorPayload, RestoreBookPayload,
+    UpdateAuthorInput, UpdateBookInput, User,
 };
 
 pub struct Mutation<UC, BC, AC> {
@@ -222,6 +222,20 @@ where
             books: books.value.into_iter().map(Book::from).collect(),
             event_set_id: ID(books.event_set_id),
         })
+    }
+
+    /// Executes the book import path and rolls the complete transaction back.
+    async fn preview_book_import(
+        &self,
+        ctx: &Context<'_>,
+        books: Vec<ImportBookInput>,
+    ) -> Result<ImportBooksPreview, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        Ok(self
+            .book_command
+            .preview_import(&claims.sub, books.into_iter().map(Into::into).collect())
+            .await?
+            .into())
     }
 }
 

@@ -7,7 +7,10 @@ use time::OffsetDateTime;
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::{AQ, BQ};
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
-use crate::use_case::dto::book::{BookDto, CreateBookDto, ImportBookEntryDto, UpdateBookDto};
+use crate::use_case::dto::book::{
+    BookDto, CreateBookDto, ImportAuthorPreviewDto, ImportAuthorStatus as ImportAuthorStatusDto,
+    ImportBookEntryDto, ImportBookPreviewDto, ImportBooksPreviewDto, UpdateBookDto,
+};
 use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
 use crate::use_case::dto::event_set::{EventSetDetailDto, EventSetDto};
 
@@ -535,6 +538,80 @@ pub struct DeleteAuthorPayload {
 pub struct ImportBooksPayload {
     pub books: Vec<Book>,
     pub event_set_id: ID,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum ImportAuthorStatus {
+    Existing,
+    New,
+}
+
+impl From<ImportAuthorStatusDto> for ImportAuthorStatus {
+    fn from(status: ImportAuthorStatusDto) -> Self {
+        match status {
+            ImportAuthorStatusDto::Existing => Self::Existing,
+            ImportAuthorStatusDto::New => Self::New,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct ImportAuthorPreview {
+    pub name: String,
+    pub status: ImportAuthorStatus,
+}
+
+impl From<ImportAuthorPreviewDto> for ImportAuthorPreview {
+    fn from(dto: ImportAuthorPreviewDto) -> Self {
+        Self {
+            name: dto.name,
+            status: dto.status.into(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct ImportBookPreview {
+    pub title: String,
+    pub authors: Vec<ImportAuthorPreview>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+}
+
+impl From<ImportBookPreviewDto> for ImportBookPreview {
+    fn from(dto: ImportBookPreviewDto) -> Self {
+        Self {
+            title: dto.title,
+            authors: dto
+                .authors
+                .into_iter()
+                .map(ImportAuthorPreview::from)
+                .collect(),
+            isbn: dto.isbn,
+            read: dto.read,
+            owned: dto.owned,
+            priority: dto.priority,
+            format: dto.format.into(),
+            store: dto.store.into(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct ImportBooksPreview {
+    pub books: Vec<ImportBookPreview>,
+}
+
+impl From<ImportBooksPreviewDto> for ImportBooksPreview {
+    fn from(dto: ImportBooksPreviewDto) -> Self {
+        Self {
+            books: dto.books.into_iter().map(Into::into).collect(),
+        }
+    }
 }
 
 #[derive(SimpleObject)]

@@ -676,3 +676,153 @@ async fn e2e_import_books_empty_returns_error() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let existing_author_id = create_test_author("Preview Existing", &token).await?;
+    let before_query = "{ books { id } authors { id } eventSets { id } }";
+    let (_, before) = graphql_request(before_query, Some(&token)).await?;
+
+    let preview = r#"
+        mutation {
+            previewBookImport(books: [
+                {
+                    title: "Preview One"
+                    authorNames: ["Preview Existing", "Preview New", "Preview New"]
+                    isbn: ""
+                    read: true
+                    owned: false
+                    priority: 42
+                    format: E_BOOK
+                    store: KINDLE
+                },
+                {
+                    title: "Preview Two"
+                    authorNames: ["Preview New"]
+                    isbn: ""
+                    read: false
+                    owned: true
+                    priority: 7
+                    format: PRINTED
+                    store: UNKNOWN
+                }
+            ]) {
+                books {
+                    title
+                    authors { name status }
+                    isbn
+                    read
+                    owned
+                    priority
+                    format
+                    store
+                }
+            }
+        }
+    "#;
+    let (_, response) = graphql_request(preview, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "previewBookImport");
+    let books = response["data"]["previewBookImport"]["books"]
+        .as_array()
+        .context("preview books should be an array")?;
+    assert_eq!(books.len(), 2);
+    assert_eq!(books[0]["title"], "Preview One");
+    let authors = books[0]["authors"]
+        .as_array()
+        .context("preview authors should be an array")?;
+    assert_eq!(authors.len(), 2, "duplicate author names are normalized");
+    assert_eq!(authors[0]["status"], "EXISTING");
+    assert_eq!(authors[1]["status"], "NEW");
+    assert_eq!(books[1]["authors"][0]["status"], "NEW");
+
+    let (_, after) = graphql_request(before_query, Some(&token)).await?;
+    assert_eq!(
+        after["data"], before["data"],
+        "preview must leave DB unchanged"
+    );
+
+    let import = r#"
+        mutation {
+            importBooks(books: [
+                {
+                    title: "Preview One"
+                    authorNames: ["Preview Existing", "Preview New", "Preview New"]
+                    isbn: ""
+                    read: true
+                    owned: false
+                    priority: 42
+                    format: E_BOOK
+                    store: KINDLE
+                },
+                {
+                    title: "Preview Two"
+                    authorNames: ["Preview New"]
+                    isbn: ""
+                    read: false
+                    owned: true
+                    priority: 7
+                    format: PRINTED
+                    store: UNKNOWN
+                }
+            ]) {
+                books {
+                    id
+                    title
+                    authors { name }
+                    isbn
+                    read
+                    owned
+                    priority
+                    format
+                    store
+                }
+            }
+        }
+    "#;
+    let (_, imported) = graphql_request(import, Some(&token)).await?;
+    assert_no_graphql_errors(&imported, "importBooks after preview");
+    let imported_books = imported["data"]["importBooks"]["books"]
+        .as_array()
+        .context("imported books should be an array")?;
+    assert_eq!(imported_books.len(), 2);
+    for book in imported_books {
+        delete_test_book(
+            book["id"]
+                .as_str()
+                .context("imported book id should exist")?,
+            &token,
+        )
+        .await?;
+    }
+    let (_, authors_response) = graphql_request("{ authors { id name } }", Some(&token)).await?;
+    if let Some(new_author) = authors_response["data"]["authors"]
+        .as_array()
+        .and_then(|authors| {
+            authors
+                .iter()
+                .find(|author| author["name"] == "Preview New")
+        })
+    {
+        delete_test_author(
+            new_author["id"]
+                .as_str()
+                .context("new author id should exist")?,
+            &token,
+        )
+        .await?;
+    }
+    delete_test_author(&existing_author_id, &token).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_preview_book_import_empty_returns_error() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let query = "mutation { previewBookImport(books: []) { books { title } } }";
+    let (_, response) = graphql_request(query, Some(&token)).await?;
+    assert_graphql_errors(&response, "previewBookImport with empty list");
+    Ok(())
+}

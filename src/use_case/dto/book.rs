@@ -170,6 +170,35 @@ pub struct ImportBookEntryDto {
     pub store: BookStore,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportAuthorStatus {
+    Existing,
+    New,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportAuthorPreviewDto {
+    pub name: String,
+    pub status: ImportAuthorStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportBookPreviewDto {
+    pub title: String,
+    pub authors: Vec<ImportAuthorPreviewDto>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportBooksPreviewDto {
+    pub books: Vec<ImportBookPreviewDto>,
+}
+
 impl UpdateBookDto {
     #[allow(clippy::too_many_arguments)]
     pub fn new(

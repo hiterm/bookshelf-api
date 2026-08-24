@@ -23,7 +23,11 @@ use crate::{
     },
     use_case::{
         dto::{
-            book::{BookDto, CreateBookDto, ImportBookEntryDto, TimeInfo, UpdateBookDto},
+            book::{
+                BookDto, CreateBookDto, ImportAuthorPreviewDto, ImportAuthorStatus,
+                ImportBookEntryDto, ImportBookPreviewDto, ImportBooksPreviewDto, TimeInfo,
+                UpdateBookDto,
+            },
             mutation::{
                 BookMutationResultDto, DeleteBookResultDto, ImportBooksResultDto,
                 MutationResultDto, SingleEventMutationResultDto,
@@ -118,6 +122,11 @@ struct ImportBookInput {
     updated_at: OffsetDateTime,
 }
 
+struct ImportExecutionResult {
+    books: Vec<Book>,
+    previews: Vec<ImportBookPreviewDto>,
+}
+
 pub struct BookCommandInteractor<BR, AR, BER, TM> {
     book_repository: BR,
     author_repository: AR,
@@ -138,6 +147,135 @@ impl<BR, AR, BER, TM> BookCommandInteractor<BR, AR, BER, TM> {
             book_event_repository,
             transaction_manager,
         }
+    }
+}
+
+impl<BR, AR, BER, TM> BookCommandInteractor<BR, AR, BER, TM>
+where
+    TM: TransactionManager,
+    BR: BookRepository<Transaction = TM::Transaction>,
+    AR: AuthorRepository<Transaction = TM::Transaction>,
+{
+    fn prepare_import(
+        books: Vec<ImportBookEntryDto>,
+    ) -> Result<Vec<ImportBookInput>, UseCaseError> {
+        if books.is_empty() {
+            return Err(UseCaseError::Validation(
+                "books cannot be empty".to_string(),
+            ));
+        }
+        if books.len() > MAX_BOOK_BATCH {
+            return Err(UseCaseError::Validation(format!(
+                "books cannot exceed {MAX_BOOK_BATCH}"
+            )));
+        }
+
+        let now = OffsetDateTime::now_utc();
+        books
+            .into_iter()
+            .map(|dto| {
+                Ok(ImportBookInput {
+                    book_id: BookId::new(Uuid::new_v4())?,
+                    title: BookTitle::new(dto.title)?,
+                    author_names: dto
+                        .author_names
+                        .into_iter()
+                        .map(AuthorName::new)
+                        .collect::<Result<_, DomainError>>()?,
+                    isbn: Isbn::new(dto.isbn)?,
+                    read: ReadFlag::new(dto.read),
+                    owned: OwnedFlag::new(dto.owned),
+                    priority: Priority::new(dto.priority)?,
+                    format: dto.format,
+                    store: dto.store,
+                    created_at: now,
+                    updated_at: now,
+                })
+            })
+            .collect()
+    }
+
+    async fn execute_import(
+        &self,
+        tx: &mut TM::Transaction,
+        inputs: Vec<ImportBookInput>,
+    ) -> Result<ImportExecutionResult, UseCaseError> {
+        // This shared path must contain only writes scoped to `tx`: preview
+        // relies on rollback to undo every author, book, relationship, and event.
+        let mut seen_author_names = HashSet::new();
+        let unique_author_names: Vec<AuthorName> = inputs
+            .iter()
+            .flat_map(|input| input.author_names.iter())
+            .filter(|name| seen_author_names.insert(name.as_str().to_owned()))
+            .cloned()
+            .collect();
+        let resolved = self
+            .author_repository
+            .find_or_create_by_names(tx, &unique_author_names, inputs[0].created_at)
+            .await?;
+
+        let mut books = Vec::with_capacity(inputs.len());
+        let mut previews = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            let mut seen_names = HashSet::new();
+            let authors = input
+                .author_names
+                .iter()
+                .filter(|name| seen_names.insert(name.as_str()))
+                .map(|name| {
+                    let id = resolved
+                        .authors_by_name
+                        .get(name.as_str())
+                        .cloned()
+                        .ok_or_else(|| {
+                            DomainError::Unexpected(format!(
+                                "author name '{}' not found in name_to_id map",
+                                name.as_str()
+                            ))
+                        })?;
+                    let status = if resolved.created_author_ids.contains(&id) {
+                        ImportAuthorStatus::New
+                    } else {
+                        ImportAuthorStatus::Existing
+                    };
+                    Ok((
+                        id,
+                        ImportAuthorPreviewDto {
+                            name: name.as_str().to_owned(),
+                            status,
+                        },
+                    ))
+                })
+                .collect::<Result<Vec<_>, DomainError>>()?;
+            let (author_ids, preview_authors): (Vec<_>, Vec<_>) = authors.into_iter().unzip();
+
+            previews.push(ImportBookPreviewDto {
+                title: input.title.as_str().to_owned(),
+                authors: preview_authors,
+                isbn: input.isbn.as_str().to_owned(),
+                read: input.read.to_bool(),
+                owned: input.owned.to_bool(),
+                priority: input.priority.to_i32(),
+                format: input.format.clone(),
+                store: input.store.clone(),
+            });
+            books.push(Book::new(
+                input.book_id,
+                input.title,
+                author_ids,
+                input.isbn,
+                input.read,
+                input.owned,
+                input.priority,
+                input.format,
+                input.store,
+                input.created_at,
+                input.updated_at,
+            )?);
+        }
+
+        self.book_repository.create_all(tx, &books).await?;
+        Ok(ImportExecutionResult { books, previews })
     }
 }
 
@@ -269,116 +407,37 @@ where
         user_id: &str,
         books: Vec<ImportBookEntryDto>,
     ) -> Result<ImportBooksResultDto, UseCaseError> {
-        if books.is_empty() {
-            return Err(UseCaseError::Validation(
-                "books cannot be empty".to_string(),
-            ));
-        }
-
-        if books.len() > MAX_BOOK_BATCH {
-            return Err(UseCaseError::Validation(format!(
-                "books cannot exceed {MAX_BOOK_BATCH}"
-            )));
-        }
-
+        let inputs = Self::prepare_import(books)?;
         let user_id = UserId::new(user_id.to_string())?;
-        let now = OffsetDateTime::now_utc();
-
-        // Validation and DTO mapping happen BEFORE begin, so a validation
-        // failure never opens a transaction.
-        let inputs: Result<Vec<ImportBookInput>, UseCaseError> = books
-            .into_iter()
-            .map(|dto| {
-                let title = BookTitle::new(dto.title)?;
-                let author_names: Result<Vec<AuthorName>, DomainError> =
-                    dto.author_names.into_iter().map(AuthorName::new).collect();
-                let author_names = author_names?;
-                let isbn = Isbn::new(dto.isbn)?;
-                let priority = Priority::new(dto.priority)?;
-
-                Ok(ImportBookInput {
-                    book_id: BookId::new(Uuid::new_v4())?,
-                    title,
-                    author_names,
-                    isbn,
-                    read: ReadFlag::new(dto.read),
-                    owned: OwnedFlag::new(dto.owned),
-                    priority,
-                    format: dto.format,
-                    store: dto.store,
-                    created_at: now,
-                    updated_at: now,
-                })
-            })
-            .collect();
-        let inputs = inputs?;
-
-        let mut seen_author_names = HashSet::new();
-        let unique_author_names: Vec<AuthorName> = inputs
-            .iter()
-            .flat_map(|input| input.author_names.iter())
-            .filter(|name| seen_author_names.insert(name.as_str().to_owned()))
-            .cloned()
-            .collect();
-
         let mut tx = self
             .transaction_manager
             .begin(&user_id, EventSetOperation::ImportBooks)
             .await?;
-
-        let name_to_id = self
-            .author_repository
-            .find_or_create_by_names(&mut tx, &unique_author_names, now)
-            .await?;
-
-        let mut result_books = Vec::with_capacity(inputs.len());
-        for input in inputs {
-            // Drop duplicate author names within one book (keeping first-seen
-            // order) — book_author has a primary key on (user_id, book_id,
-            // author_id), so a duplicated id would abort the whole import.
-            let mut seen_names: HashSet<&str> = HashSet::new();
-            let author_ids: Vec<AuthorId> = input
-                .author_names
-                .iter()
-                .filter(|name| seen_names.insert(name.as_str()))
-                .map(|name| {
-                    name_to_id.get(name.as_str()).cloned().ok_or_else(|| {
-                        DomainError::Unexpected(format!(
-                            "author name '{}' not found in name_to_id map",
-                            name.as_str()
-                        ))
-                    })
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let book = Book::new(
-                input.book_id,
-                input.title,
-                author_ids,
-                input.isbn,
-                input.read,
-                input.owned,
-                input.priority,
-                input.format,
-                input.store,
-                input.created_at,
-                input.updated_at,
-            )?;
-
-            result_books.push(book);
-        }
-
-        self.book_repository
-            .create_all(&mut tx, &result_books)
-            .await?;
-
+        let result = self.execute_import(&mut tx, inputs).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
         self.transaction_manager.commit(tx).await?;
-
         Ok(MutationResultDto::new(
-            result_books.into_iter().map(BookDto::from).collect(),
+            result.books.into_iter().map(BookDto::from).collect(),
             event_set_id,
         ))
+    }
+
+    async fn preview_import(
+        &self,
+        user_id: &str,
+        books: Vec<ImportBookEntryDto>,
+    ) -> Result<ImportBooksPreviewDto, UseCaseError> {
+        let inputs = Self::prepare_import(books)?;
+        let user_id = UserId::new(user_id.to_string())?;
+        let mut tx = self
+            .transaction_manager
+            .begin(&user_id, EventSetOperation::ImportBooks)
+            .await?;
+        let result = self.execute_import(&mut tx, inputs).await?;
+        self.transaction_manager.rollback(tx).await?;
+        Ok(ImportBooksPreviewDto {
+            books: result.previews,
+        })
     }
 
     async fn restore(
@@ -483,13 +542,14 @@ mod tests {
             },
             error::DomainError,
             repository::{
-                author_repository::MockAuthorRepository,
+                author_repository::{FindOrCreateAuthorsResult, MockAuthorRepository},
                 book_event_repository::MockBookEventRepository,
-                book_repository::MockBookRepository, transaction::MockTransactionManager,
+                book_repository::MockBookRepository,
+                transaction::MockTransactionManager,
             },
         },
         use_case::{
-            dto::book::{CreateBookDto, ImportBookEntryDto, UpdateBookDto},
+            dto::book::{CreateBookDto, ImportAuthorStatus, ImportBookEntryDto, UpdateBookDto},
             error::UseCaseError,
             interactor::book::{BookCommandInteractor, BookQueryInteractor},
             traits::book::{BookCommandUseCase, BookQueryUseCase},
@@ -1047,7 +1107,7 @@ mod tests {
             .expect_find_or_create_by_names()
             .withf(|_, names, _| names.is_empty())
             .times(1)
-            .returning(|_, _, _| Ok(HashMap::new()));
+            .returning(|_, _, _| Ok(HashMap::new().into()));
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_create_all()
@@ -1155,10 +1215,10 @@ mod tests {
             .withf(|_, names, _| names.len() == 1)
             .times(1)
             .returning(move |_, names, _| {
-                Ok(HashMap::from([(
-                    names[0].as_str().to_owned(),
-                    AuthorId::new(author_uuid),
-                )]))
+                Ok(
+                    HashMap::from([(names[0].as_str().to_owned(), AuthorId::new(author_uuid))])
+                        .into(),
+                )
             });
 
         let mut book_repository = MockBookRepository::new();
@@ -1193,10 +1253,10 @@ mod tests {
             .expect_find_or_create_by_names()
             .times(1)
             .returning(move |_, names, _| {
-                Ok(HashMap::from([(
-                    names[0].as_str().to_owned(),
-                    AuthorId::new(author_uuid),
-                )]))
+                Ok(
+                    HashMap::from([(names[0].as_str().to_owned(), AuthorId::new(author_uuid))])
+                        .into(),
+                )
             });
 
         let mut book_repository = MockBookRepository::new();
@@ -1229,7 +1289,7 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_find_or_create_by_names()
-            .returning(|_, _, _| Ok(HashMap::new()));
+            .returning(|_, _, _| Ok(HashMap::new().into()));
 
         let interactor = ImportBooksTestCommand::build(
             book_repository,
@@ -1242,6 +1302,98 @@ mod tests {
         let result = interactor.import("user1", books).await;
 
         // Then
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
+    }
+
+    #[tokio::test]
+    async fn preview_import_rolls_back_and_reports_author_statuses() {
+        let existing_id = AuthorId::new(Uuid::new_v4());
+        let new_id = AuthorId::new(Uuid::new_v4());
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_or_create_by_names()
+            .times(1)
+            .returning(move |_, _, _| {
+                Ok(FindOrCreateAuthorsResult {
+                    authors_by_name: HashMap::from([
+                        ("Existing".to_string(), existing_id.clone()),
+                        ("New".to_string(), new_id.clone()),
+                    ]),
+                    created_author_ids: [new_id.clone()].into_iter().collect(),
+                })
+            });
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_create_all()
+            .withf(|_, books| books.len() == 1 && books[0].author_ids().len() == 2)
+            .times(1)
+            .returning(|_, _| Ok(()));
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().times(1).returning(|_, _| Ok(()));
+        tm.expect_commit().times(0);
+        tm.expect_rollback().times(1).returning(|_| Ok(()));
+        let interactor = ImportBooksTestCommand::build(book_repository, author_repository, tm);
+
+        let result = interactor
+            .preview_import(
+                "user1",
+                vec![import_entry("Preview", vec!["Existing", "New", "New"])],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.books.len(), 1);
+        assert_eq!(result.books[0].authors.len(), 2);
+        assert_eq!(
+            result.books[0].authors[0].status,
+            ImportAuthorStatus::Existing
+        );
+        assert_eq!(result.books[0].authors[1].status, ImportAuthorStatus::New);
+    }
+
+    #[tokio::test]
+    async fn preview_import_propagates_rollback_failure() {
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_or_create_by_names()
+            .returning(|_, _, _| Ok(HashMap::new().into()));
+        let mut book_repository = MockBookRepository::new();
+        book_repository.expect_create_all().returning(|_, _| Ok(()));
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit().times(0);
+        tm.expect_rollback()
+            .times(1)
+            .returning(|_| Err(DomainError::Unexpected("rollback failed".to_string())));
+        let interactor = ImportBooksTestCommand::build(book_repository, author_repository, tm);
+
+        let result = interactor
+            .preview_import("user1", vec![import_entry("Preview", vec![])])
+            .await;
+
+        assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
+    }
+
+    #[tokio::test]
+    async fn preview_import_does_not_rollback_explicitly_when_execution_fails() {
+        let mut author_repository = MockAuthorRepository::new();
+        author_repository
+            .expect_find_or_create_by_names()
+            .returning(|_, _, _| Ok(HashMap::new().into()));
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_create_all()
+            .returning(|_, _| Err(DomainError::Unexpected("db error".to_string())));
+        let mut tm = MockTransactionManager::new();
+        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_commit().times(0);
+        tm.expect_rollback().times(0);
+        let interactor = ImportBooksTestCommand::build(book_repository, author_repository, tm);
+
+        let result = interactor
+            .preview_import("user1", vec![import_entry("Preview", vec![])])
+            .await;
+
         assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
     }
 

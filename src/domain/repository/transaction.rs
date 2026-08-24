@@ -31,4 +31,6 @@ pub trait TransactionManager: Send + Sync + 'static {
     ) -> Result<Self::Transaction, DomainError>;
 
     async fn commit(&self, tx: Self::Transaction) -> Result<(), DomainError>;
+
+    async fn rollback(&self, tx: Self::Transaction) -> Result<(), DomainError>;
 }
