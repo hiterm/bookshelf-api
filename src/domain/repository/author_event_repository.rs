@@ -38,4 +38,10 @@ pub trait AuthorEventRepository: Send + Sync + 'static {
         user_id: &UserId,
         event_set_id: &EventSetId,
     ) -> Result<Vec<AuthorEvent>, DomainError>;
+
+    async fn find_by_event_set_ids(
+        &self,
+        user_id: &UserId,
+        event_set_ids: &[EventSetId],
+    ) -> Result<Vec<AuthorEvent>, DomainError>;
 }

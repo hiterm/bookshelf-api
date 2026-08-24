@@ -9,7 +9,7 @@ use crate::{
     use_case::{
         dto::{
             event::{AuthorEventDto, BookEventDto},
-            event_set::{EventSetDetailDto, EventSetDto},
+            event_set::EventSetDto,
         },
         error::UseCaseError,
         traits::event::EventQueryUseCase,
@@ -77,6 +77,50 @@ where
             .collect())
     }
 
+    async fn list_book_events_by_event_set_ids(
+        &self,
+        user_id: &str,
+        event_set_ids: &[String],
+    ) -> Result<Vec<BookEventDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let event_set_ids = event_set_ids
+            .iter()
+            .map(|id| EventSetId::try_from(id.as_str()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                UseCaseError::from(crate::domain::error::DomainError::Validation(error))
+            })?;
+        Ok(self
+            .book_event_repository
+            .find_by_event_set_ids(&user_id, &event_set_ids)
+            .await?
+            .into_iter()
+            .map(BookEventDto::from)
+            .collect())
+    }
+
+    async fn list_author_events_by_event_set_ids(
+        &self,
+        user_id: &str,
+        event_set_ids: &[String],
+    ) -> Result<Vec<AuthorEventDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_string())?;
+        let event_set_ids = event_set_ids
+            .iter()
+            .map(|id| EventSetId::try_from(id.as_str()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                UseCaseError::from(crate::domain::error::DomainError::Validation(error))
+            })?;
+        Ok(self
+            .author_event_repository
+            .find_by_event_set_ids(&user_id, &event_set_ids)
+            .await?
+            .into_iter()
+            .map(AuthorEventDto::from)
+            .collect())
+    }
+
     async fn list_event_sets(&self, user_id: &str) -> Result<Vec<EventSetDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         Ok(self
@@ -92,37 +136,16 @@ where
         &self,
         user_id: &str,
         event_set_id: &str,
-    ) -> Result<Option<EventSetDetailDto>, UseCaseError> {
+    ) -> Result<Option<EventSetDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let event_set_id = EventSetId::try_from(event_set_id).map_err(|error| {
             UseCaseError::from(crate::domain::error::DomainError::Validation(error))
         })?;
-        let Some(event_set) = self
+        let event_set = self
             .event_set_repository
             .find_by_id(&user_id, &event_set_id)
-            .await?
-        else {
-            return Ok(None);
-        };
-        let book_events = self
-            .book_event_repository
-            .find_by_event_set(&user_id, &event_set_id)
-            .await?
-            .into_iter()
-            .map(BookEventDto::from)
-            .collect();
-        let author_events = self
-            .author_event_repository
-            .find_by_event_set(&user_id, &event_set_id)
-            .await?
-            .into_iter()
-            .map(AuthorEventDto::from)
-            .collect();
-        Ok(Some(EventSetDetailDto::new(
-            event_set,
-            book_events,
-            author_events,
-        )))
+            .await?;
+        Ok(event_set.map(EventSetDto::from))
     }
 }
 
@@ -265,11 +288,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn find_event_set_combines_event_set_and_events() {
+    async fn find_event_set_returns_scalar_dto_without_loading_events() {
         let event_set_id = EventSetId::new();
         let event_set_id_string = event_set_id.to_string();
-        let book_id = Uuid::new_v4();
-        let author_id = Uuid::new_v4();
         let mut event_sets = MockEventSetRepository::new();
         event_sets.expect_find_by_id().return_once(move |_, _| {
             Ok(Some(EventSet {
@@ -279,17 +300,11 @@ mod tests {
                 created_at: OffsetDateTime::UNIX_EPOCH,
             }))
         });
-        let detail_event_set_id = EventSetId::try_from(event_set_id_string.as_str()).unwrap();
-        let mut book_events = MockBookEventRepository::new();
-        book_events
-            .expect_find_by_event_set()
-            .return_once(move |_, _| Ok(vec![book_event(detail_event_set_id, book_id)]));
-        let detail_event_set_id = EventSetId::try_from(event_set_id_string.as_str()).unwrap();
-        let mut author_events = MockAuthorEventRepository::new();
-        author_events
-            .expect_find_by_event_set()
-            .return_once(move |_, _| Ok(vec![author_event(detail_event_set_id, author_id)]));
-        let interactor = interactor(book_events, author_events, event_sets);
+        let interactor = interactor(
+            MockBookEventRepository::new(),
+            MockAuthorEventRepository::new(),
+            event_sets,
+        );
 
         let result = interactor
             .find_event_set("user1", &event_set_id_string)
@@ -299,10 +314,122 @@ mod tests {
 
         assert_eq!(result.id, event_set_id_string);
         assert_eq!(result.operation, "create_book");
-        assert_eq!(result.book_events.len(), 1);
-        assert_eq!(result.book_events[0].book_id, book_id.to_string());
-        assert_eq!(result.author_events.len(), 1);
-        assert_eq!(result.author_events[0].author_id, author_id.to_string());
+        assert_eq!(result.created_at, OffsetDateTime::UNIX_EPOCH);
+    }
+
+    #[tokio::test]
+    async fn find_event_set_returns_none_when_not_found() {
+        let event_set_id = EventSetId::new().to_string();
+        let mut event_sets = MockEventSetRepository::new();
+        event_sets.expect_find_by_id().return_once(|_, _| Ok(None));
+        let interactor = interactor(
+            MockBookEventRepository::new(),
+            MockAuthorEventRepository::new(),
+            event_sets,
+        );
+
+        let result = interactor
+            .find_event_set("user1", &event_set_id)
+            .await
+            .unwrap();
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_book_events_by_event_set_ids_converts_batch() {
+        let event_set_id = EventSetId::new();
+        let expected_id = event_set_id.to_string();
+        let book_id = Uuid::new_v4();
+        let mut book_events = MockBookEventRepository::new();
+        book_events
+            .expect_find_by_event_set_ids()
+            .times(1)
+            .return_once(move |_, _| Ok(vec![book_event(event_set_id, book_id)]));
+        let interactor = interactor(
+            book_events,
+            MockAuthorEventRepository::new(),
+            MockEventSetRepository::new(),
+        );
+
+        let result = interactor
+            .list_book_events_by_event_set_ids("user1", std::slice::from_ref(&expected_id))
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].event_set_id, expected_id);
+        assert_eq!(result[0].book_id, book_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn list_author_events_by_event_set_ids_handles_empty_result() {
+        let event_set_id = EventSetId::new().to_string();
+        let mut author_events = MockAuthorEventRepository::new();
+        author_events
+            .expect_find_by_event_set_ids()
+            .times(1)
+            .return_once(|_, _| Ok(Vec::new()));
+        let interactor = interactor(
+            MockBookEventRepository::new(),
+            author_events,
+            MockEventSetRepository::new(),
+        );
+
+        let result = interactor
+            .list_author_events_by_event_set_ids("user1", &[event_set_id])
+            .await
+            .unwrap();
+
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_author_events_by_event_set_ids_converts_batch() {
+        let event_set_id = EventSetId::new();
+        let expected_id = event_set_id.to_string();
+        let author_id = Uuid::new_v4();
+        let mut author_events = MockAuthorEventRepository::new();
+        author_events
+            .expect_find_by_event_set_ids()
+            .times(1)
+            .return_once(move |_, _| Ok(vec![author_event(event_set_id, author_id)]));
+        let interactor = interactor(
+            MockBookEventRepository::new(),
+            author_events,
+            MockEventSetRepository::new(),
+        );
+
+        let result = interactor
+            .list_author_events_by_event_set_ids("user1", std::slice::from_ref(&expected_id))
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].event_set_id, expected_id);
+        assert_eq!(result[0].author_id, author_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn list_book_events_by_event_set_ids_handles_empty_ids() {
+        let mut book_events = MockBookEventRepository::new();
+        book_events
+            .expect_find_by_event_set_ids()
+            .withf(|_, ids| ids.is_empty())
+            .times(1)
+            .return_once(|_, _| Ok(Vec::new()));
+        let interactor = interactor(
+            book_events,
+            MockAuthorEventRepository::new(),
+            MockEventSetRepository::new(),
+        );
+
+        let result = interactor
+            .list_book_events_by_event_set_ids("user1", &[])
+            .await
+            .unwrap();
+
+        assert!(result.is_empty());
     }
 
     #[tokio::test]

@@ -4,7 +4,7 @@ use mockall::automock;
 use crate::use_case::{
     dto::{
         event::{AuthorEventDto, BookEventDto},
-        event_set::{EventSetDetailDto, EventSetDto},
+        event_set::EventSetDto,
     },
     error::UseCaseError,
 };
@@ -22,10 +22,20 @@ pub trait EventQueryUseCase: Send + Sync + 'static {
         user_id: &str,
         author_id: &str,
     ) -> Result<Vec<AuthorEventDto>, UseCaseError>;
+    async fn list_book_events_by_event_set_ids(
+        &self,
+        user_id: &str,
+        event_set_ids: &[String],
+    ) -> Result<Vec<BookEventDto>, UseCaseError>;
+    async fn list_author_events_by_event_set_ids(
+        &self,
+        user_id: &str,
+        event_set_ids: &[String],
+    ) -> Result<Vec<AuthorEventDto>, UseCaseError>;
     async fn list_event_sets(&self, user_id: &str) -> Result<Vec<EventSetDto>, UseCaseError>;
     async fn find_event_set(
         &self,
         user_id: &str,
         event_set_id: &str,
-    ) -> Result<Option<EventSetDetailDto>, UseCaseError>;
+    ) -> Result<Option<EventSetDto>, UseCaseError>;
 }

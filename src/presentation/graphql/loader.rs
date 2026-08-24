@@ -4,10 +4,12 @@ use async_graphql::dataloader::Loader;
 
 use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
-    use_case::traits::{author::AuthorQueryUseCase, book::BookQueryUseCase},
+    use_case::traits::{
+        author::AuthorQueryUseCase, book::BookQueryUseCase, event::EventQueryUseCase,
+    },
 };
 
-use super::object::{Author, Book};
+use super::object::{Author, AuthorEventEntry, Book, BookEventEntry};
 
 pub struct AuthorLoader<AQ> {
     claims: Claims,
@@ -17,6 +19,88 @@ pub struct AuthorLoader<AQ> {
 pub struct BooksByAuthorLoader<BQ> {
     claims: Claims,
     book_query: BQ,
+}
+
+pub struct BookEventsByEventSetLoader<EQ> {
+    claims: Claims,
+    event_query: EQ,
+}
+
+pub struct AuthorEventsByEventSetLoader<EQ> {
+    claims: Claims,
+    event_query: EQ,
+}
+
+impl<EQ> BookEventsByEventSetLoader<EQ> {
+    pub fn new(claims: Claims, event_query: EQ) -> Self {
+        Self {
+            claims,
+            event_query,
+        }
+    }
+}
+
+impl<EQ> AuthorEventsByEventSetLoader<EQ> {
+    pub fn new(claims: Claims, event_query: EQ) -> Self {
+        Self {
+            claims,
+            event_query,
+        }
+    }
+}
+
+impl<EQ> Loader<String> for BookEventsByEventSetLoader<EQ>
+where
+    EQ: EventQueryUseCase,
+{
+    type Value = Vec<BookEventEntry>;
+    type Error = PresentationalError;
+
+    async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
+        let events = self
+            .event_query
+            .list_book_events_by_event_set_ids(&self.claims.sub, keys)
+            .await?;
+        let mut grouped = keys
+            .iter()
+            .cloned()
+            .map(|key| (key, Vec::new()))
+            .collect::<HashMap<_, _>>();
+        for event in events {
+            grouped
+                .entry(event.event_set_id.clone())
+                .or_default()
+                .push(BookEventEntry::from(event));
+        }
+        Ok(grouped)
+    }
+}
+
+impl<EQ> Loader<String> for AuthorEventsByEventSetLoader<EQ>
+where
+    EQ: EventQueryUseCase,
+{
+    type Value = Vec<AuthorEventEntry>;
+    type Error = PresentationalError;
+
+    async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
+        let events = self
+            .event_query
+            .list_author_events_by_event_set_ids(&self.claims.sub, keys)
+            .await?;
+        let mut grouped = keys
+            .iter()
+            .cloned()
+            .map(|key| (key, Vec::new()))
+            .collect::<HashMap<_, _>>();
+        for event in events {
+            grouped
+                .entry(event.event_set_id.clone())
+                .or_default()
+                .push(AuthorEventEntry::from(event));
+        }
+        Ok(grouped)
+    }
 }
 
 impl<BQ> BooksByAuthorLoader<BQ> {
@@ -93,11 +177,65 @@ mod tests {
         presentation::extractor::claims::Claims,
         use_case::{
             dto::{author::AuthorDto, book::BookDto},
-            traits::{author::MockAuthorQueryUseCase, book::MockBookQueryUseCase},
+            traits::{
+                author::MockAuthorQueryUseCase, book::MockBookQueryUseCase,
+                event::MockEventQueryUseCase,
+            },
         },
     };
 
-    use super::{AuthorLoader, BooksByAuthorLoader};
+    use super::{
+        AuthorEventsByEventSetLoader, AuthorLoader, BookEventsByEventSetLoader, BooksByAuthorLoader,
+    };
+
+    fn claims() -> Claims {
+        Claims {
+            sub: "user1".to_string(),
+            _permissions: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn book_events_loader_batches_keys_and_includes_empty_values() {
+        let keys = vec![
+            "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+            "93090e87-b7a1-403c-974c-d74d881e83b9".to_string(),
+        ];
+        let expected_keys = keys.clone();
+        let mut event_query = MockEventQueryUseCase::new();
+        event_query
+            .expect_list_book_events_by_event_set_ids()
+            .with(predicate::eq("user1"), predicate::eq(expected_keys))
+            .times(1)
+            .return_once(|_, _| Ok(Vec::new()));
+        let loader = BookEventsByEventSetLoader::new(claims(), event_query);
+
+        let result = loader.load(&keys).await.unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result.values().all(Vec::is_empty));
+    }
+
+    #[tokio::test]
+    async fn author_events_loader_batches_keys_and_includes_empty_values() {
+        let keys = vec![
+            "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+            "93090e87-b7a1-403c-974c-d74d881e83b9".to_string(),
+        ];
+        let expected_keys = keys.clone();
+        let mut event_query = MockEventQueryUseCase::new();
+        event_query
+            .expect_list_author_events_by_event_set_ids()
+            .with(predicate::eq("user1"), predicate::eq(expected_keys))
+            .times(1)
+            .return_once(|_, _| Ok(Vec::new()));
+        let loader = AuthorEventsByEventSetLoader::new(claims(), event_query);
+
+        let result = loader.load(&keys).await.unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result.values().all(Vec::is_empty));
+    }
 
     #[tokio::test]
     async fn author_loader_batches_keys_and_maps_authors() {

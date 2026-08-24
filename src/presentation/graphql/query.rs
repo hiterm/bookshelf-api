@@ -10,9 +10,7 @@ use crate::{
     },
 };
 
-use super::object::{
-    Author, AuthorEventEntry, Book, BookEventEntry, EventSetDetail, EventSetEntry, User,
-};
+use super::object::{Author, AuthorEventEntry, Book, BookEventEntry, EventSet, User};
 
 pub struct Query<UQ, BQ, AQ, EQ> {
     user_query: UQ,
@@ -112,13 +110,10 @@ where
     }
 
     /// Returns the logged-in user's event sets, newest first.
-    async fn event_sets(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Vec<EventSetEntry>, PresentationalError> {
+    async fn event_sets(&self, ctx: &Context<'_>) -> Result<Vec<EventSet>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let sets = self.event_query.list_event_sets(&claims.sub).await?;
-        Ok(sets.into_iter().map(EventSetEntry::from).collect())
+        Ok(sets.into_iter().map(EventSet::from).collect())
     }
 
     /// Returns a single event set with nested events, or null if not found.
@@ -126,13 +121,13 @@ where
         &self,
         ctx: &Context<'_>,
         id: ID,
-    ) -> Result<Option<EventSetDetail>, PresentationalError> {
+    ) -> Result<Option<EventSet>, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let detail = self
+        let event_set = self
             .event_query
             .find_event_set(&claims.sub, id.as_str())
             .await?;
-        Ok(detail.map(EventSetDetail::from))
+        Ok(event_set.map(EventSet::from))
     }
 }
 

@@ -112,18 +112,12 @@ type DeleteBookPayload {
 	eventSetId: ID!
 }
 
-type EventSetDetail {
+type EventSet {
 	id: ID!
 	operation: String!
 	createdAt: Int!
 	bookEvents: [BookEventEntry!]!
 	authorEvents: [AuthorEventEntry!]!
-}
-
-type EventSetEntry {
-	id: ID!
-	operation: String!
-	createdAt: Int!
 }
 
 type ImportAuthorPreview {
@@ -241,11 +235,11 @@ type Query {
 	"""
 	Returns the logged-in user's event sets, newest first.
 	"""
-	eventSets: [EventSetEntry!]!
+	eventSets: [EventSet!]!
 	"""
 	Returns a single event set with nested events, or null if not found.
 	"""
-	eventSet(id: ID!): EventSetDetail
+	eventSet(id: ID!): EventSet
 }
 
 type RestoreAuthorPayload {

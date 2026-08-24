@@ -204,6 +204,47 @@ impl BookEventRepository for PgBookEventRepository {
 
         rows.into_iter().map(row_to_book_event).collect()
     }
+
+    async fn find_by_event_set_ids(
+        &self,
+        user_id: &UserId,
+        event_set_ids: &[EventSetId],
+    ) -> Result<Vec<BookEvent>, DomainError> {
+        if event_set_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let event_set_ids: Vec<Uuid> = event_set_ids.iter().map(EventSetId::to_uuid).collect();
+        let rows: Vec<BookEventRow> = sqlx::query_as(
+            "SELECT
+                be.event_id,
+                be.event_set_id,
+                be.operation,
+                be.book_id,
+                be.title,
+                be.isbn,
+                be.read,
+                be.owned,
+                be.priority,
+                be.format,
+                be.store,
+                be.book_created_at,
+                be.book_updated_at,
+                be.changed_at,
+                array_agg(bea.author_id) FILTER (WHERE bea.author_id IS NOT NULL) AS author_ids,
+                be.extra
+            FROM book_event be
+            LEFT JOIN book_event_author bea ON be.event_id = bea.event_id
+            WHERE be.user_id = $1 AND be.event_set_id = ANY($2)
+            GROUP BY be.event_id
+            ORDER BY be.changed_at DESC",
+        )
+        .bind(user_id.as_str())
+        .bind(&event_set_ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter().map(row_to_book_event).collect()
+    }
 }
 
 #[cfg(feature = "test-with-database")]
@@ -555,6 +596,63 @@ mod tests {
         let entries = event_repo.find_by_event_set(&user_id, &unknown).await?;
         assert!(entries.is_empty());
 
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_event_set_ids_returns_multiple_sets(pool: PgPool) -> anyhow::Result<()> {
+        let user_repo = PgUserRepository::new(pool.clone());
+        let author_repo = PgAuthorRepository::new(pool.clone());
+        let book_repo = PgBookRepository::new(pool.clone());
+        let event_repo = PgBookEventRepository::new(pool.clone());
+        let user_id = prepare_user(&user_repo, "user1").await?;
+        let author_id = AuthorId::try_from("278935cf-ed83-4346-9b35-b84bbdb630c0")?;
+        create_author(
+            &pool,
+            &author_repo,
+            &user_id,
+            &Author::new(
+                author_id.clone(),
+                AuthorName::new("author1".to_owned())?,
+                OffsetDateTime::UNIX_EPOCH,
+            )?,
+        )
+        .await?;
+        for (id, title) in [
+            ("675bc8d9-3155-42fb-87b0-0a82cb162848", "title1"),
+            ("a1b2c3d4-e5f6-4890-abcd-ef1234567890", "title2"),
+        ] {
+            let book = make_book(id, title, std::slice::from_ref(&author_id))?;
+            create_book(&pool, &book_repo, &user_id, &book).await?;
+        }
+        let ids: Vec<(Uuid,)> =
+            sqlx::query_as("SELECT event_set_id FROM book_event WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_all(&pool)
+                .await?;
+        let ids: Vec<EventSetId> = ids
+            .into_iter()
+            .map(|(id,)| EventSetId::from(id))
+            .chain(std::iter::once(EventSetId::new()))
+            .collect();
+
+        let events = event_repo.find_by_event_set_ids(&user_id, &ids).await?;
+
+        assert_eq!(events.len(), 2);
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn find_by_event_set_ids_accepts_empty_ids(pool: PgPool) -> anyhow::Result<()> {
+        let event_repo = PgBookEventRepository::new(pool);
+        let user_id = UserId::new("user1".to_string())?;
+
+        assert!(
+            event_repo
+                .find_by_event_set_ids(&user_id, &[])
+                .await?
+                .is_empty()
+        );
         Ok(())
     }
 }
