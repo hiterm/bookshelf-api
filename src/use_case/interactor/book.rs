@@ -775,9 +775,9 @@ mod tests {
         // Then
         assert!(result.is_ok());
         let dto = result.unwrap();
-        assert_eq!(dto.title, "New Book");
-        assert!(dto.owned);
-        assert_eq!(dto.created_at, dto.updated_at);
+        assert_eq!(dto.value.title, "New Book");
+        assert!(dto.value.owned);
+        assert_eq!(dto.value.created_at, dto.value.updated_at);
         assert_eq!(dto.event_id.value(), 101);
     }
 
@@ -898,8 +898,8 @@ mod tests {
         // Then
         assert!(result.is_ok());
         let dto = result.unwrap();
-        assert_eq!(dto.title, "Updated Book");
-        assert_eq!(dto.priority, 70);
+        assert_eq!(dto.value.title, "Updated Book");
+        assert_eq!(dto.value.priority, 70);
         assert_eq!(dto.event_id.value(), 202);
     }
 
@@ -1192,14 +1192,14 @@ mod tests {
         // Then
         assert!(result.is_ok());
         let dtos = result.unwrap();
-        assert_eq!(dtos.len(), 2);
-        assert_eq!(dtos[0].created_at, dtos[0].updated_at);
-        assert_eq!(dtos[1].created_at, dtos[1].updated_at);
-        assert_eq!(dtos[0].created_at, dtos[1].created_at);
+        assert_eq!(dtos.value.len(), 2);
+        assert_eq!(dtos.value[0].created_at, dtos.value[0].updated_at);
+        assert_eq!(dtos.value[1].created_at, dtos.value[1].updated_at);
+        assert_eq!(dtos.value[0].created_at, dtos.value[1].created_at);
         let author_times = author_times.lock().unwrap();
         assert_eq!(
             normalize_timestamp_for_persistence(author_times[0]),
-            dtos[0].created_at
+            dtos.value[0].created_at
         );
     }
 
