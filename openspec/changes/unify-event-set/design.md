@@ -42,6 +42,8 @@ One `EventSet` simple object contains scalar fields and uses complex-object reso
 
 The API SDL is copied to the frontend's local schema and `pnpm run generate` regenerates operation types. Existing operations already select the required list and detail fields, so component behavior and component names remain unchanged unless generated-type compilation exposes a necessary minimal adjustment.
 
+The frontend repository intentionally ignores both its fetched local SDL and generated GraphQL files. Therefore, when generation and verification produce no tracked source change, no frontend commit or PR is created; the normal generation step consumes the published API SDL after deployment.
+
 ## Risks / Trade-offs
 
 - [Direct clients depend on removed type names] → Treat the rename as breaking, document it in the API PR, and update the paired frontend in a coordinated PR.
@@ -55,8 +57,8 @@ The API SDL is copied to the frontend's local schema and `pnpm run generate` reg
 1. Add and test batch repository/use-case operations and DataLoaders.
 2. Replace the API DTO and GraphQL type split, then regenerate and validate SDL.
 3. Run API unit, repository, GraphQL, and existing event-history regression suites.
-4. Update the frontend local SDL, regenerate types, and run unit, type, and relevant E2E checks.
-5. Publish linked API and frontend PRs that call out the breaking type rename.
+4. Update the frontend local SDL locally, regenerate types, and run unit, type, and relevant E2E checks.
+5. Publish the API PR. Publish a linked frontend PR only if schema regeneration requires a tracked source change.
 
 ## Open Questions
 
