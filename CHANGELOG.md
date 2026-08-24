@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.14.0](https://github.com/hiterm/bookshelf-api/compare/2.13.3...2.14.0) - 2026-08-24
+
+### Other Changes
+- Add book import preview by @hiterm in https://github.com/hiterm/bookshelf-api/pull/316
+
 ## [2.13.3](https://github.com/hiterm/bookshelf-api/compare/2.13.2...2.13.3) - 2026-08-23
 
 ### Other Changes
