@@ -32,4 +32,4 @@
 
 - [x] 6.1 Commit logical API changes after mandatory checks, push, and open a PR documenting the breaking rename, lazy loading, batching, and test results
 - [x] 6.2 Confirm frontend schema generation produces no tracked changes, so no empty frontend commit or PR is required
-- [ ] 6.3 Monitor all required CI checks on both PRs and fix failures until both are green
+- [x] 6.3 Monitor all required CI checks on the implementation PR and fix failures until it is green
