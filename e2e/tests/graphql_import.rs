@@ -743,14 +743,45 @@ async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> 
         "preview must leave DB unchanged"
     );
 
-    let import = preview
-        .replace("previewBookImport", "importBooks")
-        .replace("authors { name status }", "authors { name }")
-        .replace(
-            "                    title\n                    authors",
-            "                    id\n                    title\n                    authors",
-        );
-    let (_, imported) = graphql_request(&import, Some(&token)).await?;
+    let import = r#"
+        mutation {
+            importBooks(books: [
+                {
+                    title: "Preview One"
+                    authorNames: ["Preview Existing", "Preview New", "Preview New"]
+                    isbn: ""
+                    read: true
+                    owned: false
+                    priority: 42
+                    format: E_BOOK
+                    store: KINDLE
+                },
+                {
+                    title: "Preview Two"
+                    authorNames: ["Preview New"]
+                    isbn: ""
+                    read: false
+                    owned: true
+                    priority: 7
+                    format: PRINTED
+                    store: UNKNOWN
+                }
+            ]) {
+                books {
+                    id
+                    title
+                    authors { name }
+                    isbn
+                    read
+                    owned
+                    priority
+                    format
+                    store
+                }
+            }
+        }
+    "#;
+    let (_, imported) = graphql_request(import, Some(&token)).await?;
     assert_no_graphql_errors(&imported, "importBooks after preview");
     let imported_books = imported["data"]["importBooks"]["books"]
         .as_array()

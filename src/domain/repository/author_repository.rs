@@ -24,6 +24,8 @@ pub struct FindOrCreateAuthorsResult {
     pub created_author_ids: HashSet<AuthorId>,
 }
 
+/// Builds a resolved-author result in which no authors were newly created.
+/// `created_author_ids` is always empty.
 impl From<HashMap<String, AuthorId>> for FindOrCreateAuthorsResult {
     fn from(authors_by_name: HashMap<String, AuthorId>) -> Self {
         Self {
@@ -33,6 +35,8 @@ impl From<HashMap<String, AuthorId>> for FindOrCreateAuthorsResult {
     }
 }
 
+/// Collects resolved authors into a result in which no authors were newly
+/// created. `created_author_ids` is always empty.
 impl FromIterator<(String, AuthorId)> for FindOrCreateAuthorsResult {
     fn from_iter<T: IntoIterator<Item = (String, AuthorId)>>(iter: T) -> Self {
         HashMap::from_iter(iter).into()
