@@ -26,5 +26,5 @@
 
 - [x] 4.1 Commit the implementation and OpenSpec change
 - [x] 4.2 Push the feature branch and open a PR against `main`
-- [ ] 4.3 Confirm all PR CI checks pass and perform the final PR diff and
+- [x] 4.3 Confirm all PR CI checks pass and perform the final PR diff and
   OpenSpec consistency review
