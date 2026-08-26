@@ -7,7 +7,7 @@ use axum::{
 };
 use bookshelf_api::{
     dependency_injection::{BU, backup_dependency_injection, dependency_injection},
-    presentation::handler::backup::{export_current, export_full, restore_current, restore_full},
+    presentation::handler::backup::{export_full, export_state, restore_full, restore_state},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
     presentation::handler::user::me_handler,
     presentation::{app_state::AppState, extractor::claims::JwtConfig},
@@ -69,10 +69,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/", get(|| async { "OK" }))
         .route("/me", get(me_handler))
-        .route("/backup/current", get(export_current::<BU>))
+        .route("/backup/state", get(export_state::<BU>))
         .route(
-            "/backup/current/restore",
-            post(restore_current::<BU>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+            "/backup/state/restore",
+            post(restore_state::<BU>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
         .route("/backup/full", get(export_full::<BU>))
         .route(

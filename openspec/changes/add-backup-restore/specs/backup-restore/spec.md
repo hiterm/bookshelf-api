@@ -1,35 +1,35 @@
 ## ADDED Requirements
 
-### Requirement: Versioned current backup export
-The system SHALL expose authenticated `GET /backup/current` and return a
-`bookshelf-current-backup` version 1 JSON document containing the authenticated
+### Requirement: Versioned state backup export
+The system SHALL expose authenticated `GET /backup/state` and return a
+`bookshelf-state-backup` version 1 JSON document containing the authenticated
 user's Authors and Books from one consistent snapshot.
 
-#### Scenario: Current backup is exported
-- **WHEN** an authenticated user requests `GET /backup/current`
+#### Scenario: State backup is exported
+- **WHEN** an authenticated user requests `GET /backup/state`
 - **THEN** the response contains `format`, `version`, `exportedAt`, Authors, and Books using camelCase fields
 - **AND** each Book contains its `authorIds`
 - **AND** ownership fields, lookup-table rows, and join timestamps are absent
 
 #### Scenario: Concurrent mutation occurs during export
-- **WHEN** current backup selects overlap a concurrent committed mutation
-- **THEN** every exported current-data collection represents the same database snapshot
+- **WHEN** state backup selects overlap a concurrent committed mutation
+- **THEN** every exported state-data collection represents the same database snapshot
 
 ### Requirement: Versioned full backup export
 The system SHALL expose authenticated `GET /backup/full` and return a
-`bookshelf-full-backup` version 1 JSON document containing current data and the
+`bookshelf-full-backup` version 1 JSON document containing state data and the
 authenticated user's complete supported event history from one consistent
 snapshot.
 
 #### Scenario: Full backup is exported
 - **WHEN** an authenticated user requests `GET /backup/full`
-- **THEN** the response contains the current data plus event sets, Book events, and Author events
+- **THEN** the response contains the state data plus event sets, Book events, and Author events
 - **AND** Book event author relations are represented as `authorIds`
 - **AND** each event has a backup-local `eventId` suitable for internal references
 
 #### Scenario: Concurrent mutation occurs during full export
 - **WHEN** full backup selects overlap a concurrent committed mutation
-- **THEN** current data and all history collections represent the same database snapshot
+- **THEN** state data and all history collections represent the same database snapshot
 
 ### Requirement: Backup ownership follows authentication
 The system MUST derive export and restore ownership exclusively from the
@@ -46,55 +46,55 @@ The system SHALL validate the complete backup before destructive work and SHALL
 explicitly reject unsupported formats, unsupported versions, malformed values,
 duplicate IDs, and invalid references as client input errors.
 
-#### Scenario: Current backup is valid
-- **WHEN** a V1 current document has unique Book and Author IDs, valid fields and enums, and every Book author reference exists
-- **THEN** validation produces a current restore model
+#### Scenario: State backup is valid
+- **WHEN** a V1 state document has unique Book and Author IDs, valid fields and enums, and every Book author reference exists
+- **THEN** validation produces a state restore model
 
 #### Scenario: Backup header is unsupported
 - **WHEN** `format` or `version` does not identify a supported backup type
 - **THEN** restore fails with a distinct 4xx validation response
 - **AND** existing data is unchanged
 
-#### Scenario: Current reference is invalid
-- **WHEN** a Book refers to an Author absent from current backup Authors
+#### Scenario: State reference is invalid
+- **WHEN** a Book refers to an Author absent from state backup Authors
 - **THEN** restore fails with an invalid-reference response before mutation
 
 #### Scenario: Full history is invalid
 - **WHEN** event IDs are duplicated, an event set is absent, an event relation is invalid, an operation or extra schema is unsupported, or a restore source event is absent
 - **THEN** full restore fails with a specific 4xx validation response before mutation
 
-### Requirement: Atomic current restore
-The system SHALL expose authenticated `POST /backup/current/restore` and replace
-the authenticated user's current Authors, Books, and relations in one
+### Requirement: Atomic state restore
+The system SHALL expose authenticated `POST /backup/state/restore` and replace
+the authenticated user's state Authors, Books, and relations in one
 transaction while preserving existing history.
 
-#### Scenario: Current backup is restored
-- **WHEN** a valid current V1 backup is posted
-- **THEN** current Authors and Books are completely replaced with the supplied IDs, fields, and entity timestamps
+#### Scenario: State backup is restored
+- **WHEN** a valid state V1 backup is posted
+- **THEN** state Authors and Books are completely replaced with the supplied IDs, fields, and entity timestamps
 - **AND** Book-Author relations are reconstructed with new relation timestamps
 - **AND** pre-existing event history is retained
 
-#### Scenario: Current restore records boundary snapshots
-- **WHEN** a valid current restore commits
+#### Scenario: State restore records boundary snapshots
+- **WHEN** a valid state restore commits
 - **THEN** one pre-restore and one post-restore `snapshot_all` event set are appended
-- **AND** their snapshot events have extras with version 1, reason `current_backup_restore`, and phases `before` and `after` respectively
+- **AND** their snapshot events have extras with version 1, reason `state_backup_restore`, and phases `before` and `after` respectively
 
-#### Scenario: Current restore fails
-- **WHEN** any current replacement or snapshot write fails
-- **THEN** all current data and history remain exactly as before the request
+#### Scenario: State restore fails
+- **WHEN** any state replacement or snapshot write fails
+- **THEN** all state data and history remain exactly as before the request
 
 ### Requirement: Atomic full restore
 The system SHALL expose authenticated `POST /backup/full/restore` and replace the
-authenticated user's current data and supported history in one transaction.
+authenticated user's state data and supported history in one transaction.
 
 #### Scenario: Full backup is restored
 - **WHEN** a valid full V1 backup is posted
-- **THEN** current Authors, Books, relations, event sets, and entity events are completely replaced by its semantic content
+- **THEN** state Authors, Books, relations, event sets, and entity events are completely replaced by its semantic content
 - **AND** the restore adds no new event set, restore event, or snapshot
 
 #### Scenario: Full restore fails
 - **WHEN** any deletion, insertion, mapping, or commit operation fails
-- **THEN** current data and history remain exactly as before the request
+- **THEN** state data and history remain exactly as before the request
 
 ### Requirement: Full restore remaps global event IDs
 The system MUST treat backup event IDs as document-local references, allocate new
@@ -107,7 +107,7 @@ database event IDs, and rewrite every supported event-ID reference consistently.
 - **AND** Book, Author, and event-set UUIDs remain unchanged
 
 ### Requirement: Restore payload limits
-The system SHALL limit current restore request bodies to 10 MiB and full restore
+The system SHALL limit state restore request bodies to 10 MiB and full restore
 request bodies to 100 MiB.
 
 #### Scenario: Restore body exceeds its route limit

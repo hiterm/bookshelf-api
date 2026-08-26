@@ -22,7 +22,7 @@ per-user transaction lock before entity-specific locks or writes.
 - **AND** source deletion, destination merge-event recording, event-set ID, and transaction boundary are preserved
 
 #### Scenario: Mutation overlaps restore for one user
-- **WHEN** a normal mutation and a current or full restore target the same authenticated user concurrently
+- **WHEN** a normal mutation and a state or full restore target the same authenticated user concurrently
 - **THEN** both transactions acquire the same stable user lock before other locks or writes
 - **AND** they execute serially without interleaving
 
