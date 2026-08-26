@@ -31,4 +31,4 @@
 
 - [x] 5.1 Run cargo fmt --check, cargo clippy --all-targets --locked -- -D warnings, and cargo test --locked successfully
 - [x] 5.2 Run the database-backed REST E2E suite successfully and confirm the GraphQL schema has no backup diff
-- [ ] 5.3 Validate OpenSpec artifacts and synchronize delta specs before archive
+- [x] 5.3 Validate OpenSpec artifacts and synchronize delta specs before archive
