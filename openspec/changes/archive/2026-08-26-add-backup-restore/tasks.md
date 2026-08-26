@@ -32,4 +32,4 @@
 
 - [x] 5.1 Run cargo fmt --check, cargo clippy --all-targets --locked -- -D warnings, and cargo test --locked
 - [x] 5.2 Run database-backed backup E2E and confirm the GraphQL schema has no backup diff
-- [ ] 5.3 Synchronize delta specs, run strict OpenSpec validation, and archive the change
+- [x] 5.3 Synchronize delta specs, run strict OpenSpec validation, and archive the change
