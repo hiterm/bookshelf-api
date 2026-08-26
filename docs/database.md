@@ -34,10 +34,14 @@ Groups one or more event rows belonging to a single logical user operation.
 
 | column       | type        | description                                        |
 |--------------|-------------|---------------------------------------------------|
-| `id`         | uuid PK     | Unique identifier                                  |
+| `id`         | uuid        | Identifier, unique within the owning user          |
 | `user_id`    | text FK     | Owner (references `bookshelf_user.id`)             |
 | `operation`  | text FK     | Operation type (references `event_set_operation`)  |
 | `created_at` | timestamptz | When the operation occurred                        |
+
+The primary key is `(id, user_id)`. Entity events reference the same composite
+key through `(event_set_id, user_id)`, allowing a full backup to preserve event
+set IDs when restored for another user in the same database.
 
 For `snapshot_all` operations, one `event_set` is created per user, and all of
 that user's books and authors are inserted as event rows under that single
@@ -139,3 +143,4 @@ unchanged destination uses `merge_as_destination` with
 | version | date       | change                                      |
 |---------|------------|---------------------------------------------|
 | 1       | 2026-04-30 | Initial schema for `restore` extra data     |
+| 2       | 2026-08-26 | Scope event-set identity to its owning user |

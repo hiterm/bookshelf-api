@@ -32,6 +32,12 @@ to `begin`, and the generated `event_set.id` exposed by the transaction so
 mutation results can return an `eventSetId` after a successful commit. Event
 row creation and persistence details remain in the infrastructure layer.
 
+Every mutating transaction acquires the same transaction-scoped PostgreSQL
+advisory lock derived from its user ID before taking entity locks or writing.
+Backup restores use the identical lock. This serializes normal mutations,
+imports, merges, and restores for one user without blocking work for a different
+user; PostgreSQL releases the lock automatically on commit or rollback.
+
 Single-entity Book and Author `create` and `update` mutations also return an
 `eventId`. The two identifiers have different scopes:
 
@@ -68,6 +74,21 @@ When an entity participates in a logical operation without changing state, a
 transaction-aware event repository write may record that participation. It
 must receive the transaction opened by the use case, derive `user_id` and
 `event_set_id` from it, and must not open another transaction or event set.
+
+## Backup restore exception
+
+A current-backup restore is a special bulk mutation. In one transaction it
+records a `snapshot_all` event set immediately before replacement and another
+immediately after replacement, while retaining all earlier history. Snapshot
+events use versioned `extra` data with reason `current_backup_restore` and phase
+`before` or `after`.
+
+A full-backup restore replaces the event log itself as well as current data. It
+is therefore the explicit exception to the rule that every mutation appends an
+event: it adds neither a restore event nor boundary snapshots. Backup-local
+event IDs are allocated new database-global IDs, and supported references are
+rewritten within the same transaction. Any failure rolls back both current data
+and history.
 
 ## Adding a new entity or mutation operation
 

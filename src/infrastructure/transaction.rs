@@ -77,6 +77,11 @@ impl TransactionManager for PgTransactionManager {
     ) -> Result<Self::Transaction, DomainError> {
         let mut tx = self.pool.begin().await?;
 
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(user_id.as_str())
+            .execute(&mut *tx)
+            .await?;
+
         let event_set_id = Uuid::new_v4();
         sqlx::query("INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, $3)")
             .bind(event_set_id)
@@ -103,7 +108,10 @@ impl TransactionManager for PgTransactionManager {
 
 #[cfg(all(test, feature = "test-with-database"))]
 mod tests {
+    use std::time::Duration;
+
     use sqlx::PgPool;
+    use tokio::time::timeout;
 
     use crate::{
         domain::{
@@ -155,6 +163,46 @@ mod tests {
             .fetch_one(&pool)
             .await?;
         assert_eq!(count, 1);
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn same_user_transactions_share_advisory_lock(pool: PgPool) -> anyhow::Result<()> {
+        let user_id = user(&pool).await?;
+        let manager = PgTransactionManager::new(pool);
+        let first = manager
+            .begin(&user_id, EventSetOperation::ImportBooks)
+            .await?;
+
+        let blocked = timeout(
+            Duration::from_millis(100),
+            manager.begin(&user_id, EventSetOperation::ImportBooks),
+        )
+        .await;
+        assert!(blocked.is_err(), "same-user transaction must wait for lock");
+        manager.rollback(first).await?;
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn different_user_transactions_use_different_locks(pool: PgPool) -> anyhow::Result<()> {
+        let first_user = user(&pool).await?;
+        let second_user = UserId::new("transaction-user-2".to_string())?;
+        PgUserRepository::new(pool.clone())
+            .create(&User::new(second_user.clone()))
+            .await?;
+        let manager = PgTransactionManager::new(pool);
+        let first = manager
+            .begin(&first_user, EventSetOperation::ImportBooks)
+            .await?;
+        let second = timeout(
+            Duration::from_secs(1),
+            manager.begin(&second_user, EventSetOperation::ImportBooks),
+        )
+        .await
+        .expect("different-user transaction must not wait")?;
+        manager.rollback(second).await?;
+        manager.rollback(first).await?;
         Ok(())
     }
 }

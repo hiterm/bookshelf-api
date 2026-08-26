@@ -4,13 +4,14 @@ use sqlx::{Pool, Postgres};
 use crate::{
     infrastructure::{
         author_event_repository::PgAuthorEventRepository, author_repository::PgAuthorRepository,
-        book_event_repository::PgBookEventRepository, book_repository::PgBookRepository,
-        event_set_repository::PgEventSetRepository, transaction::PgTransactionManager,
-        user_repository::PgUserRepository,
+        backup_repository::PgBackupRepository, book_event_repository::PgBookEventRepository,
+        book_repository::PgBookRepository, event_set_repository::PgEventSetRepository,
+        transaction::PgTransactionManager, user_repository::PgUserRepository,
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
         author::{AuthorCommandInteractor, AuthorQueryInteractor},
+        backup::BackupInteractor,
         book::{BookCommandInteractor, BookQueryInteractor},
         event::EventQueryInteractor,
         user::{UserCommandInteractor, UserQueryInteractor},
@@ -35,6 +36,7 @@ pub type AC = AuthorCommandInteractor<
 >;
 pub type EQ =
     EventQueryInteractor<PgBookEventRepository, PgAuthorEventRepository, PgEventSetRepository>;
+pub type BU = BackupInteractor<PgBackupRepository>;
 
 pub type AppQuery = Query<UQ, BQ, AQ, EQ>;
 pub type AppMutation = Mutation<UC, BC, AC>;
@@ -81,4 +83,8 @@ pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, EQ, AppSchema) {
     let schema = build_schema(query, mutation);
 
     (author_query, book_query, event_query, schema)
+}
+
+pub fn backup_dependency_injection(pool: Pool<Postgres>) -> BU {
+    BackupInteractor::new(PgBackupRepository::new(pool))
 }

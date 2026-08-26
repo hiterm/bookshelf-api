@@ -2,10 +2,12 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{
     Extension, Router,
+    extract::DefaultBodyLimit,
     routing::{get, post},
 };
 use bookshelf_api::{
-    dependency_injection::dependency_injection,
+    dependency_injection::{BU, backup_dependency_injection, dependency_injection},
+    presentation::handler::backup::{export_current, export_full, restore_current, restore_full},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
     presentation::handler::user::me_handler,
     presentation::{app_state::AppState, extractor::claims::JwtConfig},
@@ -37,6 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     sqlx::migrate!().run(&pool).await?;
 
+    let backup_use_case = backup_dependency_injection(pool.clone());
     let (author_query, book_query, event_query, schema) = dependency_injection(pool);
 
     let jwt_config = JwtConfig::from_env()?;
@@ -66,6 +69,16 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/", get(|| async { "OK" }))
         .route("/me", get(me_handler))
+        .route("/backup/current", get(export_current::<BU>))
+        .route(
+            "/backup/current/restore",
+            post(restore_current::<BU>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route("/backup/full", get(export_full::<BU>))
+        .route(
+            "/backup/full/restore",
+            post(restore_full::<BU>).layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
         .route("/graphql", post(graphql_handler))
         .route("/graphql/playground", get(graphql_playground_handler))
         .route("/health", get(|| async { "OK" }))
@@ -75,6 +88,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 .layer(Extension(author_query))
                 .layer(Extension(book_query))
                 .layer(Extension(event_query))
+                .layer(Extension(backup_use_case))
                 .layer(Extension(schema))
                 .layer(
                     TraceLayer::new_for_http()
