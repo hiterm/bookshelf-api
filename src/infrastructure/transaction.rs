@@ -66,6 +66,17 @@ impl PgTransactionManager {
     }
 }
 
+pub(crate) async fn acquire_user_lock(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    user_id: &UserId,
+) -> Result<(), DomainError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(user_id.as_str())
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 #[async_trait]
 impl TransactionManager for PgTransactionManager {
     type Transaction = PgTransaction;
@@ -77,10 +88,7 @@ impl TransactionManager for PgTransactionManager {
     ) -> Result<Self::Transaction, DomainError> {
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-            .bind(user_id.as_str())
-            .execute(&mut *tx)
-            .await?;
+        acquire_user_lock(&mut tx, user_id).await?;
 
         let event_set_id = Uuid::new_v4();
         sqlx::query("INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, $3)")

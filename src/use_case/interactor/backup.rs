@@ -83,7 +83,7 @@ mod tests {
     use super::*;
     use crate::{
         domain::repository::backup_repository::MockBackupRepository,
-        use_case::dto::backup::CurrentBackupDataV1,
+        use_case::dto::backup::{BackupHistoryV1, CurrentBackupDataV1},
     };
 
     fn empty_current() -> Value {
@@ -92,6 +92,16 @@ mod tests {
             "version": 1,
             "exportedAt": "2026-08-26T00:00:00Z",
             "data": {"authors": [], "books": []}
+        })
+    }
+
+    fn empty_full() -> Value {
+        json!({
+            "format": FULL_BACKUP_FORMAT,
+            "version": 1,
+            "exportedAt": "2026-08-26T00:00:00Z",
+            "data": {"authors": [], "books": []},
+            "history": {"eventSets": [], "bookEvents": [], "authorEvents": []}
         })
     }
 
@@ -152,5 +162,67 @@ mod tests {
             .unwrap();
         assert_eq!(backup.format, CURRENT_BACKUP_FORMAT);
         assert_eq!(backup.version, BACKUP_VERSION_V1);
+    }
+
+    #[tokio::test]
+    async fn export_full_builds_v1_envelope_with_repository_data() {
+        let mut repository = MockBackupRepository::new();
+        repository
+            .expect_export_full()
+            .withf(|user_id| user_id.as_str() == "authenticated-user")
+            .once()
+            .returning(|_| {
+                Ok((
+                    CurrentBackupDataV1 {
+                        authors: vec![],
+                        books: vec![],
+                    },
+                    BackupHistoryV1 {
+                        event_sets: vec![],
+                        book_events: vec![],
+                        author_events: vec![],
+                    },
+                ))
+            });
+        let interactor = BackupInteractor::new(repository);
+
+        let backup = interactor.export_full("authenticated-user").await.unwrap();
+        assert_eq!(backup.format, FULL_BACKUP_FORMAT);
+        assert!(backup.data.books.is_empty());
+        assert!(backup.history.event_sets.is_empty());
+    }
+
+    #[tokio::test]
+    async fn invalid_full_backup_is_rejected_before_repository_write() {
+        let mut repository = MockBackupRepository::new();
+        repository.expect_restore_full().never();
+        let interactor = BackupInteractor::new(repository);
+        let mut invalid = empty_full();
+        invalid["version"] = json!(2);
+
+        assert!(matches!(
+            interactor.restore_full("authenticated-user", invalid).await,
+            Err(UseCaseError::Validation(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn restore_full_passes_data_and_history_to_repository() {
+        let mut repository = MockBackupRepository::new();
+        repository
+            .expect_restore_full()
+            .withf(|user_id, data, history| {
+                user_id.as_str() == "authenticated-user"
+                    && data.authors.is_empty()
+                    && history.event_sets.is_empty()
+            })
+            .once()
+            .returning(|_, _, _| Ok(()));
+        let interactor = BackupInteractor::new(repository);
+
+        interactor
+            .restore_full("authenticated-user", empty_full())
+            .await
+            .unwrap();
     }
 }

@@ -134,11 +134,14 @@ conventions. Exports are ordinary JSON responses in V1.
 
 ## Migration Plan
 
-No database migration is required if the current schema supports all restored
-fields. Deploy application code with the four new routes and shared advisory
-lock atomically. Rollback removes the routes and locking behavior; existing data
-and event rows remain compatible because backup restore introduces no new lookup
-values or columns.
+Deploy by applying `20260826000000_scope_event_sets_to_users.sql`, which changes
+the `event_set` primary key and entity-event foreign keys to include `user_id`,
+before starting application instances with the four routes and shared advisory
+lock. A rollback of the application can leave the composite keys in place because
+older queries remain compatible. Reversing the schema itself requires first
+proving event-set UUIDs are globally unique, then restoring the single-column
+primary and foreign keys; it must not be attempted after cross-account restores
+have introduced duplicate UUIDs.
 
 ## Open Questions
 

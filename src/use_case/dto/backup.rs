@@ -426,19 +426,48 @@ fn validate_extra(operation: &str, extra: Option<&Value>) -> Result<(), BackupVa
                 && object
                     .get("source_event_id")
                     .and_then(Value::as_i64)
-                    .is_some() =>
+                    .is_some()
+                && object.len() == 2 =>
         {
             Ok(())
         }
         ("restore", _) => Err(BackupValidationError::Malformed(
             "restore extra must have version 1 and source_event_id".to_string(),
         )),
-        (_, None) => Ok(()),
-        (_, Some(Value::Object(object)))
-            if object.get("version").and_then(Value::as_u64) == Some(1) =>
+        ("snapshot", Some(Value::Object(object)))
+            if object.get("version").and_then(Value::as_u64) == Some(1)
+                && object.get("reason").and_then(Value::as_str)
+                    == Some("current_backup_restore")
+                && matches!(
+                    object.get("phase").and_then(Value::as_str),
+                    Some("before" | "after")
+                )
+                && object.len() == 3 =>
         {
             Ok(())
         }
+        ("delete", Some(Value::Object(object)))
+            if object.get("type").and_then(Value::as_str) == Some("merge")
+                && object.get("version").and_then(Value::as_u64) == Some(1)
+                && object
+                    .get("destination_author_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| Uuid::parse_str(id).is_ok())
+                && object.len() == 3 =>
+        {
+            Ok(())
+        }
+        ("merge_as_destination", Some(Value::Object(object)))
+            if object.get("version").and_then(Value::as_u64) == Some(1)
+                && object
+                    .get("source_author_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| Uuid::parse_str(id).is_ok())
+                && object.len() == 2 =>
+        {
+            Ok(())
+        }
+        (_, None) => Ok(()),
         _ => Err(BackupValidationError::UnsupportedValue(
             "unsupported event extra schema".to_string(),
         )),
@@ -608,5 +637,50 @@ mod tests {
             },
         };
         backup.validate().unwrap();
+    }
+
+    #[test]
+    fn unknown_version_one_extra_is_rejected() {
+        let mut backup = FullBackupV1 {
+            format: FULL_BACKUP_FORMAT.to_string(),
+            version: 1,
+            exported_at: "2026-08-26T00:00:00Z".to_string(),
+            data: CurrentBackupDataV1 {
+                authors: vec![],
+                books: vec![],
+            },
+            history: BackupHistoryV1 {
+                event_sets: vec![BackupEventSetV1 {
+                    id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd".to_string(),
+                    operation: "delete_book".to_string(),
+                    created_at: "2026-08-26T00:00:00Z".to_string(),
+                }],
+                book_events: vec![BackupBookEventV1 {
+                    event_id: 1,
+                    event_set_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd".to_string(),
+                    operation: "delete".to_string(),
+                    book_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_string(),
+                    title: None,
+                    isbn: None,
+                    read: None,
+                    owned: None,
+                    priority: None,
+                    format: None,
+                    store: None,
+                    created_at: None,
+                    updated_at: None,
+                    author_ids: vec![],
+                    changed_at: "2026-08-26T00:00:00Z".to_string(),
+                    extra: None,
+                }],
+                author_events: vec![],
+            },
+        };
+        backup.history.book_events[0].extra = Some(json!({"version": 1, "unknown": true}));
+
+        assert!(matches!(
+            backup.validate(),
+            Err(BackupValidationError::UnsupportedValue(_))
+        ));
     }
 }

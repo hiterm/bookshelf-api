@@ -67,7 +67,7 @@ One row per book event. Data fields are NULL for `delete` events.
 | column             | type        | description                                    |
 |--------------------|-------------|------------------------------------------------|
 | `event_id`         | bigserial PK| Auto-incrementing event identifier             |
-| `event_set_id`     | uuid FK     | References `event_set.id`                      |
+| `event_set_id`     | uuid FK     | With `user_id`, references `event_set (id, user_id)` |
 | `operation`        | text FK     | References `event_operation.operation`         |
 | `book_id`          | uuid        | The book this event belongs to                 |
 | `user_id`          | text        | Owner                                          |
@@ -99,7 +99,7 @@ One row per author event. Data fields are NULL for `delete` events.
 | column              | type        | description                                    |
 |---------------------|-------------|------------------------------------------------|
 | `event_id`          | bigserial PK| Auto-incrementing event identifier             |
-| `event_set_id`      | uuid FK     | References `event_set.id`                      |
+| `event_set_id`      | uuid FK     | With `user_id`, references `event_set (id, user_id)` |
 | `operation`         | text FK     | References `event_operation.operation`         |
 | `author_id`         | uuid        | The author this event belongs to               |
 | `user_id`           | text        | Owner                                          |

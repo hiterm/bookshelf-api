@@ -16,6 +16,8 @@ use crate::{
     },
 };
 
+use super::transaction::acquire_user_lock;
+
 #[derive(Clone, Debug)]
 pub struct PgBackupRepository {
     pool: PgPool,
@@ -255,17 +257,6 @@ async fn history(
     })
 }
 
-async fn lock_user(
-    tx: &mut Transaction<'_, Postgres>,
-    user_id: &UserId,
-) -> Result<(), DomainError> {
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-        .bind(user_id.as_str())
-        .execute(&mut **tx)
-        .await?;
-    Ok(())
-}
-
 async fn insert_current(
     tx: &mut Transaction<'_, Postgres>,
     user_id: &UserId,
@@ -338,7 +329,7 @@ async fn snapshot(
     Ok(())
 }
 
-fn remap_extra(
+fn remapped_extra(
     extra: Option<&Value>,
     mapping: &HashMap<i64, i64>,
 ) -> Result<Option<Value>, DomainError> {
@@ -350,8 +341,9 @@ fn remap_extra(
             .get(&source)
             .ok_or_else(|| DomainError::Validation(format!("unknown source event {source}")))?;
         extra["source_event_id"] = Value::from(*mapped);
+        return Ok(Some(extra));
     }
-    Ok(Some(extra))
+    Ok(None)
 }
 
 #[async_trait]
@@ -386,7 +378,7 @@ impl BackupRepository for PgBackupRepository {
         data: &CurrentBackupDataV1,
     ) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
-        lock_user(&mut tx, user_id).await?;
+        acquire_user_lock(&mut tx, user_id).await?;
         snapshot(&mut tx, user_id, "before").await?;
         delete_current(&mut tx, user_id).await?;
         insert_current(&mut tx, user_id, data).await?;
@@ -402,7 +394,7 @@ impl BackupRepository for PgBackupRepository {
         history_data: &BackupHistoryV1,
     ) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
-        lock_user(&mut tx, user_id).await?;
+        acquire_user_lock(&mut tx, user_id).await?;
         sqlx::query("DELETE FROM book_event WHERE user_id=$1")
             .bind(user_id.as_str())
             .execute(&mut *tx)
@@ -454,22 +446,59 @@ impl BackupRepository for PgBackupRepository {
             }
         }
         for event in &history_data.author_events {
-            let extra = remap_extra(event.extra.as_ref(), &author_mapping)?;
-            sqlx::query("UPDATE author_event SET extra=$1 WHERE event_id=$2")
-                .bind(extra)
-                .bind(author_mapping[&event.event_id])
-                .execute(&mut *tx)
-                .await?;
+            if let Some(extra) = remapped_extra(event.extra.as_ref(), &author_mapping)? {
+                sqlx::query("UPDATE author_event SET extra=$1 WHERE event_id=$2")
+                    .bind(extra)
+                    .bind(author_mapping[&event.event_id])
+                    .execute(&mut *tx)
+                    .await?;
+            }
         }
         for event in &history_data.book_events {
-            let extra = remap_extra(event.extra.as_ref(), &book_mapping)?;
-            sqlx::query("UPDATE book_event SET extra=$1 WHERE event_id=$2")
-                .bind(extra)
-                .bind(book_mapping[&event.event_id])
-                .execute(&mut *tx)
-                .await?;
+            if let Some(extra) = remapped_extra(event.extra.as_ref(), &book_mapping)? {
+                sqlx::query("UPDATE book_event SET extra=$1 WHERE event_id=$2")
+                    .bind(extra)
+                    .bind(book_mapping[&event.event_id])
+                    .execute(&mut *tx)
+                    .await?;
+            }
         }
         tx.commit().await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remapped_extra_skips_missing_extra() {
+        assert_eq!(remapped_extra(None, &HashMap::new()).unwrap(), None);
+    }
+
+    #[test]
+    fn remapped_extra_skips_extra_without_event_reference() {
+        let extra = json!({"version": 1, "reason": "current_backup_restore"});
+        assert_eq!(remapped_extra(Some(&extra), &HashMap::new()).unwrap(), None);
+    }
+
+    #[test]
+    fn remapped_extra_replaces_source_event_id() {
+        let extra = json!({"version": 1, "source_event_id": 10});
+        let mapping = HashMap::from([(10, 42)]);
+        assert_eq!(
+            remapped_extra(Some(&extra), &mapping).unwrap(),
+            Some(json!({"version": 1, "source_event_id": 42}))
+        );
+    }
+
+    #[test]
+    fn remapped_extra_rejects_unknown_source_event() {
+        let extra = json!({"version": 1, "source_event_id": 10});
+        assert!(matches!(
+            remapped_extra(Some(&extra), &HashMap::new()),
+            Err(DomainError::Validation(_))
+        ));
     }
 }
