@@ -7,7 +7,9 @@ use axum::{
 };
 use bookshelf_api::{
     dependency_injection::{BU, backup_dependency_injection, dependency_injection},
-    presentation::handler::backup::{export_current, export_full, restore_current, restore_full},
+    presentation::handler::backup::{
+        export_full, export_snapshot, restore_snapshot, validate_snapshot,
+    },
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
     presentation::handler::user::me_handler,
     presentation::{app_state::AppState, extractor::claims::JwtConfig},
@@ -69,16 +71,16 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/", get(|| async { "OK" }))
         .route("/me", get(me_handler))
-        .route("/backup/current", get(export_current::<BU>))
+        .route("/backup/snapshot", get(export_snapshot::<BU>))
         .route(
-            "/backup/current/restore",
-            post(restore_current::<BU>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+            "/backup/snapshot/validate",
+            post(validate_snapshot::<BU>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route(
+            "/backup/snapshot/restore",
+            post(restore_snapshot::<BU>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
         .route("/backup/full", get(export_full::<BU>))
-        .route(
-            "/backup/full/restore",
-            post(restore_full::<BU>).layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
-        )
         .route("/graphql", post(graphql_handler))
         .route("/graphql/playground", get(graphql_playground_handler))
         .route("/health", get(|| async { "OK" }))

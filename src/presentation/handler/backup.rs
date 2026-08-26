@@ -22,24 +22,41 @@ impl From<UseCaseError> for BackupHttpError {
 
 impl IntoResponse for BackupHttpError {
     fn into_response(self) -> Response {
-        let (status, code) = match self.0 {
-            UseCaseError::Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid_backup"),
-            UseCaseError::Conflict(_) => (StatusCode::CONFLICT, "restore_conflict"),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
-        };
-        (
-            status,
-            Json(json!({"error": code, "message": self.0.to_string()})),
-        )
-            .into_response()
+        match self.0 {
+            UseCaseError::BackupValidation(response) => {
+                (StatusCode::UNPROCESSABLE_ENTITY, Json(response)).into_response()
+            }
+            error => {
+                let (status, code) = match error {
+                    UseCaseError::Validation(_) => {
+                        (StatusCode::UNPROCESSABLE_ENTITY, "invalid_backup")
+                    }
+                    UseCaseError::Conflict(_) => (StatusCode::CONFLICT, "restore_conflict"),
+                    _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
+                };
+                (
+                    status,
+                    Json(json!({"error": code, "message": error.to_string()})),
+                )
+                    .into_response()
+            }
+        }
     }
 }
 
-pub async fn export_current<BU: BackupUseCase>(
+pub async fn validate_snapshot<BU: BackupUseCase>(
+    claims: Claims,
+    Extension(use_case): Extension<BU>,
+    Json(value): Json<Value>,
+) -> Result<Json<impl Serialize>, BackupHttpError> {
+    Ok(Json(use_case.validate_snapshot(&claims.sub, value).await?))
+}
+
+pub async fn export_snapshot<BU: BackupUseCase>(
     claims: Claims,
     Extension(use_case): Extension<BU>,
 ) -> Result<Json<impl Serialize>, BackupHttpError> {
-    Ok(Json(use_case.export_current(&claims.sub).await?))
+    Ok(Json(use_case.export_snapshot(&claims.sub).await?))
 }
 
 pub async fn export_full<BU: BackupUseCase>(
@@ -49,21 +66,12 @@ pub async fn export_full<BU: BackupUseCase>(
     Ok(Json(use_case.export_full(&claims.sub).await?))
 }
 
-pub async fn restore_current<BU: BackupUseCase>(
+pub async fn restore_snapshot<BU: BackupUseCase>(
     claims: Claims,
     Extension(use_case): Extension<BU>,
     Json(value): Json<Value>,
 ) -> Result<StatusCode, BackupHttpError> {
-    use_case.restore_current(&claims.sub, value).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-pub async fn restore_full<BU: BackupUseCase>(
-    claims: Claims,
-    Extension(use_case): Extension<BU>,
-    Json(value): Json<Value>,
-) -> Result<StatusCode, BackupHttpError> {
-    use_case.restore_full(&claims.sub, value).await?;
+    use_case.restore_snapshot(&claims.sub, value).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

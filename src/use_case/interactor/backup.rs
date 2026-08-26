@@ -6,8 +6,8 @@ use crate::{
     domain::{entity::user::UserId, repository::backup_repository::BackupRepository},
     use_case::{
         dto::backup::{
-            BACKUP_VERSION_V1, CURRENT_BACKUP_FORMAT, CurrentBackupV1, FULL_BACKUP_FORMAT,
-            FullBackupV1,
+            BACKUP_VERSION_V1, BackupValidationResponse, FULL_BACKUP_FORMAT, FullBackupV1,
+            SNAPSHOT_BACKUP_FORMAT, SnapshotBackupV1, validate_snapshot_backup,
         },
         error::UseCaseError,
         traits::backup::BackupUseCase,
@@ -33,13 +33,13 @@ fn now() -> Result<String, UseCaseError> {
 
 #[async_trait]
 impl<BR: BackupRepository> BackupUseCase for BackupInteractor<BR> {
-    async fn export_current(&self, user_id: &str) -> Result<CurrentBackupV1, UseCaseError> {
+    async fn export_snapshot(&self, user_id: &str) -> Result<SnapshotBackupV1, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
-        Ok(CurrentBackupV1 {
-            format: CURRENT_BACKUP_FORMAT.to_string(),
+        Ok(SnapshotBackupV1 {
+            format: SNAPSHOT_BACKUP_FORMAT.to_string(),
             version: BACKUP_VERSION_V1,
             exported_at: now()?,
-            data: self.repository.export_current(&user_id).await?,
+            data: self.repository.export_snapshot(&user_id).await?,
         })
     }
 
@@ -55,22 +55,23 @@ impl<BR: BackupRepository> BackupUseCase for BackupInteractor<BR> {
         })
     }
 
-    async fn restore_current(&self, user_id: &str, value: Value) -> Result<(), UseCaseError> {
-        let user_id = UserId::new(user_id.to_string())?;
-        let backup = CurrentBackupV1::parse(value)
-            .map_err(|error| UseCaseError::Validation(error.to_string()))?;
-        self.repository
-            .restore_current(&user_id, &backup.data)
-            .await?;
-        Ok(())
+    async fn validate_snapshot(
+        &self,
+        user_id: &str,
+        value: Value,
+    ) -> Result<BackupValidationResponse, UseCaseError> {
+        UserId::new(user_id.to_string())?;
+        Ok(validate_snapshot_backup(value).response)
     }
 
-    async fn restore_full(&self, user_id: &str, value: Value) -> Result<(), UseCaseError> {
+    async fn restore_snapshot(&self, user_id: &str, value: Value) -> Result<(), UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
-        let backup = FullBackupV1::parse(value)
-            .map_err(|error| UseCaseError::Validation(error.to_string()))?;
+        let validation = validate_snapshot_backup(value);
+        let backup = validation
+            .backup
+            .ok_or(UseCaseError::BackupValidation(validation.response))?;
         self.repository
-            .restore_full(&user_id, &backup.data, &backup.history)
+            .restore_snapshot(&user_id, &backup.data)
             .await?;
         Ok(())
     }
@@ -83,25 +84,15 @@ mod tests {
     use super::*;
     use crate::{
         domain::repository::backup_repository::MockBackupRepository,
-        use_case::dto::backup::{BackupHistoryV1, CurrentBackupDataV1},
+        use_case::dto::backup::{BackupHistoryV1, SnapshotBackupDataV1},
     };
 
-    fn empty_current() -> Value {
+    fn empty_snapshot() -> Value {
         json!({
-            "format": CURRENT_BACKUP_FORMAT,
+            "format": SNAPSHOT_BACKUP_FORMAT,
             "version": 1,
             "exportedAt": "2026-08-26T00:00:00Z",
             "data": {"authors": [], "books": []}
-        })
-    }
-
-    fn empty_full() -> Value {
-        json!({
-            "format": FULL_BACKUP_FORMAT,
-            "version": 1,
-            "exportedAt": "2026-08-26T00:00:00Z",
-            "data": {"authors": [], "books": []},
-            "history": {"eventSets": [], "bookEvents": [], "authorEvents": []}
         })
     }
 
@@ -109,7 +100,7 @@ mod tests {
     async fn restore_uses_authenticated_user_id() {
         let mut repository = MockBackupRepository::new();
         repository
-            .expect_restore_current()
+            .expect_restore_snapshot()
             .withf(|user_id, data| {
                 user_id.as_str() == "authenticated-user"
                     && data.authors.is_empty()
@@ -120,7 +111,7 @@ mod tests {
         let interactor = BackupInteractor::new(repository);
 
         interactor
-            .restore_current("authenticated-user", empty_current())
+            .restore_snapshot("authenticated-user", empty_snapshot())
             .await
             .unwrap();
     }
@@ -128,28 +119,42 @@ mod tests {
     #[tokio::test]
     async fn invalid_backup_is_rejected_before_repository_write() {
         let mut repository = MockBackupRepository::new();
-        repository.expect_restore_current().never();
+        repository.expect_restore_snapshot().never();
         let interactor = BackupInteractor::new(repository);
-        let mut invalid = empty_current();
+        let mut invalid = empty_snapshot();
         invalid["version"] = json!(2);
 
         assert!(matches!(
             interactor
-                .restore_current("authenticated-user", invalid)
+                .restore_snapshot("authenticated-user", invalid)
                 .await,
-            Err(UseCaseError::Validation(_))
+            Err(UseCaseError::BackupValidation(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn validate_snapshot_is_read_only() {
+        let mut repository = MockBackupRepository::new();
+        repository.expect_restore_snapshot().never();
+        let interactor = BackupInteractor::new(repository);
+
+        let response = interactor
+            .validate_snapshot("authenticated-user", empty_snapshot())
+            .await
+            .unwrap();
+        assert!(response.valid);
+        assert_eq!(response.summary.unwrap().books, 0);
     }
 
     #[tokio::test]
     async fn export_builds_v1_envelope() {
         let mut repository = MockBackupRepository::new();
         repository
-            .expect_export_current()
+            .expect_export_snapshot()
             .withf(|user_id| user_id.as_str() == "authenticated-user")
             .once()
             .returning(|_| {
-                Ok(CurrentBackupDataV1 {
+                Ok(SnapshotBackupDataV1 {
                     authors: vec![],
                     books: vec![],
                 })
@@ -157,10 +162,10 @@ mod tests {
         let interactor = BackupInteractor::new(repository);
 
         let backup = interactor
-            .export_current("authenticated-user")
+            .export_snapshot("authenticated-user")
             .await
             .unwrap();
-        assert_eq!(backup.format, CURRENT_BACKUP_FORMAT);
+        assert_eq!(backup.format, SNAPSHOT_BACKUP_FORMAT);
         assert_eq!(backup.version, BACKUP_VERSION_V1);
     }
 
@@ -173,7 +178,7 @@ mod tests {
             .once()
             .returning(|_| {
                 Ok((
-                    CurrentBackupDataV1 {
+                    SnapshotBackupDataV1 {
                         authors: vec![],
                         books: vec![],
                     },
@@ -188,41 +193,13 @@ mod tests {
 
         let backup = interactor.export_full("authenticated-user").await.unwrap();
         assert_eq!(backup.format, FULL_BACKUP_FORMAT);
+        assert_eq!(backup.version, BACKUP_VERSION_V1);
         assert!(backup.data.books.is_empty());
         assert!(backup.history.event_sets.is_empty());
-    }
-
-    #[tokio::test]
-    async fn invalid_full_backup_is_rejected_before_repository_write() {
-        let mut repository = MockBackupRepository::new();
-        repository.expect_restore_full().never();
-        let interactor = BackupInteractor::new(repository);
-        let mut invalid = empty_full();
-        invalid["version"] = json!(2);
-
-        assert!(matches!(
-            interactor.restore_full("authenticated-user", invalid).await,
-            Err(UseCaseError::Validation(_))
-        ));
-    }
-
-    #[tokio::test]
-    async fn restore_full_passes_data_and_history_to_repository() {
-        let mut repository = MockBackupRepository::new();
-        repository
-            .expect_restore_full()
-            .withf(|user_id, data, history| {
-                user_id.as_str() == "authenticated-user"
-                    && data.authors.is_empty()
-                    && history.event_sets.is_empty()
-            })
-            .once()
-            .returning(|_, _, _| Ok(()));
-        let interactor = BackupInteractor::new(repository);
-
-        interactor
-            .restore_full("authenticated-user", empty_full())
-            .await
-            .unwrap();
+        let value = serde_json::to_value(backup).unwrap();
+        assert!(value.get("exportedAt").is_some());
+        assert!(value["history"].get("eventSets").is_some());
+        assert!(value["history"].get("bookEvents").is_some());
+        assert!(value["history"].get("authorEvents").is_some());
     }
 }

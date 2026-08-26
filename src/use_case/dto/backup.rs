@@ -10,13 +10,47 @@ use crate::{
     domain::entity::{
         author::{AuthorName, validate_author_yomi},
         book::{BookTitle, Isbn, Priority},
-        event::{EventOperation, EventSetOperation},
     },
 };
 
-pub const CURRENT_BACKUP_FORMAT: &str = "bookshelf-current-backup";
+pub const SNAPSHOT_BACKUP_FORMAT: &str = "bookshelf-snapshot-backup";
 pub const FULL_BACKUP_FORMAT: &str = "bookshelf-full-backup";
 pub const BACKUP_VERSION_V1: u32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupValidationIssue {
+    pub code: &'static str,
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupValidationSummary {
+    pub books: usize,
+    pub authors: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupValidationResponse {
+    pub valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<BackupValidationSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<BackupValidationIssue>,
+}
+
+#[derive(Debug)]
+pub struct BackupValidation<T> {
+    pub backup: Option<T>,
+    pub response: BackupValidationResponse,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -46,18 +80,18 @@ pub struct BackupBookV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CurrentBackupDataV1 {
+pub struct SnapshotBackupDataV1 {
     pub authors: Vec<BackupAuthorV1>,
     pub books: Vec<BackupBookV1>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CurrentBackupV1 {
+pub struct SnapshotBackupV1 {
     pub format: String,
     pub version: u32,
     pub exported_at: String,
-    pub data: CurrentBackupDataV1,
+    pub data: SnapshotBackupDataV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,7 +152,7 @@ pub struct FullBackupV1 {
     pub format: String,
     pub version: u32,
     pub exported_at: String,
-    pub data: CurrentBackupDataV1,
+    pub data: SnapshotBackupDataV1,
     pub history: BackupHistoryV1,
 }
 
@@ -144,9 +178,9 @@ struct BackupHeader {
     version: u64,
 }
 
-impl CurrentBackupV1 {
+impl SnapshotBackupV1 {
     pub fn parse(value: Value) -> Result<Self, BackupValidationError> {
-        dispatch(&value, CURRENT_BACKUP_FORMAT)?;
+        dispatch(&value, SNAPSHOT_BACKUP_FORMAT)?;
         let backup: Self = serde_json::from_value(value)
             .map_err(|error| BackupValidationError::Malformed(error.to_string()))?;
         backup.validate()?;
@@ -154,26 +188,91 @@ impl CurrentBackupV1 {
     }
 
     pub fn validate(&self) -> Result<(), BackupValidationError> {
-        validate_header(&self.format, self.version, CURRENT_BACKUP_FORMAT)?;
+        validate_header(&self.format, self.version, SNAPSHOT_BACKUP_FORMAT)?;
         validate_timestamp("exportedAt", &self.exported_at)?;
-        validate_current_data(&self.data)
+        validate_snapshot_data(&self.data)
     }
 }
 
-impl FullBackupV1 {
-    pub fn parse(value: Value) -> Result<Self, BackupValidationError> {
-        dispatch(&value, FULL_BACKUP_FORMAT)?;
-        let backup: Self = serde_json::from_value(value)
-            .map_err(|error| BackupValidationError::Malformed(error.to_string()))?;
-        backup.validate()?;
-        Ok(backup)
+pub fn validate_snapshot_backup(value: Value) -> BackupValidation<SnapshotBackupV1> {
+    let format = value
+        .get("format")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let version = value
+        .get("version")
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok());
+    let backup = match serde_json::from_value::<SnapshotBackupV1>(value) {
+        Ok(backup) => backup,
+        Err(error) => {
+            return invalid_validation(
+                format,
+                version,
+                "invalid_structure",
+                "$",
+                error.to_string(),
+            );
+        }
+    };
+    if let Err(error) = backup.validate() {
+        let (code, path) = validation_error_location(&error);
+        return invalid_validation(format, version, code, path, error.to_string());
     }
+    BackupValidation {
+        response: BackupValidationResponse {
+            valid: true,
+            format,
+            version,
+            summary: Some(BackupValidationSummary {
+                books: backup.data.books.len(),
+                authors: backup.data.authors.len(),
+            }),
+            errors: vec![],
+        },
+        backup: Some(backup),
+    }
+}
 
-    pub fn validate(&self) -> Result<(), BackupValidationError> {
-        validate_header(&self.format, self.version, FULL_BACKUP_FORMAT)?;
-        validate_timestamp("exportedAt", &self.exported_at)?;
-        validate_current_data(&self.data)?;
-        validate_history(&self.history)
+fn invalid_validation<T>(
+    format: Option<String>,
+    version: Option<u32>,
+    code: &'static str,
+    path: &str,
+    message: String,
+) -> BackupValidation<T> {
+    BackupValidation {
+        backup: None,
+        response: BackupValidationResponse {
+            valid: false,
+            format,
+            version,
+            summary: None,
+            errors: vec![BackupValidationIssue {
+                code,
+                path: path.to_string(),
+                message,
+            }],
+        },
+    }
+}
+
+fn validation_error_location(error: &BackupValidationError) -> (&'static str, &'static str) {
+    match error {
+        BackupValidationError::UnsupportedFormat(_) => ("invalid_format", "format"),
+        BackupValidationError::UnsupportedVersion(_) => ("unsupported_version", "version"),
+        BackupValidationError::DuplicateId { kind: "author", .. } => {
+            ("duplicate_author_id", "data.authors")
+        }
+        BackupValidationError::DuplicateId { kind: "book", .. } => {
+            ("duplicate_book_id", "data.books")
+        }
+        BackupValidationError::InvalidReference(_) => {
+            ("missing_author_reference", "data.books[].authorIds")
+        }
+        BackupValidationError::Malformed(_) => ("malformed_value", "$"),
+        BackupValidationError::UnsupportedValue(_) => ("unsupported_value", "$"),
+        BackupValidationError::DuplicateId { .. } => ("duplicate_id", "$"),
     }
 }
 
@@ -198,7 +297,7 @@ fn validate_header(
     Ok(())
 }
 
-fn validate_current_data(data: &CurrentBackupDataV1) -> Result<(), BackupValidationError> {
+fn validate_snapshot_data(data: &SnapshotBackupDataV1) -> Result<(), BackupValidationError> {
     let mut author_ids = HashSet::new();
     for author in &data.authors {
         validate_uuid("author", &author.id)?;
@@ -246,256 +345,6 @@ fn validate_current_data(data: &CurrentBackupDataV1) -> Result<(), BackupValidat
     Ok(())
 }
 
-fn validate_history(history: &BackupHistoryV1) -> Result<(), BackupValidationError> {
-    let mut event_set_ids = HashSet::new();
-    for event_set in &history.event_sets {
-        validate_uuid("event set", &event_set.id)?;
-        if !event_set_ids.insert(event_set.id.as_str()) {
-            return Err(BackupValidationError::DuplicateId {
-                kind: "event set",
-                id: event_set.id.clone(),
-            });
-        }
-        EventSetOperation::try_from(event_set.operation.as_str()).map_err(|_| {
-            BackupValidationError::UnsupportedValue(format!(
-                "event set operation {}",
-                event_set.operation
-            ))
-        })?;
-        validate_timestamp("eventSet.createdAt", &event_set.created_at)?;
-    }
-
-    validate_events(&history.book_events, &history.author_events, &event_set_ids)
-}
-
-fn validate_events(
-    book_events: &[BackupBookEventV1],
-    author_events: &[BackupAuthorEventV1],
-    event_set_ids: &HashSet<&str>,
-) -> Result<(), BackupValidationError> {
-    let mut book_event_ids = HashSet::new();
-    let mut author_event_ids = HashSet::new();
-    for event in book_events {
-        validate_event_common(
-            "book event",
-            event.event_id,
-            &event.event_set_id,
-            &event.operation,
-            &event.changed_at,
-            event_set_ids,
-            &mut book_event_ids,
-        )?;
-        validate_uuid("book event book", &event.book_id)?;
-        validate_snapshot_shape(
-            &event.operation,
-            event.title.is_some(),
-            event.created_at.as_deref(),
-            event.updated_at.as_deref(),
-        )?;
-        if let (Some(title), Some(isbn), Some(priority), Some(format), Some(store)) = (
-            event.title.as_deref(),
-            event.isbn.as_deref(),
-            event.priority,
-            event.format.as_deref(),
-            event.store.as_deref(),
-        ) {
-            validate_book_values(title, isbn, priority, format, store)?;
-        } else if matches!(
-            event.operation.as_str(),
-            "create" | "update" | "restore" | "snapshot"
-        ) {
-            return Err(BackupValidationError::Malformed(format!(
-                "book event {} is missing snapshot fields",
-                event.event_id
-            )));
-        }
-        let mut author_ids = HashSet::new();
-        for author_id in &event.author_ids {
-            validate_uuid("book event author", author_id)?;
-            if !author_ids.insert(author_id) {
-                return Err(BackupValidationError::DuplicateId {
-                    kind: "book event author",
-                    id: author_id.clone(),
-                });
-            }
-        }
-        validate_extra(&event.operation, event.extra.as_ref())?;
-    }
-    for event in author_events {
-        validate_event_common(
-            "author event",
-            event.event_id,
-            &event.event_set_id,
-            &event.operation,
-            &event.changed_at,
-            event_set_ids,
-            &mut author_event_ids,
-        )?;
-        validate_uuid("author event author", &event.author_id)?;
-        validate_snapshot_shape(
-            &event.operation,
-            event.name.is_some(),
-            event.created_at.as_deref(),
-            event.updated_at.as_deref(),
-        )?;
-        if let Some(name) = &event.name {
-            AuthorName::new(name.clone())
-                .map_err(|error| BackupValidationError::UnsupportedValue(error.to_string()))?;
-        }
-        if let Some(yomi) = &event.yomi {
-            validate_author_yomi(yomi.clone())
-                .map_err(|error| BackupValidationError::UnsupportedValue(error.to_string()))?;
-        }
-        validate_extra(&event.operation, event.extra.as_ref())?;
-    }
-
-    for event in book_events {
-        validate_restore_reference(
-            event.event_id,
-            &event.operation,
-            event.extra.as_ref(),
-            &book_event_ids,
-        )?;
-    }
-    for event in author_events {
-        validate_restore_reference(
-            event.event_id,
-            &event.operation,
-            event.extra.as_ref(),
-            &author_event_ids,
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_event_common<'a>(
-    kind: &'static str,
-    event_id: i64,
-    event_set_id: &'a str,
-    operation: &str,
-    changed_at: &str,
-    event_set_ids: &HashSet<&'a str>,
-    event_ids: &mut HashSet<i64>,
-) -> Result<(), BackupValidationError> {
-    if !event_ids.insert(event_id) {
-        return Err(BackupValidationError::DuplicateId {
-            kind,
-            id: event_id.to_string(),
-        });
-    }
-    if !event_set_ids.contains(event_set_id) {
-        return Err(BackupValidationError::InvalidReference(format!(
-            "event {} refers to unknown event set {}",
-            event_id, event_set_id
-        )));
-    }
-    EventOperation::try_from(operation).map_err(|_| {
-        BackupValidationError::UnsupportedValue(format!("event operation {operation}"))
-    })?;
-    validate_timestamp("event.changedAt", changed_at)
-}
-
-fn validate_snapshot_shape(
-    operation: &str,
-    has_primary_field: bool,
-    created_at: Option<&str>,
-    updated_at: Option<&str>,
-) -> Result<(), BackupValidationError> {
-    let requires_snapshot = matches!(operation, "create" | "update" | "restore" | "snapshot");
-    if requires_snapshot != has_primary_field
-        || requires_snapshot != created_at.is_some()
-        || requires_snapshot != updated_at.is_some()
-    {
-        return Err(BackupValidationError::Malformed(format!(
-            "event snapshot fields do not match operation {operation}"
-        )));
-    }
-    if let Some(value) = created_at {
-        validate_timestamp("event.createdAt", value)?;
-    }
-    if let Some(value) = updated_at {
-        validate_timestamp("event.updatedAt", value)?;
-    }
-    Ok(())
-}
-
-fn validate_extra(operation: &str, extra: Option<&Value>) -> Result<(), BackupValidationError> {
-    match (operation, extra) {
-        ("restore", Some(Value::Object(object)))
-            if object.get("version").and_then(Value::as_u64) == Some(1)
-                && object
-                    .get("source_event_id")
-                    .and_then(Value::as_i64)
-                    .is_some()
-                && object.len() == 2 =>
-        {
-            Ok(())
-        }
-        ("restore", _) => Err(BackupValidationError::Malformed(
-            "restore extra must have version 1 and source_event_id".to_string(),
-        )),
-        ("snapshot", Some(Value::Object(object)))
-            if object.get("version").and_then(Value::as_u64) == Some(1)
-                && object.get("reason").and_then(Value::as_str)
-                    == Some("current_backup_restore")
-                && matches!(
-                    object.get("phase").and_then(Value::as_str),
-                    Some("before" | "after")
-                )
-                && object.len() == 3 =>
-        {
-            Ok(())
-        }
-        ("delete", Some(Value::Object(object)))
-            if object.get("type").and_then(Value::as_str) == Some("merge")
-                && object.get("version").and_then(Value::as_u64) == Some(1)
-                && object
-                    .get("destination_author_id")
-                    .and_then(Value::as_str)
-                    .is_some_and(|id| Uuid::parse_str(id).is_ok())
-                && object.len() == 3 =>
-        {
-            Ok(())
-        }
-        ("merge_as_destination", Some(Value::Object(object)))
-            if object.get("version").and_then(Value::as_u64) == Some(1)
-                && object
-                    .get("source_author_id")
-                    .and_then(Value::as_str)
-                    .is_some_and(|id| Uuid::parse_str(id).is_ok())
-                && object.len() == 2 =>
-        {
-            Ok(())
-        }
-        (_, None) => Ok(()),
-        _ => Err(BackupValidationError::UnsupportedValue(
-            "unsupported event extra schema".to_string(),
-        )),
-    }
-}
-
-fn validate_restore_reference(
-    event_id: i64,
-    operation: &str,
-    extra: Option<&Value>,
-    event_ids: &HashSet<i64>,
-) -> Result<(), BackupValidationError> {
-    if operation == "restore" {
-        let source = extra
-            .and_then(|value| value.get("source_event_id"))
-            .and_then(Value::as_i64)
-            .ok_or_else(|| {
-                BackupValidationError::Malformed("missing restore source".to_string())
-            })?;
-        if !event_ids.contains(&source) {
-            return Err(BackupValidationError::InvalidReference(format!(
-                "event {event_id} refers to unknown source event {source}"
-            )));
-        }
-    }
-    Ok(())
-}
-
 fn validate_uuid(kind: &str, value: &str) -> Result<(), BackupValidationError> {
     Uuid::parse_str(value)
         .map(|_| ())
@@ -534,9 +383,9 @@ mod tests {
 
     use super::*;
 
-    fn current() -> Value {
+    fn snapshot() -> Value {
         json!({
-            "format": CURRENT_BACKUP_FORMAT,
+            "format": SNAPSHOT_BACKUP_FORMAT,
             "version": 1,
             "exportedAt": "2026-08-26T00:00:00Z",
             "data": {
@@ -557,8 +406,54 @@ mod tests {
     }
 
     #[test]
-    fn current_v1_round_trips_camel_case_contract() {
-        let backup = CurrentBackupV1::parse(current()).unwrap();
+    fn snapshot_validator_returns_restore_summary() {
+        let validation = validate_snapshot_backup(snapshot());
+        assert!(validation.response.valid);
+        assert!(validation.backup.is_some());
+        let summary = validation.response.summary.unwrap();
+        assert_eq!(summary.books, 1);
+        assert_eq!(summary.authors, 1);
+    }
+
+    #[test]
+    fn snapshot_validator_reports_header_duplicate_and_reference_errors() {
+        let mut invalid_format = snapshot();
+        invalid_format["format"] = json!("unknown");
+        assert_eq!(
+            validate_snapshot_backup(invalid_format).response.errors[0].code,
+            "invalid_format"
+        );
+
+        let mut invalid_version = snapshot();
+        invalid_version["version"] = json!(2);
+        assert_eq!(
+            validate_snapshot_backup(invalid_version).response.errors[0].code,
+            "unsupported_version"
+        );
+
+        let mut duplicate = snapshot();
+        let author = duplicate["data"]["authors"][0].clone();
+        duplicate["data"]["authors"]
+            .as_array_mut()
+            .unwrap()
+            .push(author);
+        assert_eq!(
+            validate_snapshot_backup(duplicate).response.errors[0].code,
+            "duplicate_author_id"
+        );
+
+        let mut missing_reference = snapshot();
+        missing_reference["data"]["books"][0]["authorIds"] =
+            json!(["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]);
+        assert_eq!(
+            validate_snapshot_backup(missing_reference).response.errors[0].code,
+            "missing_author_reference"
+        );
+    }
+
+    #[test]
+    fn snapshot_v1_round_trips_camel_case_contract() {
+        let backup = SnapshotBackupV1::parse(snapshot()).unwrap();
         let value = serde_json::to_value(backup).unwrap();
         assert!(value.get("exportedAt").is_some());
         assert!(value["data"]["books"][0].get("authorIds").is_some());
@@ -566,121 +461,36 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_version_before_full_deserialization() {
-        let mut value = current();
+    fn rejects_unknown_version_before_deserialization() {
+        let mut value = snapshot();
         value["version"] = json!(2);
         assert_eq!(
-            CurrentBackupV1::parse(value).unwrap_err(),
+            SnapshotBackupV1::parse(value).unwrap_err(),
             BackupValidationError::UnsupportedVersion(2)
         );
     }
 
     #[test]
     fn rejects_duplicate_author_id() {
-        let mut value = current();
+        let mut value = snapshot();
         let author = value["data"]["authors"][0].clone();
         value["data"]["authors"]
             .as_array_mut()
             .unwrap()
             .push(author);
         assert!(matches!(
-            CurrentBackupV1::parse(value),
+            SnapshotBackupV1::parse(value),
             Err(BackupValidationError::DuplicateId { kind: "author", .. })
         ));
     }
 
     #[test]
     fn rejects_unknown_author_reference() {
-        let mut value = current();
+        let mut value = snapshot();
         value["data"]["books"][0]["authorIds"] = json!(["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]);
         assert!(matches!(
-            CurrentBackupV1::parse(value),
+            SnapshotBackupV1::parse(value),
             Err(BackupValidationError::InvalidReference(_))
-        ));
-    }
-
-    #[test]
-    fn nullable_delete_event_snapshot_is_valid() {
-        let backup = FullBackupV1 {
-            format: FULL_BACKUP_FORMAT.to_string(),
-            version: 1,
-            exported_at: "2026-08-26T00:00:00Z".to_string(),
-            data: CurrentBackupDataV1 {
-                authors: vec![],
-                books: vec![],
-            },
-            history: BackupHistoryV1 {
-                event_sets: vec![BackupEventSetV1 {
-                    id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd".to_string(),
-                    operation: "delete_book".to_string(),
-                    created_at: "2026-08-26T00:00:00Z".to_string(),
-                }],
-                book_events: vec![BackupBookEventV1 {
-                    event_id: 1,
-                    event_set_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd".to_string(),
-                    operation: "delete".to_string(),
-                    book_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_string(),
-                    title: None,
-                    isbn: None,
-                    read: None,
-                    owned: None,
-                    priority: None,
-                    format: None,
-                    store: None,
-                    created_at: None,
-                    updated_at: None,
-                    author_ids: vec![],
-                    changed_at: "2026-08-26T00:00:00Z".to_string(),
-                    extra: None,
-                }],
-                author_events: vec![],
-            },
-        };
-        backup.validate().unwrap();
-    }
-
-    #[test]
-    fn unknown_version_one_extra_is_rejected() {
-        let mut backup = FullBackupV1 {
-            format: FULL_BACKUP_FORMAT.to_string(),
-            version: 1,
-            exported_at: "2026-08-26T00:00:00Z".to_string(),
-            data: CurrentBackupDataV1 {
-                authors: vec![],
-                books: vec![],
-            },
-            history: BackupHistoryV1 {
-                event_sets: vec![BackupEventSetV1 {
-                    id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd".to_string(),
-                    operation: "delete_book".to_string(),
-                    created_at: "2026-08-26T00:00:00Z".to_string(),
-                }],
-                book_events: vec![BackupBookEventV1 {
-                    event_id: 1,
-                    event_set_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd".to_string(),
-                    operation: "delete".to_string(),
-                    book_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_string(),
-                    title: None,
-                    isbn: None,
-                    read: None,
-                    owned: None,
-                    priority: None,
-                    format: None,
-                    store: None,
-                    created_at: None,
-                    updated_at: None,
-                    author_ids: vec![],
-                    changed_at: "2026-08-26T00:00:00Z".to_string(),
-                    extra: None,
-                }],
-                author_events: vec![],
-            },
-        };
-        backup.history.book_events[0].extra = Some(json!({"version": 1, "unknown": true}));
-
-        assert!(matches!(
-            backup.validate(),
-            Err(BackupValidationError::UnsupportedValue(_))
         ));
     }
 }

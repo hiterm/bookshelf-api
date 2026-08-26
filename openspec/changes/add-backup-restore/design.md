@@ -1,149 +1,138 @@
 ## Context
 
 Bookshelf API stores live Books and Authors separately from an append-only event
-log. Existing mutating use cases open `PgTransaction` through
-`TransactionManager::begin`, which immediately creates an event set. Backup
-export needs a consistent snapshot across several tables, while restore needs a
-transaction that can replace rows without accidentally producing normal entity
-events. Full restore also has to translate backup-local event identifiers to the
-database-global `BIGSERIAL` namespace.
-
-The new API is REST-only and authenticated by the existing `Claims` extractor.
-Backup documents never contain ownership; `claims.sub` is the sole restore
-target. PostgreSQL is the only supported infrastructure implementation.
+log. Export needs a consistent snapshot across several tables. Snapshot restore
+must replace live rows atomically without deleting history and must serialize
+with normal same-user mutations. The REST API uses the existing `Claims`
+extractor, and `claims.sub` is always the owner and target.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Define explicit `CurrentBackupV1` and `FullBackupV1` JSON contracts that can
-  remain readable when later versions are introduced.
-- Export current data and history from one consistent database snapshot.
-- Validate an entire document before destructive writes and restore atomically.
-- Preserve current-restore history while adding before/after snapshots, and
-  replace full-restore history without adding a restore event.
-- Serialize restore with every normal mutation for one user.
-- Keep backup-specific SQL behind a narrow repository boundary and backup logic
-  out of existing Book/Author interactors and GraphQL.
+- Define explicit versioned `SnapshotBackupV1` and `FullBackupV1` JSON exports.
+- Export each document from one consistent database snapshot.
+- Validate snapshot backup completely before destructive writes.
+- Replace current data atomically while retaining history and recording
+  before/after `snapshot_all` boundaries.
+- Preserve full history as a read-only export for retention, investigation,
+  audit, and possible future migration work.
 
 **Non-Goals:**
 
-- Browser/file UI, multipart uploads, server-side backup storage, compression,
-  streaming, or object storage.
-- GraphQL backup fields or types.
-- Automatically exporting a backup immediately before full restore.
-- Preserving `book_author` timestamps or physical event `BIGSERIAL` values.
+- Full restore or any event-history replacement/write path.
+- Event-ID allocation, mapping, or reference rewriting during backup import.
+- Browser/file UI, multipart uploads, server-side storage, compression,
+  streaming, object storage, or GraphQL backup operations.
 
 ## Decisions
 
-### Version envelope and parsing
+### Versioned export contracts
 
-Presentation receives the JSON body as a typed version-dispatch envelope. The
-dispatcher first reads only `format` and `version`, rejects unknown pairs, then
-deserializes the complete V1 type with camelCase fields and strict known enum
-values. Separate V1 DTOs remain public within the backup boundary and convert to
-validated internal restore models. This avoids tying compatibility to database
-migrations or silently interpreting future formats as V1.
+Snapshot documents use `bookshelf-snapshot-backup`; full documents use
+`bookshelf-full-backup`. Both use version 1, camelCase fields, `exportedAt`, and
+current Authors and Books. Books flatten relations into `authorIds`. Full
+documents additionally contain event sets, Book events, Author events, and
+Book-event Author relations flattened into `bookEvents[].authorIds`. Ownership
+and join timestamps are not exported.
 
-Current documents use `bookshelf-current-backup`; full documents use
-`bookshelf-full-backup`. Both have version `1`, `exportedAt`, and `data` with
-Authors and Books. Full documents additionally contain `history`. Ownership and
-join-table timestamps are absent, and both live and historical book-author
-relations are flattened to `authorIds`.
+Exports use read-only `REPEATABLE READ` transactions so all collections share
+one database snapshot. A narrow `BackupRepository` owns the multi-table reads.
 
-Alternative: serialize database rows directly. Rejected because column changes,
-ownership fields, lookup tables, and physical join/event identifiers would make
-the format unsafe and brittle.
+### Snapshot restore
 
-### Backup-specific repository and transaction boundary
+Snapshot validate and restore accept JSON with a 10 MiB body limit. One shared
+validator dispatches format/version, strictly deserializes `SnapshotBackupV1`,
+and validates required fields, UUIDs, timestamps, fields, enums, duplicate IDs,
+and Author references. Validate returns the result without any repository call.
+Restore calls the identical validator on every request and begins destructive
+work only after success.
 
-A narrow `BackupRepository` exposes current/full snapshot reads and current/full
-replacement operations using backup-specific models. Its PostgreSQL adapter owns
-the multi-table SQL, ordering, event-ID insertion mapping, and reference rewrite.
-The backup interactor owns format dispatch and semantic validation.
-
-Export starts a read-only `REPEATABLE READ` transaction so all selected tables
-share a snapshot. Restore starts a write transaction with the shared user lock
-but does not automatically create an event set. Current restore explicitly asks
-the repository to append before and after `snapshot_all` event sets in that same
-transaction. Full restore inserts only the supplied history.
-
-Alternative: reuse normal entity repository mutations. Rejected because they
-generate events, allocate IDs and timestamps, and cannot efficiently express an
-atomic complete replacement.
+The repository begins one transaction, acquires the shared per-user advisory
+lock, appends a pre-restore `snapshot_all`, replaces current Book/Author/relation
+rows while preserving supplied IDs and timestamps, and appends a post-restore
+snapshot. Snapshot extras are
+`{version:1, reason:"snapshot_backup_restore", phase:"before|after"}`. Existing
+history is retained. Any failure rolls back snapshots and current data.
 
 ### Shared per-user locking
 
-Every mutating `PgTransactionManager::begin` acquires
-`pg_advisory_xact_lock(hashtextextended(user_id, 0))` before inserting its event
-set. Backup restore obtains the identical transaction-scoped advisory lock before
-reading its before-state or deleting rows. PostgreSQL releases the lock at commit
-or rollback. A single fixed SQL expression avoids application hash instability;
-locking occurs before entity rows are locked, providing one global lock order.
+Every normal mutating transaction and snapshot restore acquires
+`pg_advisory_xact_lock(hashtextextended(user_id, 0))` before entity locks or
+writes. PostgreSQL releases it at commit or rollback. Different users retain
+independent locks.
 
-Alternative: row-lock `bookshelf_user`. It could work, but advisory locking
-states the protocol directly, avoids coupling to a mutable row access pattern,
-and naturally scopes different user IDs independently.
+### Decision: snapshot naming and validation
 
-### Current restore event semantics
+`current` can also mean a current version or latest backup and does not directly
+identify the saved content. `snapshot` means the state captured at one point in
+time. Existing event `snapshot_all` captures that concept inside event history;
+backup `snapshot` captures it for portable external storage. Their mechanisms
+and destinations differ, but the concept is shared, so consistent terminology
+is preferred.
 
-After full validation, current restore locks the user, captures and inserts a
-`snapshot_all` event set with every pre-restore Book and Author, replaces live
-relations/Books/Authors while preserving supplied IDs and timestamps, then
-inserts a second snapshot from the post-restore state. Snapshot event `extra`
-contains `{version:1, reason:"current_backup_restore", phase:"before|after"}`.
-Existing history is never deleted. Any failure rolls back snapshots and data.
+Snapshot restore completely replaces live state and is destructive, so a
+read-only validation endpoint has a concrete preflight use. Validate and restore
+share one validator to prevent disagreement about restorability.
 
-### Full restore event-ID translation
+### Decision: full backup without full restore
 
-Backup `eventId` values are document-local unique signed integers. After semantic
-validation, full restore deletes the target user's old history and live data,
-then inserts current rows, event sets, and Author/Book events. Each event insert
-returns its new global database ID and records a mapping keyed by entity kind and
-backup event ID. Book-event author rows use the Book mapping. Version-1 restore
-`extra.source_event_id` values are rewritten through the same entity-kind map;
-other supported versioned extras are validated and retained. Missing or
-cross-kind references fail validation before writes.
+The asymmetric API is intentional. Full export has immediate non-destructive
+uses: history retention, incident and defect investigation, audits, and saving
+data for a future migration or restore facility. No concrete full-restore use
+case exists today.
 
-Event set, Book, and Author UUIDs are preserved. Full restore creates no event set
-of its own and no before/after snapshots.
+Safety is decisive. A full restore would replace current data and event history,
+so an accidental call could cause broad data loss. Publishing an unused
+destructive endpoint creates operational risk without present benefit. API
+symmetry is not sufficient justification.
 
-### HTTP boundaries and limits
+Complexity is supplementary: `BIGSERIAL` event IDs imply reallocation and ID
+maps, `book_event_author` and versioned `extra.source_event_id` rewrites,
+cross-table history validation, and a dedicated write path. Complexity would be
+acceptable for a concrete need, but does not justify exposing the operation now.
 
-The router mounts four authenticated JSON routes. Current restore has a 10 MiB
-`DefaultBodyLimit`; full restore has 100 MiB. Oversize payloads map to 413.
-Malformed/unsupported/invalid documents map to stable 4xx JSON errors, while
-transaction and database failures map according to existing presentation error
-conventions. Exports are ordinary JSON responses in V1.
+A future requirement must use a separate OpenSpec and PR and reconsider allowed
+uses, safeguards, pre-restore state, EventId UUID/UUIDv7, ID compatibility,
+reference restoration, integrity rules, and cross-environment/cross-user scope.
+
+### Decision: no full validation endpoint
+
+Full backup is currently server-generated read-only output and no API accepts it
+as input. A separate full validator therefore has no concrete workflow. Export
+correctness is covered by unit and E2E contract tests. If full import, restore,
+or saved-backup inspection becomes a real use case, full validation will be
+designed with that separate change. This follows the policy of exposing only
+API surface needed now.
+
+## HTTP Surface
+
+- `GET /backup/snapshot`
+- `POST /backup/snapshot/validate` (10 MiB limit)
+- `POST /backup/snapshot/restore` (10 MiB limit)
+- `GET /backup/full`
+
+All require `Claims`; unauthenticated requests return 401. Invalid snapshot
+restore documents return a stable 4xx response, oversized bodies return 413,
+and database/internal failures return 5xx. There is no full restore route,
+handler, use case, request limit, or history write path. There is also no
+`POST /backup/full/validate` because full documents have no input workflow.
 
 ## Risks / Trade-offs
 
-- [Large full exports allocate the complete document in memory] → Accept for V1,
-  enforce restore limits, and defer streaming/compression to a later change.
-- [Advisory locks only work when every mutation participates] → Centralize the
-  normal path in `PgTransactionManager::begin` and test restore/mutation blocking
-  with the same user and independence across users.
-- [History extras can acquire new reference schemas] → Use explicit versioned
-  extra parsers and reject unsupported schemas instead of copying unknown JSON.
-- [Deletes and reinserts can violate foreign keys] → Delete join/event rows in
-  dependency order and insert parent/current rows before dependents.
-- [A valid but semantically surprising timeline may be imported] → Validate IDs,
-  references, operations, required nullable snapshots, extras, and timestamp
-  ordering defined by V1; do not attempt to reconstruct intent beyond the V1
-  contract.
+- Full exports allocate the complete document in memory; streaming and
+  compression are deferred.
+- Advisory locking is effective only when every mutation participates, so the
+  lock is centralized in normal transaction startup and reused by restore.
+- A full backup cannot currently be imported. This is deliberate; retained
+  exports remain useful, and any future importer receives its own safety design.
 
 ## Migration Plan
 
-Deploy by applying `20260826000000_scope_event_sets_to_users.sql`, which changes
-the `event_set` primary key and entity-event foreign keys to include `user_id`,
-before starting application instances with the four routes and shared advisory
-lock. A rollback of the application can leave the composite keys in place because
-older queries remain compatible. Reversing the schema itself requires first
-proving event-set UUIDs are globally unique, then restoring the single-column
-primary and foreign keys; it must not be attempted after cross-account restores
-have introduced duplicate UUIDs.
+Deploy the application with the four REST routes and shared advisory lock. No
+database schema migration is required. Rollback removes the routes and lock
+acquisition without transforming stored data.
 
 ## Open Questions
 
-None. Initial request limits are fixed at 10 MiB for current and 100 MiB for
-full; streaming and compression are deferred.
+None.

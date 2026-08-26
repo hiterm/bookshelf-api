@@ -34,14 +34,10 @@ Groups one or more event rows belonging to a single logical user operation.
 
 | column       | type        | description                                        |
 |--------------|-------------|---------------------------------------------------|
-| `id`         | uuid        | Identifier, unique within the owning user          |
+| `id`         | uuid PK     | Unique identifier                                  |
 | `user_id`    | text FK     | Owner (references `bookshelf_user.id`)             |
 | `operation`  | text FK     | Operation type (references `event_set_operation`)  |
 | `created_at` | timestamptz | When the operation occurred                        |
-
-The primary key is `(id, user_id)`. Entity events reference the same composite
-key through `(event_set_id, user_id)`, allowing a full backup to preserve event
-set IDs when restored for another user in the same database.
 
 For `snapshot_all` operations, one `event_set` is created per user, and all of
 that user's books and authors are inserted as event rows under that single
@@ -67,7 +63,7 @@ One row per book event. Data fields are NULL for `delete` events.
 | column             | type        | description                                    |
 |--------------------|-------------|------------------------------------------------|
 | `event_id`         | bigserial PK| Auto-incrementing event identifier             |
-| `event_set_id`     | uuid FK     | With `user_id`, references `event_set (id, user_id)` |
+| `event_set_id`     | uuid FK     | References `event_set.id`                      |
 | `operation`        | text FK     | References `event_operation.operation`         |
 | `book_id`          | uuid        | The book this event belongs to                 |
 | `user_id`          | text        | Owner                                          |
@@ -99,7 +95,7 @@ One row per author event. Data fields are NULL for `delete` events.
 | column              | type        | description                                    |
 |---------------------|-------------|------------------------------------------------|
 | `event_id`          | bigserial PK| Auto-incrementing event identifier             |
-| `event_set_id`      | uuid FK     | With `user_id`, references `event_set (id, user_id)` |
+| `event_set_id`      | uuid FK     | References `event_set.id`                      |
 | `operation`         | text FK     | References `event_operation.operation`         |
 | `author_id`         | uuid        | The author this event belongs to               |
 | `user_id`           | text        | Owner                                          |
@@ -143,4 +139,3 @@ unchanged destination uses `merge_as_destination` with
 | version | date       | change                                      |
 |---------|------------|---------------------------------------------|
 | 1       | 2026-04-30 | Initial schema for `restore` extra data     |
-| 2       | 2026-08-26 | Scope event-set identity to its owning user |

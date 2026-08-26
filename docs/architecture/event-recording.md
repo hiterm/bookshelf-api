@@ -77,18 +77,11 @@ must receive the transaction opened by the use case, derive `user_id` and
 
 ## Backup restore exception
 
-A current-backup restore is a special bulk mutation. In one transaction it
+A snapshot-backup restore is a special bulk mutation. In one transaction it
 records a `snapshot_all` event set immediately before replacement and another
 immediately after replacement, while retaining all earlier history. Snapshot
-events use versioned `extra` data with reason `current_backup_restore` and phase
+events use versioned `extra` data with reason `snapshot_backup_restore` and phase
 `before` or `after`.
-
-A full-backup restore replaces the event log itself as well as current data. It
-is therefore the explicit exception to the rule that every mutation appends an
-event: it adds neither a restore event nor boundary snapshots. Backup-local
-event IDs are allocated new database-global IDs, and supported references are
-rewritten within the same transaction. Any failure rolls back both current data
-and history.
 
 ## Adding a new entity or mutation operation
 

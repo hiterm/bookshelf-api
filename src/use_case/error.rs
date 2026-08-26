@@ -1,11 +1,13 @@
 use thiserror::Error;
 
-use crate::domain::error::DomainError;
+use crate::{domain::error::DomainError, use_case::dto::backup::BackupValidationResponse};
 
 #[derive(Debug, Error)]
 pub enum UseCaseError {
     #[error("{0}")]
     Validation(String),
+    #[error("invalid backup")]
+    BackupValidation(BackupValidationResponse),
     #[error(r#"{entity_type} was not found for entity_id "{entity_id}" and user_id "{user_id}"."#)]
     NotFound {
         entity_type: &'static str,
