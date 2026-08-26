@@ -12,7 +12,7 @@ use crate::{
     },
     use_case::dto::backup::{
         BackupAuthorEventV1, BackupAuthorV1, BackupBookEventV1, BackupBookV1, BackupEventSetV1,
-        BackupHistoryV1, StateBackupDataV1,
+        BackupHistoryV1, CurrentBackupDataV1,
     },
 };
 
@@ -109,10 +109,10 @@ fn parse_uuid(value: &str) -> Result<Uuid, DomainError> {
     Uuid::parse_str(value).map_err(|error| DomainError::Validation(error.to_string()))
 }
 
-async fn state_data(
+async fn current_data(
     tx: &mut Transaction<'_, Postgres>,
     user_id: &UserId,
-) -> Result<StateBackupDataV1, DomainError> {
+) -> Result<CurrentBackupDataV1, DomainError> {
     let authors: Vec<AuthorRow> = sqlx::query_as(
         "SELECT id, name, yomi, created_at, updated_at FROM author WHERE user_id = $1 ORDER BY id",
     )
@@ -130,7 +130,7 @@ async fn state_data(
     .bind(user_id.as_str())
     .fetch_all(&mut **tx)
     .await?;
-    Ok(StateBackupDataV1 {
+    Ok(CurrentBackupDataV1 {
         authors: authors
             .into_iter()
             .map(|row| {
@@ -257,10 +257,10 @@ async fn history(
     })
 }
 
-async fn insert_state(
+async fn insert_current(
     tx: &mut Transaction<'_, Postgres>,
     user_id: &UserId,
-    data: &StateBackupDataV1,
+    data: &CurrentBackupDataV1,
 ) -> Result<(), DomainError> {
     for author in &data.authors {
         sqlx::query("INSERT INTO author (id,user_id,name,yomi,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6)")
@@ -287,7 +287,7 @@ async fn insert_state(
     Ok(())
 }
 
-async fn delete_state(
+async fn delete_current(
     tx: &mut Transaction<'_, Postgres>,
     user_id: &UserId,
 ) -> Result<(), DomainError> {
@@ -315,7 +315,7 @@ async fn snapshot(
         .bind(user_id.as_str())
         .execute(&mut **tx)
         .await?;
-    let extra = json!({"version":1,"reason":"state_backup_restore","phase":phase});
+    let extra = json!({"version":1,"reason":"current_backup_restore","phase":phase});
     let inserted: Vec<(i64, Uuid)> = sqlx::query_as(
         "INSERT INTO book_event (event_set_id,operation,book_id,user_id,title,isbn,read,owned,priority,format,store,book_created_at,book_updated_at,extra)
          SELECT $1,'snapshot',id,user_id,title,isbn,read,owned,priority,format,store,created_at,updated_at,$3 FROM book WHERE user_id=$2 RETURNING event_id,book_id")
@@ -348,12 +348,12 @@ fn remapped_extra(
 
 #[async_trait]
 impl BackupRepository for PgBackupRepository {
-    async fn export_state(&self, user_id: &UserId) -> Result<StateBackupDataV1, DomainError> {
+    async fn export_current(&self, user_id: &UserId) -> Result<CurrentBackupDataV1, DomainError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             .execute(&mut *tx)
             .await?;
-        let data = state_data(&mut tx, user_id).await?;
+        let data = current_data(&mut tx, user_id).await?;
         tx.commit().await?;
         Ok(data)
     }
@@ -361,27 +361,27 @@ impl BackupRepository for PgBackupRepository {
     async fn export_full(
         &self,
         user_id: &UserId,
-    ) -> Result<(StateBackupDataV1, BackupHistoryV1), DomainError> {
+    ) -> Result<(CurrentBackupDataV1, BackupHistoryV1), DomainError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             .execute(&mut *tx)
             .await?;
-        let data = state_data(&mut tx, user_id).await?;
+        let data = current_data(&mut tx, user_id).await?;
         let history = history(&mut tx, user_id).await?;
         tx.commit().await?;
         Ok((data, history))
     }
 
-    async fn restore_state(
+    async fn restore_current(
         &self,
         user_id: &UserId,
-        data: &StateBackupDataV1,
+        data: &CurrentBackupDataV1,
     ) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
         acquire_user_lock(&mut tx, user_id).await?;
         snapshot(&mut tx, user_id, "before").await?;
-        delete_state(&mut tx, user_id).await?;
-        insert_state(&mut tx, user_id, data).await?;
+        delete_current(&mut tx, user_id).await?;
+        insert_current(&mut tx, user_id, data).await?;
         snapshot(&mut tx, user_id, "after").await?;
         tx.commit().await?;
         Ok(())
@@ -390,7 +390,7 @@ impl BackupRepository for PgBackupRepository {
     async fn restore_full(
         &self,
         user_id: &UserId,
-        data: &StateBackupDataV1,
+        data: &CurrentBackupDataV1,
         history_data: &BackupHistoryV1,
     ) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await?;
@@ -407,8 +407,8 @@ impl BackupRepository for PgBackupRepository {
             .bind(user_id.as_str())
             .execute(&mut *tx)
             .await?;
-        delete_state(&mut tx, user_id).await?;
-        insert_state(&mut tx, user_id, data).await?;
+        delete_current(&mut tx, user_id).await?;
+        insert_current(&mut tx, user_id, data).await?;
         for set in &history_data.event_sets {
             sqlx::query(
                 "INSERT INTO event_set (id,user_id,operation,created_at) VALUES ($1,$2,$3,$4)",
@@ -479,7 +479,7 @@ mod tests {
 
     #[test]
     fn remapped_extra_skips_extra_without_event_reference() {
-        let extra = json!({"version": 1, "reason": "state_backup_restore"});
+        let extra = json!({"version": 1, "reason": "current_backup_restore"});
         assert_eq!(remapped_extra(Some(&extra), &HashMap::new()).unwrap(), None);
     }
 

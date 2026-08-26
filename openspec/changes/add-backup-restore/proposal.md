@@ -1,21 +1,21 @@
 ## Why
 
-Users need a portable, versioned way to preserve and recover both their state
+Users need a portable, versioned way to preserve and recover both their current
 bookshelf and its event history without exposing database-specific rows. The API
 currently has no atomic backup or restore boundary, so recovery and migration
 between environments cannot be performed safely.
 
 ## What Changes
 
-- Add authenticated REST endpoints to export and restore state and full
+- Add authenticated REST endpoints to export and restore current and full
   backups as versioned JSON documents.
-- Define stable V1 state and full backup contracts that omit ownership data
+- Define stable V1 current and full backup contracts that omit ownership data
   and flatten book-author event relations into author ID arrays.
 - Validate complete backup documents before mutation, enforce per-route request
   size limits, and return client-facing errors for invalid input.
-- Restore state data atomically while retaining history and recording before
+- Restore current data atomically while retaining history and recording before
   and after `snapshot_all` event sets.
-- Restore state data and event history atomically for full backups, remapping
+- Restore current data and event history atomically for full backups, remapping
   database-global event IDs and all versioned references without recording a
   restore event.
 - Serialize all mutations for the same authenticated user with a shared
@@ -28,7 +28,7 @@ between environments cannot be performed safely.
 
 ### New Capabilities
 
-- `backup-restore`: Versioned state/full backup JSON, authenticated REST
+- `backup-restore`: Versioned current/full backup JSON, authenticated REST
   export and restore behavior, validation, atomicity, history semantics, event
   ID remapping, request limits, and user isolation.
 

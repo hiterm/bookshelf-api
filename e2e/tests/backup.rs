@@ -42,7 +42,7 @@ fn history_shape(backup: &Value) -> Value {
 
 #[tokio::test]
 #[serial]
-async fn state_and_full_backup_round_trip_and_isolation() -> Result<()> {
+async fn current_and_full_backup_round_trip_and_isolation() -> Result<()> {
     let client = Client::new();
     let (_, token_a) = create_test_user().await?;
     let (_, token_b) = create_test_user().await?;
@@ -57,21 +57,21 @@ async fn state_and_full_backup_round_trip_and_isolation() -> Result<()> {
     let author_b = create_test_author("Backup Author B", &token_b).await?;
     create_test_book("Backup Book B", &author_b, &token_b).await?;
 
-    let state = get_backup(&client, &token_a, "state").await?;
+    let current = get_backup(&client, &token_a, "current").await?;
     let full = get_backup(&client, &token_a, "full").await?;
     let user_b_before = get_backup(&client, &token_b, "full").await?;
 
     let extra_author = create_test_author("Temporary Author", &token_a).await?;
     create_test_book("Temporary Book", &extra_author, &token_a).await?;
-    let before_state_restore_full = get_backup(&client, &token_a, "full").await?;
+    let before_current_restore_full = get_backup(&client, &token_a, "full").await?;
     assert_eq!(
-        restore(&client, &token_a, "state", &state).await?,
+        restore(&client, &token_a, "current", &current).await?,
         StatusCode::NO_CONTENT
     );
-    let restored_state = get_backup(&client, &token_a, "state").await?;
-    assert_eq!(restored_state["data"], state["data"]);
+    let restored_current = get_backup(&client, &token_a, "current").await?;
+    assert_eq!(restored_current["data"], current["data"]);
     let after_current_full = get_backup(&client, &token_a, "full").await?;
-    let original_event_set_count = before_state_restore_full["history"]["eventSets"]
+    let original_event_set_count = before_current_restore_full["history"]["eventSets"]
         .as_array()
         .unwrap()
         .len();
@@ -91,7 +91,7 @@ async fn state_and_full_backup_round_trip_and_isolation() -> Result<()> {
         .unwrap()
         .iter()
         .filter_map(|event| {
-            (event["extra"]["reason"] == "state_backup_restore")
+            (event["extra"]["reason"] == "current_backup_restore")
                 .then(|| event["extra"]["phase"].as_str().unwrap())
         })
         .collect::<Vec<_>>();
@@ -161,11 +161,11 @@ async fn invalid_restore_is_atomic() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-async fn state_restore_rejects_oversized_body() -> Result<()> {
+async fn current_restore_rejects_oversized_body() -> Result<()> {
     let client = Client::new();
     let (_, token) = create_test_user().await?;
     let response = client
-        .post(format!("{}/backup/state/restore", get_server_url()?))
+        .post(format!("{}/backup/current/restore", get_server_url()?))
         .bearer_auth(token)
         .header("content-type", "application/json")
         .body(vec![b' '; 10 * 1024 * 1024 + 1])

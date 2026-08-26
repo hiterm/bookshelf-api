@@ -16,11 +16,11 @@ target. PostgreSQL is the only supported infrastructure implementation.
 
 **Goals:**
 
-- Define explicit `StateBackupV1` and `FullBackupV1` JSON contracts that can
+- Define explicit `CurrentBackupV1` and `FullBackupV1` JSON contracts that can
   remain readable when later versions are introduced.
-- Export state data and history from one consistent database snapshot.
+- Export current data and history from one consistent database snapshot.
 - Validate an entire document before destructive writes and restore atomically.
-- Preserve state-restore history while adding before/after snapshots, and
+- Preserve current-restore history while adding before/after snapshots, and
   replace full-restore history without adding a restore event.
 - Serialize restore with every normal mutation for one user.
 - Keep backup-specific SQL behind a narrow repository boundary and backup logic
@@ -45,7 +45,7 @@ values. Separate V1 DTOs remain public within the backup boundary and convert to
 validated internal restore models. This avoids tying compatibility to database
 migrations or silently interpreting future formats as V1.
 
-State documents use `bookshelf-state-backup`; full documents use
+Current documents use `bookshelf-current-backup`; full documents use
 `bookshelf-full-backup`. Both have version `1`, `exportedAt`, and `data` with
 Authors and Books. Full documents additionally contain `history`. Ownership and
 join-table timestamps are absent, and both live and historical book-author
@@ -57,14 +57,14 @@ the format unsafe and brittle.
 
 ### Backup-specific repository and transaction boundary
 
-A narrow `BackupRepository` exposes state/full snapshot reads and state/full
+A narrow `BackupRepository` exposes current/full snapshot reads and current/full
 replacement operations using backup-specific models. Its PostgreSQL adapter owns
 the multi-table SQL, ordering, event-ID insertion mapping, and reference rewrite.
 The backup interactor owns format dispatch and semantic validation.
 
 Export starts a read-only `REPEATABLE READ` transaction so all selected tables
 share a snapshot. Restore starts a write transaction with the shared user lock
-but does not automatically create an event set. State restore explicitly asks
+but does not automatically create an event set. Current restore explicitly asks
 the repository to append before and after `snapshot_all` event sets in that same
 transaction. Full restore inserts only the supplied history.
 
@@ -85,20 +85,20 @@ Alternative: row-lock `bookshelf_user`. It could work, but advisory locking
 states the protocol directly, avoids coupling to a mutable row access pattern,
 and naturally scopes different user IDs independently.
 
-### State restore event semantics
+### Current restore event semantics
 
-After full validation, state restore locks the user, captures and inserts a
+After full validation, current restore locks the user, captures and inserts a
 `snapshot_all` event set with every pre-restore Book and Author, replaces live
 relations/Books/Authors while preserving supplied IDs and timestamps, then
 inserts a second snapshot from the post-restore state. Snapshot event `extra`
-contains `{version:1, reason:"state_backup_restore", phase:"before|after"}`.
+contains `{version:1, reason:"current_backup_restore", phase:"before|after"}`.
 Existing history is never deleted. Any failure rolls back snapshots and data.
 
 ### Full restore event-ID translation
 
 Backup `eventId` values are document-local unique signed integers. After semantic
 validation, full restore deletes the target user's old history and live data,
-then inserts state rows, event sets, and Author/Book events. Each event insert
+then inserts current rows, event sets, and Author/Book events. Each event insert
 returns its new global database ID and records a mapping keyed by entity kind and
 backup event ID. Book-event author rows use the Book mapping. Version-1 restore
 `extra.source_event_id` values are rewritten through the same entity-kind map;
@@ -110,7 +110,7 @@ of its own and no before/after snapshots.
 
 ### HTTP boundaries and limits
 
-The router mounts four authenticated JSON routes. State restore has a 10 MiB
+The router mounts four authenticated JSON routes. Current restore has a 10 MiB
 `DefaultBodyLimit`; full restore has 100 MiB. Oversize payloads map to 413.
 Malformed/unsupported/invalid documents map to stable 4xx JSON errors, while
 transaction and database failures map according to existing presentation error
@@ -126,7 +126,7 @@ conventions. Exports are ordinary JSON responses in V1.
 - [History extras can acquire new reference schemas] → Use explicit versioned
   extra parsers and reject unsupported schemas instead of copying unknown JSON.
 - [Deletes and reinserts can violate foreign keys] → Delete join/event rows in
-  dependency order and insert parent/state rows before dependents.
+  dependency order and insert parent/current rows before dependents.
 - [A valid but semantically surprising timeline may be imported] → Validate IDs,
   references, operations, required nullable snapshots, extras, and timestamp
   ordering defined by V1; do not attempt to reconstruct intent beyond the V1
@@ -145,5 +145,5 @@ have introduced duplicate UUIDs.
 
 ## Open Questions
 
-None. Initial request limits are fixed at 10 MiB for state and 100 MiB for
+None. Initial request limits are fixed at 10 MiB for current and 100 MiB for
 full; streaming and compression are deferred.

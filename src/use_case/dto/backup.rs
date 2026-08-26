@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-pub const STATE_BACKUP_FORMAT: &str = "bookshelf-state-backup";
+pub const CURRENT_BACKUP_FORMAT: &str = "bookshelf-current-backup";
 pub const FULL_BACKUP_FORMAT: &str = "bookshelf-full-backup";
 pub const BACKUP_VERSION_V1: u32 = 1;
 
@@ -46,18 +46,18 @@ pub struct BackupBookV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct StateBackupDataV1 {
+pub struct CurrentBackupDataV1 {
     pub authors: Vec<BackupAuthorV1>,
     pub books: Vec<BackupBookV1>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct StateBackupV1 {
+pub struct CurrentBackupV1 {
     pub format: String,
     pub version: u32,
     pub exported_at: String,
-    pub data: StateBackupDataV1,
+    pub data: CurrentBackupDataV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,7 +118,7 @@ pub struct FullBackupV1 {
     pub format: String,
     pub version: u32,
     pub exported_at: String,
-    pub data: StateBackupDataV1,
+    pub data: CurrentBackupDataV1,
     pub history: BackupHistoryV1,
 }
 
@@ -144,9 +144,9 @@ struct BackupHeader {
     version: u64,
 }
 
-impl StateBackupV1 {
+impl CurrentBackupV1 {
     pub fn parse(value: Value) -> Result<Self, BackupValidationError> {
-        dispatch(&value, STATE_BACKUP_FORMAT)?;
+        dispatch(&value, CURRENT_BACKUP_FORMAT)?;
         let backup: Self = serde_json::from_value(value)
             .map_err(|error| BackupValidationError::Malformed(error.to_string()))?;
         backup.validate()?;
@@ -154,9 +154,9 @@ impl StateBackupV1 {
     }
 
     pub fn validate(&self) -> Result<(), BackupValidationError> {
-        validate_header(&self.format, self.version, STATE_BACKUP_FORMAT)?;
+        validate_header(&self.format, self.version, CURRENT_BACKUP_FORMAT)?;
         validate_timestamp("exportedAt", &self.exported_at)?;
-        validate_state_data(&self.data)
+        validate_current_data(&self.data)
     }
 }
 
@@ -172,7 +172,7 @@ impl FullBackupV1 {
     pub fn validate(&self) -> Result<(), BackupValidationError> {
         validate_header(&self.format, self.version, FULL_BACKUP_FORMAT)?;
         validate_timestamp("exportedAt", &self.exported_at)?;
-        validate_state_data(&self.data)?;
+        validate_current_data(&self.data)?;
         validate_history(&self.history)
     }
 }
@@ -198,7 +198,7 @@ fn validate_header(
     Ok(())
 }
 
-fn validate_state_data(data: &StateBackupDataV1) -> Result<(), BackupValidationError> {
+fn validate_current_data(data: &CurrentBackupDataV1) -> Result<(), BackupValidationError> {
     let mut author_ids = HashSet::new();
     for author in &data.authors {
         validate_uuid("author", &author.id)?;
@@ -436,7 +436,8 @@ fn validate_extra(operation: &str, extra: Option<&Value>) -> Result<(), BackupVa
         )),
         ("snapshot", Some(Value::Object(object)))
             if object.get("version").and_then(Value::as_u64) == Some(1)
-                && object.get("reason").and_then(Value::as_str) == Some("state_backup_restore")
+                && object.get("reason").and_then(Value::as_str)
+                    == Some("current_backup_restore")
                 && matches!(
                     object.get("phase").and_then(Value::as_str),
                     Some("before" | "after")
@@ -533,9 +534,9 @@ mod tests {
 
     use super::*;
 
-    fn state() -> Value {
+    fn current() -> Value {
         json!({
-            "format": STATE_BACKUP_FORMAT,
+            "format": CURRENT_BACKUP_FORMAT,
             "version": 1,
             "exportedAt": "2026-08-26T00:00:00Z",
             "data": {
@@ -556,8 +557,8 @@ mod tests {
     }
 
     #[test]
-    fn state_v1_round_trips_camel_case_contract() {
-        let backup = StateBackupV1::parse(state()).unwrap();
+    fn current_v1_round_trips_camel_case_contract() {
+        let backup = CurrentBackupV1::parse(current()).unwrap();
         let value = serde_json::to_value(backup).unwrap();
         assert!(value.get("exportedAt").is_some());
         assert!(value["data"]["books"][0].get("authorIds").is_some());
@@ -566,34 +567,34 @@ mod tests {
 
     #[test]
     fn rejects_unknown_version_before_full_deserialization() {
-        let mut value = state();
+        let mut value = current();
         value["version"] = json!(2);
         assert_eq!(
-            StateBackupV1::parse(value).unwrap_err(),
+            CurrentBackupV1::parse(value).unwrap_err(),
             BackupValidationError::UnsupportedVersion(2)
         );
     }
 
     #[test]
     fn rejects_duplicate_author_id() {
-        let mut value = state();
+        let mut value = current();
         let author = value["data"]["authors"][0].clone();
         value["data"]["authors"]
             .as_array_mut()
             .unwrap()
             .push(author);
         assert!(matches!(
-            StateBackupV1::parse(value),
+            CurrentBackupV1::parse(value),
             Err(BackupValidationError::DuplicateId { kind: "author", .. })
         ));
     }
 
     #[test]
     fn rejects_unknown_author_reference() {
-        let mut value = state();
+        let mut value = current();
         value["data"]["books"][0]["authorIds"] = json!(["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]);
         assert!(matches!(
-            StateBackupV1::parse(value),
+            CurrentBackupV1::parse(value),
             Err(BackupValidationError::InvalidReference(_))
         ));
     }
@@ -604,7 +605,7 @@ mod tests {
             format: FULL_BACKUP_FORMAT.to_string(),
             version: 1,
             exported_at: "2026-08-26T00:00:00Z".to_string(),
-            data: StateBackupDataV1 {
+            data: CurrentBackupDataV1 {
                 authors: vec![],
                 books: vec![],
             },
@@ -644,7 +645,7 @@ mod tests {
             format: FULL_BACKUP_FORMAT.to_string(),
             version: 1,
             exported_at: "2026-08-26T00:00:00Z".to_string(),
-            data: StateBackupDataV1 {
+            data: CurrentBackupDataV1 {
                 authors: vec![],
                 books: vec![],
             },

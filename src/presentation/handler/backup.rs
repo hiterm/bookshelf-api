@@ -35,11 +35,11 @@ impl IntoResponse for BackupHttpError {
     }
 }
 
-pub async fn export_state<BU: BackupUseCase>(
+pub async fn export_current<BU: BackupUseCase>(
     claims: Claims,
     Extension(use_case): Extension<BU>,
 ) -> Result<Json<impl Serialize>, BackupHttpError> {
-    Ok(Json(use_case.export_state(&claims.sub).await?))
+    Ok(Json(use_case.export_current(&claims.sub).await?))
 }
 
 pub async fn export_full<BU: BackupUseCase>(
@@ -49,12 +49,12 @@ pub async fn export_full<BU: BackupUseCase>(
     Ok(Json(use_case.export_full(&claims.sub).await?))
 }
 
-pub async fn restore_state<BU: BackupUseCase>(
+pub async fn restore_current<BU: BackupUseCase>(
     claims: Claims,
     Extension(use_case): Extension<BU>,
     Json(value): Json<Value>,
 ) -> Result<StatusCode, BackupHttpError> {
-    use_case.restore_state(&claims.sub, value).await?;
+    use_case.restore_current(&claims.sub, value).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
