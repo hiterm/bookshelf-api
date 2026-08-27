@@ -33,7 +33,7 @@ async fn e2e_graphql_crud_book() -> Result<()> {
     // Create author first
     let author_name = format!("Test Author for CRUD {}", uuid::Uuid::new_v4());
     let create_author_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} eventSetId }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} operationId }} }}"#,
         author_name
     );
     let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
@@ -88,7 +88,7 @@ async fn e2e_graphql_crud_book() -> Result<()> {
                     createdAt
                     updatedAt
                 }}
-                eventSetId
+                operationId
             }}
         }}
         "#,
@@ -128,7 +128,7 @@ async fn e2e_graphql_crud_book() -> Result<()> {
                     read
                     priority
                 }}
-                eventSetId
+                operationId
             }}
         }}
         "#,
@@ -236,7 +236,7 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
     // Create author first
     let author_name = format!("Test Author for BookByID {}", uuid::Uuid::new_v4());
     let create_author_query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} eventSetId }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} operationId }} }}"#,
         author_name
     );
     let (_, response) = graphql_request(&create_author_query, Some(&token)).await?;
@@ -270,7 +270,7 @@ async fn e2e_graphql_book_by_id() -> Result<()> {
                     id
                     title
                 }}
-                eventSetId
+                operationId
             }}
         }}
         "#,
@@ -371,7 +371,7 @@ async fn e2e_graphql_update_nonexistent_book_returns_error() -> Result<()> {
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }}) {{ book {{ id title }} eventSetId }}
+            }}) {{ book {{ id title }} operationId }}
         }}
         "#,
         nonexistent_id
@@ -453,7 +453,7 @@ async fn e2e_graphql_books_authors_are_user_isolated() -> Result<()> {
                 priority: 1
                 format: PRINTED
                 store: KINDLE
-            }}) {{ book {{ id }} eventSetId }}
+            }}) {{ book {{ id }} operationId }}
         }}
         "#,
         book_id
@@ -469,7 +469,7 @@ async fn e2e_graphql_books_authors_are_user_isolated() -> Result<()> {
     assert_graphql_errors(&response, "other user's deleteBook");
 
     let update_author_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Hijacked Author" }}) {{ author {{ id }} eventSetId }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Hijacked Author" }}) {{ author {{ id }} operationId }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&update_author_query, Some(&other_token)).await?;
@@ -533,7 +533,7 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }) { book { id } eventSetId }
+            }) { book { id } operationId }
         }
         "#,
         r#"
@@ -547,7 +547,7 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }) { book { id } eventSetId }
+            }) { book { id } operationId }
         }
         "#,
         r#"
@@ -561,7 +561,7 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
                 priority: 101
                 format: E_BOOK
                 store: KINDLE
-            }) { book { id } eventSetId }
+            }) { book { id } operationId }
         }
         "#,
     ];

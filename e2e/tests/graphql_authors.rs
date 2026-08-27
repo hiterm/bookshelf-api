@@ -148,7 +148,7 @@ async fn e2e_graphql_merge_author_moves_books_and_returns_destination() -> Resul
         .to_owned();
 
     let mutation = format!(
-        r#"mutation {{ mergeAuthor(sourceAuthorId: "{}", destinationAuthorId: "{}") {{ author {{ id name books {{ id }} }} eventSetId }} }}"#,
+        r#"mutation {{ mergeAuthor(sourceAuthorId: "{}", destinationAuthorId: "{}") {{ author {{ id name books {{ id }} }} operationId }} }}"#,
         source_id, destination_id
     );
     let (_, response) = graphql_request(&mutation, Some(&token)).await?;
@@ -170,10 +170,10 @@ async fn e2e_graphql_merge_author_moves_books_and_returns_destination() -> Resul
             .into_iter()
             .collect()
     );
-    let event_set_id = payload["eventSetId"]
+    let operation_id = payload["operationId"]
         .as_str()
-        .context("merge should return eventSetId")?;
-    assert!(payload.get("eventId").is_none());
+        .context("merge should return operationId")?;
+    assert!(payload.get("revisionNumber").is_none());
 
     let query = format!(
         r#"{{ source: author(id: "{}") {{ id }} destination: author(id: "{}") {{ id books {{ id }} }} }}"#,
@@ -189,40 +189,38 @@ async fn e2e_graphql_merge_author_moves_books_and_returns_destination() -> Resul
         3
     );
 
-    let event_set_query = format!(
-        r#"{{ eventSet(id: "{}") {{
-            operation
-            bookEvents {{ bookId operation authorIds }}
-            authorEvents {{ authorId operation extra }}
+    let operation_query = format!(
+        r#"{{ operation(id: "{}") {{
+            type detail
+            bookChanges {{ bookId afterRevision {{ authorIds }} }}
+            authorChanges {{ authorId beforeRevision {{ revisionNumber }} afterRevision {{ revisionNumber }} }}
         }} }}"#,
-        event_set_id
+        operation_id
     );
-    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
-    assert_no_graphql_errors(&response, "merge event set");
-    let event_set = &response["data"]["eventSet"];
-    assert_eq!(event_set["operation"].as_str(), Some("merge_author"));
-    let book_events = event_set["bookEvents"]
+    let (_, response) = graphql_request(&operation_query, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "merge operation");
+    let operation = &response["data"]["operation"];
+    assert_eq!(operation["type"].as_str(), Some("merge_author"));
+    let book_events = operation["bookChanges"]
         .as_array()
         .context("merge book events should be an array")?;
     assert_eq!(book_events.len(), 3);
     for event in book_events {
-        assert_eq!(event["operation"].as_str(), Some("update"));
         assert_eq!(
-            event["authorIds"].as_array().unwrap(),
+            event["afterRevision"]["authorIds"].as_array().unwrap(),
             &[serde_json::Value::String(destination_id.clone())]
         );
     }
-    let author_events = event_set["authorEvents"]
+    let author_events = operation["authorChanges"]
         .as_array()
         .context("merge author events should be an array")?;
     assert_eq!(author_events.len(), 2);
     assert!(author_events.iter().any(|event| {
-        event["authorId"].as_str() == Some(source_id.as_str())
-            && event["operation"].as_str() == Some("delete")
+        event["authorId"].as_str() == Some(source_id.as_str()) && event["afterRevision"].is_null()
     }));
     assert!(author_events.iter().any(|event| {
         event["authorId"].as_str() == Some(destination_id.as_str())
-            && event["operation"].as_str() == Some("merge_as_destination")
+            && !event["afterRevision"].is_null()
     }));
 
     for book_id in [&book1_id, &book2_id, &shared_book_id] {
@@ -242,7 +240,7 @@ async fn e2e_graphql_create_author() -> Result<()> {
     let yomi = "てすと・おーさー1";
 
     let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}", yomi: "{}" }}) {{ author {{ id name yomi createdAt updatedAt }} eventSetId }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}", yomi: "{}" }}) {{ author {{ id name yomi createdAt updatedAt }} operationId }} }}"#,
         random_name, yomi
     );
     let before = normalize_timestamp_for_comparison(OffsetDateTime::now_utc());
@@ -388,7 +386,7 @@ async fn e2e_graphql_update_author() -> Result<()> {
     let updated_name = format!("Author After Update {}", uuid::Uuid::new_v4());
     let updated_yomi = "こうしんご2";
     let update_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "{}" }}) {{ author {{ id name yomi createdAt updatedAt }} eventSetId }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}", yomi: "{}" }}) {{ author {{ id name yomi createdAt updatedAt }} operationId }} }}"#,
         author_id, updated_name, updated_yomi
     );
     let before = normalize_timestamp_for_comparison(OffsetDateTime::now_utc());
@@ -472,7 +470,7 @@ async fn e2e_graphql_update_nonexistent_author_returns_error() -> Result<()> {
 
     let nonexistent_id = uuid::Uuid::new_v4().to_string();
     let query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Ghost" }}) {{ author {{ id name }} eventSetId }} }}"#,
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Ghost" }}) {{ author {{ id name }} operationId }} }}"#,
         nonexistent_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;

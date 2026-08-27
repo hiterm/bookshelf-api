@@ -39,7 +39,7 @@ async fn e2e_import_books() -> Result<()> {
                     store: KINDLE
                 }
             ]) {
-                eventSetId
+                operationId
                 books {
                     id
                     title
@@ -100,31 +100,27 @@ async fn e2e_import_books() -> Result<()> {
     );
     assert_ne!(book_one_id, book_two_id, "book ids should be distinct");
 
-    // Locate the single event set produced by the import via eventSets, then
-    // inspect it directly. This replaces the old workaround of comparing the
-    // eventSetId across separate per-book bookEvents queries.
-    let import_set_id = response["data"]["importBooks"]["eventSetId"]
+    let import_operation_id = response["data"]["importBooks"]["operationId"]
         .as_str()
-        .context("importBooks should return eventSetId")?;
+        .context("importBooks should return operationId")?;
 
-    // The shared event set groups both book creates and the new author create.
-    let event_set_query = format!(
-        r#"{{ eventSet(id: "{}") {{
-            operation
-            bookEvents {{ bookId operation }}
-            authorEvents {{ name operation }}
+    let operation_query = format!(
+        r#"{{ operation(id: "{}") {{
+            type
+            bookChanges {{ bookId }}
+            authorChanges {{ authorId afterRevision {{ name }} }}
         }} }}"#,
-        import_set_id
+        import_operation_id
     );
-    let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
-    let event_set = &response["data"]["eventSet"];
-    assert!(!event_set.is_null(), "import event set should be found");
+    let (_, response) = graphql_request(&operation_query, Some(&token)).await?;
+    let event_set = &response["data"]["operation"];
+    assert!(!event_set.is_null(), "import operation should be found");
     assert_eq!(
-        event_set["operation"].as_str(),
+        event_set["type"].as_str(),
         Some("import_books"),
         "import event set operation should be import_books"
     );
-    let grouped_book_events = event_set["bookEvents"]
+    let grouped_book_events = event_set["bookChanges"]
         .as_array()
         .context("bookEvents should be an array")?;
     assert_eq!(
@@ -132,19 +128,13 @@ async fn e2e_import_books() -> Result<()> {
         2,
         "import event set should group both book create events"
     );
-    assert!(
-        grouped_book_events
-            .iter()
-            .all(|e| e["operation"].as_str() == Some("create")),
-        "all grouped book events should be create events"
-    );
     let grouped_book_ids: Vec<&str> = grouped_book_events
         .iter()
         .filter_map(|e| e["bookId"].as_str())
         .collect();
     assert!(grouped_book_ids.contains(&book_one_id));
     assert!(grouped_book_ids.contains(&book_two_id));
-    let grouped_author_events = event_set["authorEvents"]
+    let grouped_author_events = event_set["authorChanges"]
         .as_array()
         .context("authorEvents should be an array")?;
     assert_eq!(
@@ -153,13 +143,9 @@ async fn e2e_import_books() -> Result<()> {
         "import event set should group the newly created author event"
     );
     assert_eq!(
-        grouped_author_events[0]["name"].as_str(),
+        grouped_author_events[0]["afterRevision"]["name"].as_str(),
         Some("New Author"),
         "grouped author event should be the new author"
-    );
-    assert_eq!(
-        grouped_author_events[0]["operation"].as_str(),
-        Some("create")
     );
 
     // Verify Book Two has "New Author"
@@ -275,7 +261,7 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         r#"
         mutation {{
             importBooks(books: [{imported_entries}]) {{
-                eventSetId
+                operationId
                 books {{
                     id
                     title
@@ -324,34 +310,28 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         }));
     }
 
-    let import_set_id = response["data"]["importBooks"]["eventSetId"]
+    let import_set_id = response["data"]["importBooks"]["operationId"]
         .as_str()
-        .context("importBooks should return eventSetId")?;
+        .context("importBooks should return operationId")?;
 
     let event_set_query = format!(
-        r#"{{ eventSet(id: "{}") {{
-            operation
-            bookEvents {{ bookId operation }}
-            authorEvents {{ name operation }}
+        r#"{{ operation(id: "{}") {{
+            type
+            bookChanges {{ bookId }}
+            authorChanges {{ afterRevision {{ name }} }}
         }} }}"#,
         import_set_id
     );
     let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
-    let event_set = &response["data"]["eventSet"];
-    assert_eq!(event_set["operation"].as_str(), Some("import_books"));
-    let grouped_book_events = event_set["bookEvents"]
+    let event_set = &response["data"]["operation"];
+    assert_eq!(event_set["type"].as_str(), Some("import_books"));
+    let grouped_book_events = event_set["bookChanges"]
         .as_array()
         .context("bookEvents should be an array")?;
     assert_eq!(
         grouped_book_events.len(),
         import_count,
         "bulk import event set should group every book create event"
-    );
-    assert!(
-        grouped_book_events
-            .iter()
-            .all(|event| event["operation"].as_str() == Some("create")),
-        "all bulk import book events should be create events"
     );
     for book_id in &imported_book_ids {
         assert!(
@@ -362,7 +342,7 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         );
     }
 
-    let grouped_author_events = event_set["authorEvents"]
+    let grouped_author_events = event_set["authorChanges"]
         .as_array()
         .context("authorEvents should be an array")?;
     assert_eq!(
@@ -374,8 +354,7 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         let new_author_name = format!("Bulk New Author {run_id} {i:02}");
         assert!(
             grouped_author_events.iter().any(|event| {
-                event["operation"].as_str() == Some("create")
-                    && event["name"].as_str() == Some(new_author_name.as_str())
+                event["afterRevision"]["name"].as_str() == Some(new_author_name.as_str())
             }),
             "bulk import event set should contain author event for {new_author_name}"
         );
@@ -572,7 +551,7 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
         r#"
         mutation {{
             importBooks(books: [{imported_entries}]) {{
-                eventSetId
+                operationId
                 books {{
                     id
                     title
@@ -604,9 +583,9 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
         })
         .collect::<Result<Vec<_>>>()?;
 
-    let import_set_id = response["data"]["importBooks"]["eventSetId"]
+    let import_set_id = response["data"]["importBooks"]["operationId"]
         .as_str()
-        .context("importBooks should return eventSetId")?
+        .context("importBooks should return operationId")?
         .to_owned();
 
     let (_, response) = graphql_request(r#"{ authors { id name } }"#, Some(&token)).await?;
@@ -628,19 +607,19 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
 
     let import_set_id = import_set_id.as_str();
     let event_set_query = format!(
-        r#"{{ eventSet(id: "{}") {{ bookEvents {{ bookId operation }} authorEvents {{ name operation }} }} }}"#,
+        r#"{{ operation(id: "{}") {{ bookChanges {{ bookId }} authorChanges {{ afterRevision {{ name }} }} }} }}"#,
         import_set_id
     );
     let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
     assert_eq!(
-        response["data"]["eventSet"]["bookEvents"]
+        response["data"]["operation"]["bookChanges"]
             .as_array()
             .context("bookEvents should be an array")?
             .len(),
         titles.len(),
         "each imported book should have a create event"
     );
-    let author_events = response["data"]["eventSet"]["authorEvents"]
+    let author_events = response["data"]["operation"]["authorChanges"]
         .as_array()
         .context("authorEvents should be an array")?;
     assert_eq!(
@@ -649,10 +628,9 @@ async fn e2e_import_books_deduplicates_shared_new_author() -> Result<()> {
         "shared author should have one create event"
     );
     assert_eq!(
-        author_events[0]["name"].as_str(),
+        author_events[0]["afterRevision"]["name"].as_str(),
         Some(shared_author.as_str())
     );
-    assert_eq!(author_events[0]["operation"].as_str(), Some("create"));
 
     for book_id in &imported_book_ids {
         delete_test_book(book_id, &token).await?;

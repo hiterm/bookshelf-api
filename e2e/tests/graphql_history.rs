@@ -1,5 +1,3 @@
-// E2E tests that run against a real Postgres instance.
-
 #![cfg(test)]
 
 use anyhow::{Context, Result};
@@ -8,104 +6,49 @@ use serial_test::serial;
 
 #[tokio::test]
 #[serial]
-async fn e2e_create_book_returns_event_matching_history_and_usable_for_restore() -> Result<()> {
+async fn operations_expose_owned_batched_changes_and_revisions() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
+    let author_id = create_test_author("Operation History Author", &token).await?;
+    let (book_id, revision_number, operation_id) =
+        create_test_book_with_event("Operation History Book", &author_id, &token).await?;
 
-    let author_id =
-        create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
-
-    // Phase 1: mutation — capture the entity and event references.
-    let (book_id, event_id, event_set_id) =
-        create_test_book_with_event("History Book Create", &author_id, &token).await?;
-
-    // Phase 2: history — match the returned references and recorded snapshot.
     let query = format!(
-        r#"{{ bookEvents(bookId: "{}") {{
-            eventId eventSetId operation bookId
-            title authorIds isbn read owned priority format store
-            bookCreatedAt bookUpdatedAt changedAt extra
-        }} }}"#,
-        book_id
+        r#"{{
+          operation(id: "{operation_id}") {{
+            id type
+            bookChanges {{
+              bookId
+              beforeRevision {{ revisionNumber }}
+              afterRevision {{ revisionNumber title authorIds }}
+            }}
+          }}
+          bookRevisions(bookId: "{book_id}") {{ revisionNumber title }}
+          bookRevision(bookId: "{book_id}", revisionNumber: {revision_number}) {{ title }}
+        }}"#
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "bookEvents should not return errors: {:?}",
-        response.get("errors")
-    );
-
-    let entries = response["data"]["bookEvents"]
+    assert_no_graphql_errors(&response, "owned Operation history");
+    let operation = &response["data"]["operation"];
+    assert_eq!(operation["id"].as_str(), Some(operation_id.as_str()));
+    assert_eq!(operation["type"].as_str(), Some("create_book"));
+    let changes = operation["bookChanges"]
         .as_array()
-        .context("bookEvents should be an array")?;
-    assert_eq!(entries.len(), 1, "should have exactly 1 event entry");
-
-    let entry = &entries[0];
-    assert_eq!(entry["eventId"].as_str(), Some(event_id.as_str()));
-    assert_eq!(entry["eventSetId"].as_str(), Some(event_set_id.as_str()));
-    assert_eq!(entry["operation"].as_str(), Some("create"));
+        .context("bookChanges should be an array")?;
+    assert_eq!(changes.len(), 1);
+    assert!(changes[0]["beforeRevision"].is_null());
+    assert_eq!(changes[0]["afterRevision"]["revisionNumber"], 1);
+    assert_eq!(response["data"]["bookRevisions"][0]["revisionNumber"], 1);
     assert_eq!(
-        entry["bookId"].as_str(),
-        Some(book_id.as_str()),
-        "bookId should match"
-    );
-    assert_eq!(entry["title"].as_str(), Some("History Book Create"));
-    assert_eq!(
-        entry["authorIds"].as_array().and_then(|a| a[0].as_str()),
-        Some(author_id.as_str()),
-        "authorIds should contain the author"
-    );
-    assert_eq!(
-        entry["isbn"].as_str(),
-        Some(""),
-        "isbn should be empty string"
-    );
-    assert_eq!(entry["read"].as_bool(), Some(false), "read should be false");
-    assert_eq!(
-        entry["owned"].as_bool(),
-        Some(false),
-        "owned should be false"
-    );
-    assert_eq!(
-        entry["priority"].as_i64(),
-        Some(50),
-        "priority should be 50"
-    );
-    assert_eq!(
-        entry["format"].as_str(),
-        Some("E_BOOK"),
-        "format should be E_BOOK"
-    );
-    assert_eq!(
-        entry["store"].as_str(),
-        Some("KINDLE"),
-        "store should be KINDLE"
-    );
-    assert!(
-        !entry["bookCreatedAt"].is_null(),
-        "bookCreatedAt should not be null"
-    );
-    assert!(
-        !entry["bookUpdatedAt"].is_null(),
-        "bookUpdatedAt should not be null"
-    );
-    assert!(
-        !entry["changedAt"].is_null(),
-        "changedAt should not be null"
-    );
-    assert!(
-        entry["extra"].is_null(),
-        "create event extra should be null"
+        response["data"]["bookRevision"]["title"],
+        "Operation History Book"
     );
 
-    // Phase 3: restore compatibility — verify the returned event ID is accepted.
-    let restore_query = format!(
-        r#"mutation {{ restoreBook(eventId: "{}") {{ book {{ id }} eventSetId }} }}"#,
-        event_id
-    );
-    let (_, restore_response) = graphql_request(&restore_query, Some(&token)).await?;
-    assert_no_graphql_errors(&restore_response, "restoreBook from createBook eventId");
+    let (_other_user, other_token) = create_test_user().await?;
+    let query = format!(r#"{{ operation(id: "{operation_id}") {{ id }} }}"#);
+    let (_, response) = graphql_request(&query, Some(&other_token)).await?;
+    assert_no_graphql_errors(&response, "cross-tenant Operation lookup");
+    assert!(response["data"]["operation"].is_null());
 
-    // Cleanup
     delete_test_book(&book_id, &token).await?;
     delete_test_author(&author_id, &token).await?;
     Ok(())
@@ -113,381 +56,30 @@ async fn e2e_create_book_returns_event_matching_history_and_usable_for_restore()
 
 #[tokio::test]
 #[serial]
-async fn e2e_update_book_returns_event_matching_history_and_usable_for_restore() -> Result<()> {
+async fn operations_list_hides_baseline_and_loads_multiple_change_groups() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
+    let author_id = create_test_author("Operation List Author", &token).await?;
+    let book_one = create_test_book("Operation List One", &author_id, &token).await?;
+    let book_two = create_test_book("Operation List Two", &author_id, &token).await?;
 
-    let author_id =
-        create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
-    let book_id = create_test_book("Original Title", &author_id, &token).await?;
-
-    // Phase 1: mutation — capture the updated entity's event references.
-    let update_query = format!(
-        r#"
-        mutation {{
-            updateBook(bookData: {{
-                id: "{}"
-                title: "Updated Title"
-                authorIds: ["{}"]
-                isbn: ""
-                read: false
-                owned: false
-                priority: 50
-                format: E_BOOK
-                store: KINDLE
-            }}) {{ book {{ id title }} eventId eventSetId }}
-        }}
-        "#,
-        book_id, author_id
-    );
-    let (_, response) = graphql_request(&update_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "updateBook should not return errors"
-    );
-    let returned_book_id = response["data"]["updateBook"]["book"]["id"]
-        .as_str()
-        .context("updateBook book ID should be a string")?
-        .to_owned();
-    assert_eq!(returned_book_id, book_id);
-    let event_id = response["data"]["updateBook"]["eventId"]
-        .as_str()
-        .context("updateBook eventId should be a string")?
-        .to_owned();
-    let event_set_id = response["data"]["updateBook"]["eventSetId"]
-        .as_str()
-        .context("updateBook eventSetId should be a string")?
-        .to_owned();
-
-    // Phase 2: history — match the returned references and recorded snapshot.
-    let query = format!(
-        r#"{{ bookEvents(bookId: "{}") {{
-            eventId eventSetId operation bookId
-            title authorIds isbn read owned priority format store
-            bookCreatedAt bookUpdatedAt changedAt extra
-        }} }}"#,
-        returned_book_id
-    );
-    let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert_no_graphql_errors(&response, "bookEvents after updateBook");
-    let entries = response["data"]["bookEvents"]
+    let (_, response) = graphql_request(
+        "{ operations { id type bookChanges { bookId } authorChanges { authorId } } }",
+        Some(&token),
+    )
+    .await?;
+    assert_no_graphql_errors(&response, "operations list");
+    let operations = response["data"]["operations"]
         .as_array()
-        .context("bookEvents should be an array")?;
-    assert_eq!(
-        entries.len(),
-        2,
-        "should have 2 event entries (create + update)"
-    );
-
-    // Entries are ordered by changed_at DESC, so the most recent (update) is first.
-    // Each entry records the post-state after the operation was applied.
-    let update_entry = &entries[0];
-    assert_eq!(update_entry["operation"].as_str(), Some("update"));
-    assert_eq!(update_entry["eventId"].as_str(), Some(event_id.as_str()));
-    assert_eq!(
-        update_entry["eventSetId"].as_str(),
-        Some(event_set_id.as_str())
-    );
-    assert_eq!(
-        update_entry["bookId"].as_str(),
-        Some(returned_book_id.as_str())
-    );
-    assert_eq!(update_entry["title"].as_str(), Some("Updated Title"));
-    assert_eq!(
-        update_entry["authorIds"]
-            .as_array()
-            .and_then(|a| a[0].as_str()),
-        Some(author_id.as_str()),
-    );
-    assert_eq!(update_entry["isbn"].as_str(), Some(""));
-    assert_eq!(update_entry["read"].as_bool(), Some(false));
-    assert_eq!(update_entry["owned"].as_bool(), Some(false));
-    assert_eq!(update_entry["priority"].as_i64(), Some(50));
-    assert_eq!(update_entry["format"].as_str(), Some("E_BOOK"));
-    assert_eq!(update_entry["store"].as_str(), Some("KINDLE"));
-    assert!(!update_entry["bookCreatedAt"].is_null());
-    assert!(!update_entry["bookUpdatedAt"].is_null());
-    assert!(!update_entry["changedAt"].is_null());
+        .context("operations should be an array")?;
     assert!(
-        update_entry["extra"].is_null(),
-        "update event extra should be null"
+        operations
+            .iter()
+            .all(|operation| operation["type"] != "baseline")
     );
+    assert!(operations.len() >= 3);
 
-    let create_entry = &entries[1];
-    assert_eq!(create_entry["operation"].as_str(), Some("create"));
-    assert_eq!(create_entry["title"].as_str(), Some("Original Title"));
-
-    // Phase 3: restore compatibility — verify the returned event ID is accepted.
-    let restore_query = format!(
-        r#"mutation {{ restoreBook(eventId: "{}") {{ book {{ id title }} eventSetId }} }}"#,
-        event_id
-    );
-    let (_, restore_response) = graphql_request(&restore_query, Some(&token)).await?;
-    assert_no_graphql_errors(&restore_response, "restoreBook from updateBook eventId");
-
-    // Cleanup
-    delete_test_book(&book_id, &token).await?;
+    delete_test_book(&book_one, &token).await?;
+    delete_test_book(&book_two, &token).await?;
     delete_test_author(&author_id, &token).await?;
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn e2e_book_events_records_delete_operation() -> Result<()> {
-    let (_user_id, token) = create_test_user().await?;
-
-    let author_id =
-        create_test_author(&format!("History Author {}", uuid::Uuid::new_v4()), &token).await?;
-    let book_id = create_test_book("Book To Delete", &author_id, &token).await?;
-
-    // Grab history before delete so we know the book_id for later query
-    let history_query = format!(
-        r#"{{ bookEvents(bookId: "{}") {{ eventId operation title }} }}"#,
-        book_id
-    );
-    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
-    let entries_before = response["data"]["bookEvents"]
-        .as_array()
-        .context("bookEvents should be an array")?;
-    assert_eq!(
-        entries_before.len(),
-        1,
-        "should have 1 history entry before delete"
-    );
-
-    // Delete the book
-    delete_test_book(&book_id, &token).await?;
-
-    // Even after deletion, history should be queryable and include the delete entry
-    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
-    let entries_after = response["data"]["bookEvents"]
-        .as_array()
-        .context("bookEvents should be an array")?;
-    assert_eq!(
-        entries_after.len(),
-        2,
-        "should have 2 history entries after delete (create + delete)"
-    );
-    assert_eq!(
-        entries_after[0]["operation"].as_str(),
-        Some("delete"),
-        "most recent entry should be 'delete'"
-    );
-
-    // Cleanup author
-    delete_test_author(&author_id, &token).await?;
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn e2e_create_author_returns_event_matching_history_and_usable_for_restore() -> Result<()> {
-    let (_user_id, token) = create_test_user().await?;
-
-    let author_name = format!("Author History Create {}", uuid::Uuid::new_v4());
-
-    // Phase 1: mutation — capture the entity and event references.
-    let (author_id, event_id, event_set_id) =
-        create_test_author_with_event(&author_name, &token).await?;
-
-    // Phase 2: history — match the returned references and recorded snapshot.
-    let query = format!(
-        r#"{{ authorEvents(authorId: "{}") {{
-            eventId eventSetId operation authorId
-            name yomi authorCreatedAt authorUpdatedAt changedAt extra
-        }} }}"#,
-        author_id
-    );
-    let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "authorEvents should not return errors: {:?}",
-        response.get("errors")
-    );
-
-    let entries = response["data"]["authorEvents"]
-        .as_array()
-        .context("authorEvents should be an array")?;
-    assert_eq!(entries.len(), 1, "should have exactly 1 event entry");
-
-    let entry = &entries[0];
-    assert_eq!(entry["eventId"].as_str(), Some(event_id.as_str()));
-    assert_eq!(entry["eventSetId"].as_str(), Some(event_set_id.as_str()));
-    assert_eq!(entry["operation"].as_str(), Some("create"));
-    assert_eq!(
-        entry["authorId"].as_str(),
-        Some(author_id.as_str()),
-        "authorId should match"
-    );
-    assert_eq!(entry["name"].as_str(), Some(author_name.as_str()));
-    assert_eq!(
-        entry["yomi"].as_str(),
-        Some(""),
-        "yomi defaults to empty string"
-    );
-    assert!(
-        !entry["authorCreatedAt"].is_null(),
-        "authorCreatedAt should not be null"
-    );
-    assert!(
-        !entry["authorUpdatedAt"].is_null(),
-        "authorUpdatedAt should not be null"
-    );
-    assert!(
-        !entry["changedAt"].is_null(),
-        "changedAt should not be null"
-    );
-    assert!(
-        entry["extra"].is_null(),
-        "create event extra should be null"
-    );
-
-    // Phase 3: restore compatibility — verify the returned event ID is accepted.
-    let restore_query = format!(
-        r#"mutation {{ restoreAuthor(eventId: "{}") {{ author {{ id }} eventSetId }} }}"#,
-        event_id
-    );
-    let (_, restore_response) = graphql_request(&restore_query, Some(&token)).await?;
-    assert_no_graphql_errors(&restore_response, "restoreAuthor from createAuthor eventId");
-
-    delete_test_author(&author_id, &token).await?;
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn e2e_update_author_returns_event_matching_history_and_usable_for_restore() -> Result<()> {
-    let (_user_id, token) = create_test_user().await?;
-
-    let original_name = format!("Author Before Update History {}", uuid::Uuid::new_v4());
-    let author_id = create_test_author(&original_name, &token).await?;
-
-    let updated_name = format!("Author After Update History {}", uuid::Uuid::new_v4());
-
-    // Phase 1: mutation — capture the updated entity's event references.
-    let update_query = format!(
-        r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "{}" }}) {{ author {{ id name }} eventId eventSetId }} }}"#,
-        author_id, updated_name
-    );
-    let (_, response) = graphql_request(&update_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_none(),
-        "updateAuthor should not return errors"
-    );
-    let returned_author_id = response["data"]["updateAuthor"]["author"]["id"]
-        .as_str()
-        .context("updateAuthor author ID should be a string")?
-        .to_owned();
-    assert_eq!(returned_author_id, author_id);
-    let event_id = response["data"]["updateAuthor"]["eventId"]
-        .as_str()
-        .context("updateAuthor eventId should be a string")?
-        .to_owned();
-    let event_set_id = response["data"]["updateAuthor"]["eventSetId"]
-        .as_str()
-        .context("updateAuthor eventSetId should be a string")?
-        .to_owned();
-
-    // Phase 2: history — match the returned references and recorded snapshot.
-    let query = format!(
-        r#"{{ authorEvents(authorId: "{}") {{
-            eventId eventSetId operation authorId
-            name yomi authorCreatedAt authorUpdatedAt changedAt extra
-        }} }}"#,
-        returned_author_id
-    );
-    let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert_no_graphql_errors(&response, "authorEvents after updateAuthor");
-    let entries = response["data"]["authorEvents"]
-        .as_array()
-        .context("authorEvents should be an array")?;
-    assert_eq!(
-        entries.len(),
-        2,
-        "should have 2 event entries (create + update)"
-    );
-
-    // Each entry records the post-state after the operation was applied.
-    let update_entry = &entries[0];
-    assert_eq!(update_entry["operation"].as_str(), Some("update"));
-    assert_eq!(update_entry["eventId"].as_str(), Some(event_id.as_str()));
-    assert_eq!(
-        update_entry["eventSetId"].as_str(),
-        Some(event_set_id.as_str())
-    );
-    assert_eq!(
-        update_entry["authorId"].as_str(),
-        Some(returned_author_id.as_str())
-    );
-    assert_eq!(update_entry["name"].as_str(), Some(updated_name.as_str()));
-    assert_eq!(
-        update_entry["yomi"].as_str(),
-        Some(""),
-        "yomi should remain empty string"
-    );
-    assert!(!update_entry["authorCreatedAt"].is_null());
-    assert!(!update_entry["authorUpdatedAt"].is_null());
-    assert!(!update_entry["changedAt"].is_null());
-    assert!(
-        update_entry["extra"].is_null(),
-        "update event extra should be null"
-    );
-
-    let create_entry = &entries[1];
-    assert_eq!(create_entry["operation"].as_str(), Some("create"));
-    assert_eq!(create_entry["name"].as_str(), Some(original_name.as_str()));
-
-    // Phase 3: restore compatibility — verify the returned event ID is accepted.
-    let restore_query = format!(
-        r#"mutation {{ restoreAuthor(eventId: "{}") {{ author {{ id name }} eventSetId }} }}"#,
-        event_id
-    );
-    let (_, restore_response) = graphql_request(&restore_query, Some(&token)).await?;
-    assert_no_graphql_errors(&restore_response, "restoreAuthor from updateAuthor eventId");
-
-    delete_test_author(&author_id, &token).await?;
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn e2e_author_events_records_delete_operation() -> Result<()> {
-    let (_user_id, token) = create_test_user().await?;
-
-    let author_name = format!("Author History Delete {}", uuid::Uuid::new_v4());
-    let author_id = create_test_author(&author_name, &token).await?;
-
-    // Confirm 1 history entry before delete
-    let history_query = format!(
-        r#"{{ authorEvents(authorId: "{}") {{ eventId operation name }} }}"#,
-        author_id
-    );
-    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
-    let before = response["data"]["authorEvents"]
-        .as_array()
-        .context("authorEvents should be an array")?;
-    assert_eq!(before.len(), 1, "should have 1 history entry before delete");
-
-    // Delete the author
-    delete_test_author(&author_id, &token).await?;
-
-    // History should survive deletion and include the delete entry
-    let (_, response) = graphql_request(&history_query, Some(&token)).await?;
-    let after = response["data"]["authorEvents"]
-        .as_array()
-        .context("authorEvents should be an array")?;
-    assert_eq!(
-        after.len(),
-        2,
-        "should have 2 history entries after delete (create + delete)"
-    );
-    assert_eq!(
-        after[0]["operation"].as_str(),
-        Some("delete"),
-        "most recent entry should be 'delete'"
-    );
-    assert!(
-        after[0]["name"].is_null(),
-        "delete event records only author_id; name is null"
-    );
     Ok(())
 }

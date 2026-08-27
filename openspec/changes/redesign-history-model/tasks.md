@@ -14,8 +14,8 @@
 - [x] 1.12 Add Operation and Revision use-case DTOs/interactors with unit tests for type/detail, ownership, revision ordering, exact lookup, and selection-independent batch methods
 - [x] 1.13 Replace GraphQL Event mutation metadata and restore arguments with `operationId` and applicable `revisionNumber`
 - [x] 1.14 Add `operations`, `operation`, Book Revision, and Author Revision GraphQL queries plus selection-driven batched nested changes and before/after Revision resolution
-- [ ] 1.15 Update generated GraphQL schema, API E2E contracts, fixtures, architecture/database docs, and the controlled frontend contract required by the breaking API migration
-- [ ] 1.16 Run PR 1 unit, database integration, migration, rollback, import, merge, restore, E2E, formatting, lint, full test, and OpenSpec validation suites
+- [x] 1.15 Update generated GraphQL schema, API E2E contracts, fixtures, architecture/database docs, and the controlled frontend contract required by the breaking API migration
+- [x] 1.16 Run PR 1 unit, database integration, migration, rollback, import, merge, restore, E2E, formatting, lint, full test, and OpenSpec validation suites
 - [ ] 1.17 Commit granular PR 1 changes, push, create the PR, fix CI to green, request `@coderabbitai review`, address and reply to findings, re-request after fixes or rate-limit expiry, obtain approval, and merge
 
 ## 2. PR 2 — Operation undo
