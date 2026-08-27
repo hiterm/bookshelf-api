@@ -11,6 +11,7 @@ use crate::{
             author::{AuthorId, AuthorName},
             book::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag},
             event::{EventOperation, EventSetOperation},
+            operation::NewOperation,
             user::UserId,
         },
         error::DomainError,
@@ -409,9 +410,11 @@ where
     ) -> Result<ImportBooksResultDto, UseCaseError> {
         let inputs = Self::prepare_import(books)?;
         let user_id = UserId::new(user_id.to_string())?;
+        let operation =
+            NewOperation::import_books(inputs.len()).map_err(UseCaseError::Validation)?;
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::ImportBooks)
+            .begin_operation(&user_id, &operation)
             .await?;
         let result = self.execute_import(&mut tx, inputs).await?;
         let event_set_id = tx.event_set_id().hyphenated().to_string();
@@ -429,9 +432,11 @@ where
     ) -> Result<ImportBooksPreviewDto, UseCaseError> {
         let inputs = Self::prepare_import(books)?;
         let user_id = UserId::new(user_id.to_string())?;
+        let operation =
+            NewOperation::import_books(inputs.len()).map_err(UseCaseError::Validation)?;
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::ImportBooks)
+            .begin_operation(&user_id, &operation)
             .await?;
         let result = self.execute_import(&mut tx, inputs).await?;
         self.transaction_manager.rollback(tx).await?;
@@ -633,6 +638,7 @@ mod tests {
     fn make_transaction_manager() -> MockTransactionManager {
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().returning(|_| Ok(()));
         tm
     }
@@ -640,6 +646,7 @@ mod tests {
     fn make_begin_only_transaction_manager() -> MockTransactionManager {
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
         tm
     }
@@ -1265,7 +1272,9 @@ mod tests {
             .returning(|_, _| Err(DomainError::Unexpected(String::from("db error"))));
 
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().times(1).returning(|_, _| Ok(()));
+        tm.expect_begin_operation()
+            .times(1)
+            .returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
 
         let interactor = ImportBooksTestCommand::build(book_repository, author_repository, tm);
@@ -1329,7 +1338,9 @@ mod tests {
             .times(1)
             .returning(|_, _| Ok(()));
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().times(1).returning(|_, _| Ok(()));
+        tm.expect_begin_operation()
+            .times(1)
+            .returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
         tm.expect_rollback().times(1).returning(|_| Ok(()));
         let interactor = ImportBooksTestCommand::build(book_repository, author_repository, tm);
@@ -1360,7 +1371,7 @@ mod tests {
         let mut book_repository = MockBookRepository::new();
         book_repository.expect_create_all().returning(|_, _| Ok(()));
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
         tm.expect_rollback()
             .times(1)
@@ -1385,7 +1396,7 @@ mod tests {
             .expect_create_all()
             .returning(|_, _| Err(DomainError::Unexpected("db error".to_string())));
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
         tm.expect_rollback().times(0);
         let interactor = ImportBooksTestCommand::build(book_repository, author_repository, tm);
@@ -1752,6 +1763,70 @@ mod import_integration_tests {
         .await?;
         assert_eq!(distinct_event_sets, 1);
 
+        let (operation_id, detail): (uuid::Uuid, serde_json::Value) = sqlx::query_as(
+            "SELECT id, detail FROM operation
+             WHERE user_id = $1 AND type = 'import_books'",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(
+            detail,
+            serde_json::json!({"type": "import_books", "imported_count": 1})
+        );
+        let (book_revision_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM book_revision WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+        let (author_revision_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM author_revision WHERE user_id = $1")
+                .bind(user_id.as_str())
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!((book_revision_count, author_revision_count), (1, 1));
+        let (book_change_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM book_operation_change WHERE operation_id = $1")
+                .bind(operation_id)
+                .fetch_one(&pool)
+                .await?;
+        let (author_change_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM author_operation_change WHERE operation_id = $1")
+                .bind(operation_id)
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!((book_change_count, author_change_count), (1, 1));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn preview_rolls_back_operation_revisions_and_changes(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_id = prepare_user(&pool, "user1").await?;
+
+        interactor(&pool)
+            .preview_import(
+                user_id.as_str(),
+                vec![entry("Preview Book", vec!["Preview Author"])],
+            )
+            .await?;
+
+        let counts: (i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT
+               (SELECT COUNT(*) FROM operation WHERE user_id = $1),
+               (SELECT COUNT(*) FROM book_revision WHERE user_id = $1),
+               (SELECT COUNT(*) FROM author_revision WHERE user_id = $1),
+               (SELECT COUNT(*) FROM book_operation_change WHERE user_id = $1),
+               (SELECT COUNT(*) FROM author_operation_change WHERE user_id = $1),
+               (SELECT COUNT(*) FROM book WHERE user_id = $1),
+               (SELECT COUNT(*) FROM author WHERE user_id = $1)",
+        )
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(counts, (0, 0, 0, 0, 0, 0, 0));
         Ok(())
     }
 

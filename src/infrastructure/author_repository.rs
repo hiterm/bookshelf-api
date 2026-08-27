@@ -448,6 +448,17 @@ impl AuthorRepository for PgAuthorRepository {
         Ok(EventId::from(event_id))
     }
 
+    async fn record_unchanged_revision(
+        &self,
+        tx: &mut Self::Transaction,
+        author: &Author,
+    ) -> Result<(), DomainError> {
+        let before_revision_number =
+            latest_author_revision_number(tx, author.id().to_uuid()).await?;
+        append_author_revision(tx, author, Some(before_revision_number)).await?;
+        Ok(())
+    }
+
     async fn delete(
         &self,
         tx: &mut Self::Transaction,

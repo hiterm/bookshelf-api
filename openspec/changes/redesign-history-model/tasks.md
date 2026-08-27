@@ -8,8 +8,8 @@
 - [x] 1.6 Add repository interfaces and PostgreSQL adapters for owned Operation and Book/Author Revision/change queries, including batch lookup
 - [x] 1.7 Migrate single Book create, update, and delete repositories to atomically allocate Revisions and record OperationChanges
 - [x] 1.8 Migrate single Author create, update, delete, and find-or-create repositories to atomically allocate Revisions and record OperationChanges
-- [ ] 1.9 Migrate set-based import and preview paths to record all created Book/Author Revisions and changes under one ImportBooks Operation with complete rollback tests
-- [ ] 1.10 Migrate Author merge and bulk Book update to record source, destination, and every affected Book under one MergeAuthor Operation while preserving bounded queries and lock order
+- [x] 1.9 Migrate set-based import and preview paths to record all created Book/Author Revisions and changes under one ImportBooks Operation with complete rollback tests
+- [x] 1.10 Migrate Author merge and bulk Book update to record source, destination, and every affected Book under one MergeAuthor Operation while preserving bounded queries and lock order
 - [ ] 1.11 Replace Event-based Book and Author restore with owned revision-based restore, fresh revision creation, lifecycle timestamp rules, and live Book Author-reference validation
 - [ ] 1.12 Add Operation and Revision use-case DTOs/interactors with unit tests for type/detail, ownership, revision ordering, exact lookup, and selection-independent batch methods
 - [ ] 1.13 Replace GraphQL Event mutation metadata and restore arguments with `operationId` and applicable `revisionNumber`

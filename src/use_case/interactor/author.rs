@@ -10,6 +10,7 @@ use crate::{
             author::{Author, AuthorId, AuthorName, AuthorUpdate, validate_author_yomi},
             book::BookUpdate,
             event::{EventOperation, EventSetOperation, NewAuthorEvent},
+            operation::NewOperation,
             user::UserId,
         },
         repository::{
@@ -142,7 +143,10 @@ where
 
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::MergeAuthor)
+            .begin_operation(
+                &user_id,
+                &NewOperation::merge_author(&source_id, &destination_id),
+            )
             .await?;
 
         // Book updates lock their Book row before book_author inserts acquire
@@ -210,6 +214,10 @@ where
             );
         }
         self.book_repository.update_all(&mut tx, &books).await?;
+
+        self.author_repository
+            .record_unchanged_revision(&mut tx, &destination_author)
+            .await?;
 
         self.author_repository
             .delete(
@@ -448,6 +456,7 @@ mod tests {
     fn make_transaction_manager() -> MockTransactionManager {
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().returning(|_| Ok(()));
         tm
     }
@@ -1071,6 +1080,11 @@ mod tests {
             .times(1)
             .returning(|_, _| Ok(()));
         author_repository
+            .expect_record_unchanged_revision()
+            .withf(move |_, author| author.id().to_string() == destination_id)
+            .times(1)
+            .returning(|_, _| Ok(()));
+        author_repository
             .expect_delete()
             .withf(move |_, author_id, extra| {
                 author_id.to_string() == source_id
@@ -1178,6 +1192,11 @@ mod tests {
             .expect_find_by_id_with_tx()
             .times(2)
             .returning(move |_, _, _| Ok(Some(locked.next().unwrap())));
+        author_repository
+            .expect_record_unchanged_revision()
+            .withf(move |_, author| author.id().to_string() == destination_id)
+            .times(1)
+            .returning(|_, _| Ok(()));
         author_repository
             .expect_delete()
             .withf(move |_, author_id, extra| {

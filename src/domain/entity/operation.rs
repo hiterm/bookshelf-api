@@ -149,6 +149,16 @@ impl NewOperation {
             undo_of_operation_id: None,
         }
     }
+
+    pub fn import_books(imported_count: usize) -> Result<Self, String> {
+        let imported_count = u32::try_from(imported_count)
+            .map_err(|_| "imported book count exceeds u32".to_string())?;
+        Ok(Self {
+            operation_type: OperationType::ImportBooks,
+            detail: Some(OperationDetail::ImportBooks { imported_count }),
+            undo_of_operation_id: None,
+        })
+    }
 }
 
 impl From<EventSetOperation> for NewOperation {

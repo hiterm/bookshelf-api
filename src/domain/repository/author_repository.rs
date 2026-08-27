@@ -89,6 +89,11 @@ pub trait AuthorRepository: Send + Sync + 'static {
         tx: &mut Self::Transaction,
         author: &Author,
     ) -> Result<EventId, DomainError>;
+    async fn record_unchanged_revision(
+        &self,
+        tx: &mut Self::Transaction,
+        author: &Author,
+    ) -> Result<(), DomainError>;
     async fn delete(
         &self,
         tx: &mut Self::Transaction,
