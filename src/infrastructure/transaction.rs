@@ -20,6 +20,7 @@ pub struct PgTransaction {
     operation_id: OperationId,
     event_set_id: Uuid,
     user_id: UserId,
+    revision_number: Option<i32>,
 }
 
 impl TransactionEventSet for PgTransaction {
@@ -32,6 +33,10 @@ impl TransactionOperation for PgTransaction {
     fn operation_id(&self) -> OperationId {
         self.operation_id.clone()
     }
+
+    fn revision_number(&self) -> Option<i32> {
+        self.revision_number
+    }
 }
 
 impl PgTransaction {
@@ -41,6 +46,10 @@ impl PgTransaction {
 
     pub fn operation_id(&self) -> OperationId {
         <Self as TransactionOperation>::operation_id(self)
+    }
+
+    pub fn set_revision_number(&mut self, revision_number: i32) {
+        self.revision_number = Some(revision_number);
     }
 
     /// Returns the user passed to `begin`, which is the single source of
@@ -136,6 +145,7 @@ impl TransactionManager for PgTransactionManager {
             operation_id,
             event_set_id,
             user_id: user_id.clone(),
+            revision_number: None,
         })
     }
 

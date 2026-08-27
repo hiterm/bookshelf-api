@@ -159,6 +159,26 @@ impl NewOperation {
             undo_of_operation_id: None,
         })
     }
+
+    pub fn restore_book(source_revision_number: i32) -> Self {
+        Self {
+            operation_type: OperationType::RestoreBook,
+            detail: Some(OperationDetail::RestoreBook {
+                source_revision_number,
+            }),
+            undo_of_operation_id: None,
+        }
+    }
+
+    pub fn restore_author(source_revision_number: i32) -> Self {
+        Self {
+            operation_type: OperationType::RestoreAuthor,
+            detail: Some(OperationDetail::RestoreAuthor {
+                source_revision_number,
+            }),
+            undo_of_operation_id: None,
+        }
+    }
 }
 
 impl From<EventSetOperation> for NewOperation {

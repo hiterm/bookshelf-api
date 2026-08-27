@@ -1154,6 +1154,164 @@ impl BookRepository for PgBookRepository {
 
         Ok(())
     }
+
+    async fn restore_revision(
+        &self,
+        tx: &mut Self::Transaction,
+        book_id: &BookId,
+        revision_number: i32,
+    ) -> Result<Book, DomainError> {
+        let user_id = tx.user_id().clone();
+        let source: Option<BookRow> = sqlx::query_as(
+            "SELECT revision.book_id AS id, revision.title,
+                    (SELECT array_agg(link.author_id ORDER BY link.author_id)
+                     FROM book_revision_author link
+                     WHERE link.user_id = revision.user_id
+                       AND link.book_id = revision.book_id
+                       AND link.revision_number = revision.revision_number) AS author_ids,
+                    revision.isbn, revision.read, revision.owned, revision.priority,
+                    revision.format, revision.store,
+                    revision.book_created_at AS created_at,
+                    revision.book_updated_at AS updated_at
+             FROM book_revision revision
+             WHERE revision.user_id = $1 AND revision.book_id = $2
+               AND revision.revision_number = $3
+             FOR UPDATE OF revision",
+        )
+        .bind(user_id.as_str())
+        .bind(book_id.to_uuid())
+        .bind(revision_number)
+        .fetch_optional(tx.as_mut())
+        .await?;
+        let source = source.ok_or_else(|| DomainError::NotFound {
+            entity_type: "book_revision",
+            entity_id: format!("{book_id}:{revision_number}"),
+            user_id: user_id.as_str().to_owned(),
+        })?;
+        let missing_author: Option<Uuid> = sqlx::query_scalar(
+            "SELECT input.author_id
+             FROM UNNEST($2::uuid[]) AS input(author_id)
+             WHERE NOT EXISTS (
+               SELECT 1 FROM author
+               WHERE user_id = $1 AND id = input.author_id
+             )
+             LIMIT 1",
+        )
+        .bind(user_id.as_str())
+        .bind(source.author_ids.as_deref().unwrap_or_default())
+        .fetch_optional(tx.as_mut())
+        .await?;
+        if let Some(author_id) = missing_author {
+            return Err(DomainError::Validation(format!(
+                "Book revision references missing Author {author_id}"
+            )));
+        }
+        let before_revision_number: Option<i32> = sqlx::query_scalar(
+            "SELECT MAX(revision.revision_number)
+             FROM book_revision revision
+             WHERE revision.user_id = $1 AND revision.book_id = $2
+               AND EXISTS (
+                 SELECT 1 FROM book current
+                 WHERE current.user_id = $1 AND current.id = $2
+               )",
+        )
+        .bind(user_id.as_str())
+        .bind(book_id.to_uuid())
+        .fetch_one(tx.as_mut())
+        .await?;
+        let book = Book::new(
+            book_id.clone(),
+            BookTitle::new(source.title)?,
+            source
+                .author_ids
+                .unwrap_or_default()
+                .into_iter()
+                .map(AuthorId::new)
+                .collect(),
+            Isbn::new(source.isbn)?,
+            ReadFlag::new(source.read),
+            OwnedFlag::new(source.owned),
+            Priority::new(source.priority)?,
+            BookFormat::try_from(source.format.as_str())?,
+            BookStore::try_from(source.store.as_str())?,
+            source.created_at,
+            OffsetDateTime::now_utc(),
+        )?;
+        let author_ids: Vec<_> = book.author_ids().iter().map(AuthorId::to_uuid).collect();
+        sqlx::query(
+            "INSERT INTO book (id, user_id, title, isbn, read, owned, priority,
+                               format, store, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             ON CONFLICT (id, user_id) DO UPDATE SET
+               title = EXCLUDED.title, isbn = EXCLUDED.isbn, read = EXCLUDED.read,
+               owned = EXCLUDED.owned, priority = EXCLUDED.priority,
+               format = EXCLUDED.format, store = EXCLUDED.store,
+               created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at",
+        )
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .execute(tx.as_mut())
+        .await?;
+        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
+            .bind(user_id.as_str())
+            .bind(book.id().to_uuid())
+            .execute(tx.as_mut())
+            .await?;
+        if !author_ids.is_empty() {
+            sqlx::query(
+                "INSERT INTO book_author (user_id, book_id, author_id)
+                 SELECT $1, $2, author_id FROM UNNEST($3::uuid[]) input(author_id)",
+            )
+            .bind(user_id.as_str())
+            .bind(book.id().to_uuid())
+            .bind(&author_ids)
+            .execute(tx.as_mut())
+            .await?;
+        }
+        let (event_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO book_event
+               (event_set_id, operation, book_id, user_id, title, isbn, read, owned,
+                priority, format, store, book_created_at, book_updated_at, extra)
+             VALUES ($1, 'restore', $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                     $11, $12, $13) RETURNING event_id",
+        )
+        .bind(tx.event_set_id())
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .bind(json!({"version": 2, "source_revision_number": revision_number}))
+        .fetch_one(tx.as_mut())
+        .await?;
+        if !author_ids.is_empty() {
+            sqlx::query(
+                "INSERT INTO book_event_author (event_id, author_id)
+                 SELECT $1, author_id FROM UNNEST($2::uuid[]) input(author_id)",
+            )
+            .bind(event_id)
+            .bind(&author_ids)
+            .execute(tx.as_mut())
+            .await?;
+        }
+        append_book_revision(tx, &book, before_revision_number).await?;
+        Ok(book)
+    }
 }
 
 #[cfg(feature = "test-with-database")]
@@ -1165,6 +1323,7 @@ mod tests {
             entity::{
                 author::{Author, AuthorName},
                 book::BookUpdate,
+                operation::NewOperation,
                 user::User,
             },
             error::DomainError,
@@ -2374,6 +2533,72 @@ mod tests {
             .await?;
         assert_eq!(count, 1);
 
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn restore_revision_validates_authors_and_appends_revision(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let users = PgUserRepository::new(pool.clone());
+        let authors = PgAuthorRepository::new(pool.clone());
+        let repository = PgBookRepository::new(pool.clone());
+        let user_id = prepare_user(&users, "restore-user").await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &authors).await?;
+        let original = book_entity1(&author_ids)?;
+        create_book(&pool, &repository, &user_id, &original).await?;
+        let mut changed = original.clone();
+        changed.update(
+            BookUpdate {
+                title: BookTitle::new("Changed".to_string())?,
+                author_ids: changed.author_ids().to_vec(),
+                isbn: changed.isbn().clone(),
+                read: changed.read().clone(),
+                owned: changed.owned().clone(),
+                priority: changed.priority().clone(),
+                format: changed.format().clone(),
+                store: changed.store().clone(),
+            },
+            OffsetDateTime::now_utc(),
+        );
+        update_book(&pool, &repository, &user_id, &changed).await?;
+
+        let manager = PgTransactionManager::new(pool.clone());
+        let mut tx = manager
+            .begin_operation(&user_id, &NewOperation::restore_book(1))
+            .await?;
+        let restored = repository
+            .restore_revision(&mut tx, original.id(), 1)
+            .await?;
+        let operation_id = tx.operation_id();
+        manager.commit(tx).await?;
+
+        assert_eq!(restored.title(), original.title());
+        let change: (Option<i32>, Option<i32>) = sqlx::query_as(
+            "SELECT before_revision_number, after_revision_number
+             FROM book_operation_change WHERE operation_id = $1 AND user_id = $2",
+        )
+        .bind(operation_id.to_uuid())
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(change, (Some(2), Some(3)));
+
+        delete_book(&pool, &repository, &user_id, original.id()).await?;
+        let mut tx = manager
+            .begin(&user_id, EventSetOperation::DeleteAuthor)
+            .await?;
+        authors.delete(&mut tx, &author_ids[0], None).await?;
+        manager.commit(tx).await?;
+        let mut tx = manager
+            .begin_operation(&user_id, &NewOperation::restore_book(1))
+            .await?;
+        let error = repository
+            .restore_revision(&mut tx, original.id(), 1)
+            .await
+            .expect_err("missing historical Author must reject restore");
+        assert!(matches!(error, DomainError::Validation(_)));
+        manager.rollback(tx).await?;
         Ok(())
     }
 }

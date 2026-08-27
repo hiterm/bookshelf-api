@@ -108,4 +108,10 @@ pub trait AuthorRepository: Send + Sync + 'static {
         source_event_id: i64,
         author: Option<Author>,
     ) -> Result<(), DomainError>;
+    async fn restore_revision(
+        &self,
+        tx: &mut Self::Transaction,
+        author_id: &AuthorId,
+        revision_number: i32,
+    ) -> Result<Author, DomainError>;
 }

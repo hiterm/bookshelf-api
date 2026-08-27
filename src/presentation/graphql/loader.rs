@@ -6,10 +6,71 @@ use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
     use_case::traits::{
         author::AuthorQueryUseCase, book::BookQueryUseCase, event::EventQueryUseCase,
+        history::HistoryQueryUseCase,
     },
 };
 
-use super::object::{Author, AuthorEventEntry, Book, BookEventEntry};
+use super::object::{
+    Author, AuthorEventEntry, AuthorOperationChange, Book, BookEventEntry, BookOperationChange,
+};
+
+pub struct BookChangesByOperationLoader<HQ> {
+    claims: Claims,
+    history_query: HQ,
+}
+
+pub struct AuthorChangesByOperationLoader<HQ> {
+    claims: Claims,
+    history_query: HQ,
+}
+
+impl<HQ> BookChangesByOperationLoader<HQ> {
+    pub fn new(claims: Claims, history_query: HQ) -> Self {
+        Self {
+            claims,
+            history_query,
+        }
+    }
+}
+
+impl<HQ> AuthorChangesByOperationLoader<HQ> {
+    pub fn new(claims: Claims, history_query: HQ) -> Self {
+        Self {
+            claims,
+            history_query,
+        }
+    }
+}
+
+impl<HQ: HistoryQueryUseCase> Loader<String> for BookChangesByOperationLoader<HQ> {
+    type Value = Vec<BookOperationChange>;
+    type Error = PresentationalError;
+
+    async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
+        Ok(self
+            .history_query
+            .book_changes(&self.claims.sub, keys)
+            .await?
+            .into_iter()
+            .map(|(id, changes)| (id, changes.into_iter().map(Into::into).collect()))
+            .collect())
+    }
+}
+
+impl<HQ: HistoryQueryUseCase> Loader<String> for AuthorChangesByOperationLoader<HQ> {
+    type Value = Vec<AuthorOperationChange>;
+    type Error = PresentationalError;
+
+    async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
+        Ok(self
+            .history_query
+            .author_changes(&self.claims.sub, keys)
+            .await?
+            .into_iter()
+            .map(|(id, changes)| (id, changes.into_iter().map(Into::into).collect()))
+            .collect())
+    }
+}
 
 pub struct AuthorLoader<AQ> {
     claims: Claims,

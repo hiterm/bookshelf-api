@@ -22,8 +22,24 @@ type AuthorEventEntry {
 
 type AuthorMutationPayload {
 	author: Author!
-	eventSetId: ID!
-	eventId: ID!
+	operationId: ID!
+	revisionNumber: Int!
+}
+
+type AuthorOperationChange {
+	authorId: ID!
+	beforeRevision: AuthorRevision
+	afterRevision: AuthorRevision
+}
+
+type AuthorRevision {
+	authorId: ID!
+	revisionNumber: Int!
+	name: String!
+	yomi: String!
+	authorCreatedAt: DateTime!
+	authorUpdatedAt: DateTime!
+	createdAt: DateTime!
 }
 
 type Book {
@@ -67,8 +83,30 @@ enum BookFormat {
 
 type BookMutationPayload {
 	book: Book!
-	eventSetId: ID!
-	eventId: ID!
+	operationId: ID!
+	revisionNumber: Int!
+}
+
+type BookOperationChange {
+	bookId: ID!
+	beforeRevision: BookRevision
+	afterRevision: BookRevision
+}
+
+type BookRevision {
+	bookId: ID!
+	revisionNumber: Int!
+	title: String!
+	authorIds: [ID!]!
+	isbn: String!
+	read: Boolean!
+	owned: Boolean!
+	priority: Int!
+	format: BookFormat!
+	store: BookStore!
+	bookCreatedAt: DateTime!
+	bookUpdatedAt: DateTime!
+	createdAt: DateTime!
 }
 
 enum BookStore {
@@ -104,12 +142,12 @@ scalar DateTime
 
 type DeleteAuthorPayload {
 	authorId: ID!
-	eventSetId: ID!
+	operationId: ID!
 }
 
 type DeleteBookPayload {
 	bookId: ID!
-	eventSetId: ID!
+	operationId: ID!
 }
 
 type EventSet {
@@ -178,7 +216,7 @@ type ImportBookPreview {
 
 type ImportBooksPayload {
 	books: [Book!]!
-	eventSetId: ID!
+	operationId: ID!
 }
 
 type ImportBooksPreview {
@@ -192,7 +230,7 @@ scalar JSON
 
 type MergeAuthorPayload {
 	author: Author!
-	eventSetId: ID!
+	operationId: ID!
 }
 
 type Mutation {
@@ -204,8 +242,8 @@ type Mutation {
 	updateAuthor(authorData: UpdateAuthorInput!): AuthorMutationPayload!
 	deleteAuthor(authorId: ID!): DeleteAuthorPayload!
 	mergeAuthor(sourceAuthorId: ID!, destinationAuthorId: ID!): MergeAuthorPayload!
-	restoreBook(eventId: ID!): RestoreBookPayload!
-	restoreAuthor(eventId: ID!): RestoreAuthorPayload!
+	restoreBook(bookId: ID!, revisionNumber: Int!): RestoreBookPayload!
+	restoreAuthor(authorId: ID!, revisionNumber: Int!): RestoreAuthorPayload!
 	"""
 	Imports multiple books. Creates authors if they do not exist.
 	"""
@@ -216,7 +254,23 @@ type Mutation {
 	previewBookImport(books: [ImportBookInput!]!): ImportBooksPreview!
 }
 
+type Operation {
+	id: ID!
+	type: String!
+	detail: JSON
+	undoOfOperationId: ID
+	createdAt: DateTime!
+	bookChanges: [BookOperationChange!]!
+	authorChanges: [AuthorOperationChange!]!
+}
+
 type Query {
+	operations: [Operation!]!
+	operation(id: ID!): Operation
+	bookRevisions(bookId: ID!): [BookRevision!]!
+	bookRevision(bookId: ID!, revisionNumber: Int!): BookRevision
+	authorRevisions(authorId: ID!): [AuthorRevision!]!
+	authorRevision(authorId: ID!, revisionNumber: Int!): AuthorRevision
 	loggedInUser: User
 	book(id: ID!): Book
 	books: [Book!]!
@@ -244,12 +298,14 @@ type Query {
 
 type RestoreAuthorPayload {
 	author: Author
-	eventSetId: ID!
+	operationId: ID!
+	revisionNumber: Int!
 }
 
 type RestoreBookPayload {
 	book: Book
-	eventSetId: ID!
+	operationId: ID!
+	revisionNumber: Int!
 }
 
 input UpdateAuthorInput {

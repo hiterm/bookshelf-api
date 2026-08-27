@@ -4,6 +4,7 @@ use bookshelf_api::{
         author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
         book::{MockBookCommandUseCase, MockBookQueryUseCase},
         event::MockEventQueryUseCase,
+        history::MockHistoryQueryUseCase,
         user::{MockUserCommandUseCase, MockUserQueryUseCase},
     },
 };
@@ -17,6 +18,7 @@ async fn main() {
         MockBookQueryUseCase::new(),
         MockAuthorQueryUseCase::new(),
         MockEventQueryUseCase::new(),
+        MockHistoryQueryUseCase::new(),
     );
     let mutation = Mutation::new(
         MockUserCommandUseCase::new(),
@@ -24,5 +26,7 @@ async fn main() {
         MockAuthorCommandUseCase::new(),
     );
     let schema = build_schema(query, mutation);
-    println!("{}", schema.sdl());
+    let sdl = format!("{}\n", schema.sdl());
+    std::fs::write("schema.graphql", &sdl).expect("write generated GraphQL schema");
+    print!("{sdl}");
 }

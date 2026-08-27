@@ -10,7 +10,7 @@ use crate::{
         entity::{
             author::{AuthorId, AuthorName},
             book::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag},
-            event::{EventOperation, EventSetOperation},
+            event::EventSetOperation,
             operation::NewOperation,
             user::UserId,
         },
@@ -19,7 +19,7 @@ use crate::{
             author_repository::AuthorRepository,
             book_event_repository::BookEventRepository,
             book_repository::BookRepository,
-            transaction::{TransactionEventSet, TransactionManager},
+            transaction::{TransactionManager, TransactionOperation},
         },
     },
     use_case::{
@@ -131,7 +131,7 @@ struct ImportExecutionResult {
 pub struct BookCommandInteractor<BR, AR, BER, TM> {
     book_repository: BR,
     author_repository: AR,
-    book_event_repository: BER,
+    _book_event_repository: BER,
     transaction_manager: TM,
 }
 
@@ -145,7 +145,7 @@ impl<BR, AR, BER, TM> BookCommandInteractor<BR, AR, BER, TM> {
         Self {
             book_repository,
             author_repository,
-            book_event_repository,
+            _book_event_repository: book_event_repository,
             transaction_manager,
         }
     }
@@ -303,14 +303,17 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::CreateBook)
             .await?;
-        let event_id = self.book_repository.create(&mut tx, &book).await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let _event_id = self.book_repository.create(&mut tx, &book).await?;
+        let operation_id = tx.operation_id().to_string();
+        let revision_number = tx.revision_number().ok_or_else(|| {
+            UseCaseError::Unexpected("Book mutation did not record a revision".to_string())
+        })?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(SingleEventMutationResultDto::new(
             book.into(),
-            event_set_id,
-            event_id,
+            operation_id,
+            revision_number,
         ))
     }
     async fn update(
@@ -374,14 +377,17 @@ where
         };
         book.update(update, OffsetDateTime::now_utc());
 
-        let event_id = self.book_repository.update(&mut tx, &book).await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let _event_id = self.book_repository.update(&mut tx, &book).await?;
+        let operation_id = tx.operation_id().to_string();
+        let revision_number = tx.revision_number().ok_or_else(|| {
+            UseCaseError::Unexpected("Book mutation did not record a revision".to_string())
+        })?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(SingleEventMutationResultDto::new(
             book.into(),
-            event_set_id,
-            event_id,
+            operation_id,
+            revision_number,
         ))
     }
     async fn delete(
@@ -398,10 +404,10 @@ where
             .begin(&user_id, EventSetOperation::DeleteBook)
             .await?;
         self.book_repository.delete(&mut tx, &book_id).await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let operation_id = tx.operation_id().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(MutationResultDto::new(book_id_value, event_set_id))
+        Ok(MutationResultDto::new(book_id_value, operation_id))
     }
     async fn import(
         &self,
@@ -417,11 +423,11 @@ where
             .begin_operation(&user_id, &operation)
             .await?;
         let result = self.execute_import(&mut tx, inputs).await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let operation_id = tx.operation_id().to_string();
         self.transaction_manager.commit(tx).await?;
         Ok(MutationResultDto::new(
             result.books.into_iter().map(BookDto::from).collect(),
-            event_set_id,
+            operation_id,
         ))
     }
 
@@ -448,77 +454,31 @@ where
     async fn restore(
         &self,
         user_id: &str,
-        event_id: i64,
+        book_id: &str,
+        revision_number: i32,
     ) -> Result<crate::use_case::dto::mutation::RestoreBookResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
-        let event = self
-            .book_event_repository
-            .find_by_event_id(&user_id, event_id)
-            .await?
-            .ok_or(UseCaseError::NotFound {
-                entity_type: "book_event",
-                entity_id: event_id.to_string(),
-                user_id: user_id.as_str().to_string(),
-            })?;
-
-        let restored = match event.operation {
-            EventOperation::Create
-            | EventOperation::Update
-            | EventOperation::Restore
-            | EventOperation::Snapshot => {
-                let created_at = event.book_created_at.ok_or_else(|| {
-                    UseCaseError::Validation("book_event book_created_at is null".to_string())
-                })?;
-                event.book_updated_at.ok_or_else(|| {
-                    UseCaseError::Validation("book_event book_updated_at is null".to_string())
-                })?;
-                Some(Book::new(
-                    event.book_id,
-                    event.title.ok_or_else(|| {
-                        UseCaseError::Validation("book_event title is null".to_string())
-                    })?,
-                    event.author_ids,
-                    event.isbn.ok_or_else(|| {
-                        UseCaseError::Validation("book_event isbn is null".to_string())
-                    })?,
-                    event.read.ok_or_else(|| {
-                        UseCaseError::Validation("book_event read is null".to_string())
-                    })?,
-                    event.owned.ok_or_else(|| {
-                        UseCaseError::Validation("book_event owned is null".to_string())
-                    })?,
-                    event.priority.ok_or_else(|| {
-                        UseCaseError::Validation("book_event priority is null".to_string())
-                    })?,
-                    event.format.ok_or_else(|| {
-                        UseCaseError::Validation("book_event format is null".to_string())
-                    })?,
-                    event.store.ok_or_else(|| {
-                        UseCaseError::Validation("book_event store is null".to_string())
-                    })?,
-                    created_at,
-                    OffsetDateTime::now_utc(),
-                )?)
-            }
-            EventOperation::Delete => None,
-            EventOperation::MergeAsDestination => {
-                return Err(UseCaseError::Validation(
-                    "merge_as_destination events cannot be restored".to_string(),
-                ));
-            }
-        };
-
-        let dto = restored.clone().map(BookDto::from);
+        let book_id = BookId::try_from(book_id)?;
+        crate::domain::entity::revision::RevisionNumber::try_from(revision_number)?;
+        let operation = NewOperation::restore_book(revision_number);
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::RestoreBook)
+            .begin_operation(&user_id, &operation)
             .await?;
-        self.book_repository
-            .restore(&mut tx, event_id, restored)
+        let restored = self
+            .book_repository
+            .restore_revision(&mut tx, &book_id, revision_number)
             .await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let operation_id = tx.operation_id().to_string();
+        let restored_revision_number = tx.revision_number().ok_or_else(|| {
+            UseCaseError::Unexpected("Book restore did not record a revision".to_string())
+        })?;
         self.transaction_manager.commit(tx).await?;
-        Ok(MutationResultDto::new(dto, event_set_id))
+        Ok(SingleEventMutationResultDto::new(
+            Some(restored.into()),
+            operation_id,
+            restored_revision_number,
+        ))
     }
 }
 
@@ -529,7 +489,7 @@ mod tests {
         sync::{Arc, Mutex},
     };
 
-    use mockall::predicate::{always, eq};
+    use mockall::predicate::always;
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -541,9 +501,7 @@ mod tests {
         domain::{
             entity::{
                 author::AuthorId,
-                book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                event::{BookEvent, EventOperation},
-                event_set::EventSetId,
+                book::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag},
             },
             error::DomainError,
             repository::{
@@ -668,28 +626,6 @@ mod tests {
         .unwrap()
     }
 
-    fn make_book_event(book_id: Uuid, operation: EventOperation) -> BookEvent {
-        let has_state = operation != EventOperation::Delete;
-        BookEvent {
-            event_id: 1,
-            event_set_id: EventSetId::from(Uuid::new_v4()),
-            operation,
-            book_id: BookId::new(book_id).unwrap(),
-            title: has_state.then(|| BookTitle::new("Old Title".to_string()).unwrap()),
-            author_ids: vec![],
-            isbn: has_state.then(|| Isbn::new("".to_string()).unwrap()),
-            read: has_state.then(|| ReadFlag::new(false)),
-            owned: has_state.then(|| OwnedFlag::new(false)),
-            priority: has_state.then(|| Priority::new(50).unwrap()),
-            format: has_state.then_some(BookFormat::Unknown),
-            store: has_state.then_some(BookStore::Unknown),
-            book_created_at: has_state.then_some(OffsetDateTime::UNIX_EPOCH),
-            book_updated_at: has_state.then(|| OffsetDateTime::from_unix_timestamp(1).unwrap()),
-            changed_at: OffsetDateTime::now_utc(),
-            extra: None,
-        }
-    }
-
     #[tokio::test]
     async fn find_book_by_id_returns_book() {
         let book_id = Uuid::new_v4();
@@ -785,7 +721,7 @@ mod tests {
         assert_eq!(dto.value.title, "New Book");
         assert!(dto.value.owned);
         assert_eq!(dto.value.created_at, dto.value.updated_at);
-        assert_eq!(dto.event_id.value(), 101);
+        assert_eq!(dto.revision_number, 1);
     }
 
     #[tokio::test]
@@ -907,7 +843,7 @@ mod tests {
         let dto = result.unwrap();
         assert_eq!(dto.value.title, "Updated Book");
         assert_eq!(dto.value.priority, 70);
-        assert_eq!(dto.event_id.value(), 202);
+        assert_eq!(dto.revision_number, 1);
     }
 
     #[tokio::test]
@@ -1462,96 +1398,99 @@ mod tests {
 
     #[tokio::test]
     async fn restore_book_not_found_returns_error() {
-        let mut event_repository = MockBookEventRepository::new();
-        event_repository
-            .expect_find_by_event_id()
-            .with(always(), eq(999))
-            .returning(|_, _| Ok(None));
+        let book_id = Uuid::new_v4();
+        let mut book_repository = MockBookRepository::new();
+        book_repository
+            .expect_restore_revision()
+            .returning(|_, id, _| {
+                Err(DomainError::NotFound {
+                    entity_type: "book_revision",
+                    entity_id: id.to_string(),
+                    user_id: "user1".to_string(),
+                })
+            });
         let interactor = BookCommandInteractor::new(
-            MockBookRepository::new(),
+            book_repository,
             MockAuthorRepository::new(),
-            event_repository,
-            MockTransactionManager::new(),
+            MockBookEventRepository::new(),
+            make_begin_only_transaction_manager(),
         );
 
-        let result = interactor.restore("user1", 999).await;
+        let result = interactor.restore("user1", &book_id.to_string(), 999).await;
 
         assert!(matches!(result, Err(UseCaseError::NotFound { .. })));
     }
 
     #[tokio::test]
     async fn restore_book_success_preserves_created_at_and_refreshes_updated_at() {
-        let event = make_book_event(Uuid::new_v4(), EventOperation::Update);
-        let mut event_repository = MockBookEventRepository::new();
-        event_repository
-            .expect_find_by_event_id()
-            .return_once(move |_, _| Ok(Some(event)));
+        let book_id = Uuid::new_v4();
+        let mut restored_book = make_book(book_id);
+        restored_book.update(
+            BookUpdate {
+                title: BookTitle::new("Old Title".to_string()).unwrap(),
+                author_ids: vec![],
+                isbn: restored_book.isbn().clone(),
+                read: restored_book.read().clone(),
+                owned: restored_book.owned().clone(),
+                priority: restored_book.priority().clone(),
+                format: restored_book.format().clone(),
+                store: restored_book.store().clone(),
+            },
+            OffsetDateTime::now_utc(),
+        );
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_restore()
-            .with(always(), eq(1), always())
-            .returning(|_, _, _| Ok(()));
+            .expect_restore_revision()
+            .withf(|_, _, revision| *revision == 1)
+            .return_once(move |_, _, _| Ok(restored_book));
         let interactor = BookCommandInteractor::new(
             book_repository,
             MockAuthorRepository::new(),
-            event_repository,
+            MockBookEventRepository::new(),
             make_transaction_manager(),
         );
-        let before = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
 
-        let result = interactor.restore("user1", 1).await.unwrap();
-        let after = normalize_timestamp_for_persistence(OffsetDateTime::now_utc());
+        let result = interactor
+            .restore("user1", &book_id.to_string(), 1)
+            .await
+            .unwrap();
 
         let restored = result.value.unwrap();
         assert_eq!(restored.title, "Old Title");
-        assert_eq!(restored.created_at, OffsetDateTime::UNIX_EPOCH);
-        assert!(restored.updated_at >= before);
-        assert!(restored.updated_at <= after);
     }
 
     #[tokio::test]
-    async fn restore_book_delete_event_restores_absence() {
-        let event = make_book_event(Uuid::new_v4(), EventOperation::Delete);
-        let mut event_repository = MockBookEventRepository::new();
-        event_repository
-            .expect_find_by_event_id()
-            .return_once(move |_, _| Ok(Some(event)));
+    async fn restore_book_rejects_invalid_revision_before_transaction() {
+        let book_id = Uuid::new_v4();
         let mut book_repository = MockBookRepository::new();
-        book_repository
-            .expect_restore()
-            .withf(|_, event_id, book| *event_id == 1 && book.is_none())
-            .returning(|_, _, _| Ok(()));
+        book_repository.expect_restore_revision().times(0);
         let interactor = BookCommandInteractor::new(
             book_repository,
             MockAuthorRepository::new(),
-            event_repository,
-            make_transaction_manager(),
+            MockBookEventRepository::new(),
+            MockTransactionManager::new(),
         );
 
-        let result = interactor.restore("user1", 1).await.unwrap();
+        let result = interactor.restore("user1", &book_id.to_string(), 0).await;
 
-        assert!(result.value.is_none());
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
     }
 
     #[tokio::test]
     async fn restore_book_repository_failure_does_not_commit() {
-        let event = make_book_event(Uuid::new_v4(), EventOperation::Snapshot);
-        let mut event_repository = MockBookEventRepository::new();
-        event_repository
-            .expect_find_by_event_id()
-            .return_once(move |_, _| Ok(Some(event)));
+        let book_id = Uuid::new_v4();
         let mut book_repository = MockBookRepository::new();
         book_repository
-            .expect_restore()
+            .expect_restore_revision()
             .returning(|_, _, _| Err(DomainError::Unexpected("restore failed".to_string())));
         let interactor = BookCommandInteractor::new(
             book_repository,
             MockAuthorRepository::new(),
-            event_repository,
+            MockBookEventRepository::new(),
             make_begin_only_transaction_manager(),
         );
 
-        let result = interactor.restore("user1", 1).await;
+        let result = interactor.restore("user1", &book_id.to_string(), 1).await;
 
         assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
     }

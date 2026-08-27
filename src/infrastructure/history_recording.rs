@@ -81,6 +81,8 @@ pub async fn append_book_revision(
     .execute(tx.as_mut())
     .await?;
 
+    tx.set_revision_number(revision_number);
+
     Ok(revision_number)
 }
 
@@ -153,6 +155,8 @@ pub async fn append_author_revision(
     .bind(revision_number)
     .execute(tx.as_mut())
     .await?;
+
+    tx.set_revision_number(revision_number);
 
     Ok(revision_number)
 }

@@ -56,6 +56,7 @@ pub trait AuthorCommandUseCase: Send + Sync + 'static {
     async fn restore(
         &self,
         user_id: &str,
-        event_id: i64,
+        author_id: &str,
+        revision_number: i32,
     ) -> Result<RestoreAuthorResultDto, UseCaseError>;
 }

@@ -65,4 +65,10 @@ pub trait BookRepository: Send + Sync + 'static {
         source_event_id: i64,
         book: Option<Book>,
     ) -> Result<(), DomainError>;
+    async fn restore_revision(
+        &self,
+        tx: &mut Self::Transaction,
+        book_id: &BookId,
+        revision_number: i32,
+    ) -> Result<Book, DomainError>;
 }

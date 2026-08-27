@@ -6,38 +6,131 @@ use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
     use_case::traits::{
         author::AuthorQueryUseCase, book::BookQueryUseCase, event::EventQueryUseCase,
-        user::UserQueryUseCase,
+        history::HistoryQueryUseCase, user::UserQueryUseCase,
     },
 };
 
-use super::object::{Author, AuthorEventEntry, Book, BookEventEntry, EventSet, User};
+use super::object::{
+    Author, AuthorEventEntry, AuthorRevision, Book, BookEventEntry, BookRevision, EventSet,
+    Operation, User,
+};
 
-pub struct Query<UQ, BQ, AQ, EQ> {
+pub struct Query<UQ, BQ, AQ, EQ, HQ> {
     user_query: UQ,
     book_query: BQ,
     author_query: AQ,
     event_query: EQ,
+    history_query: HQ,
 }
 
-impl<UQ, BQ, AQ, EQ> Query<UQ, BQ, AQ, EQ> {
-    pub fn new(user_query: UQ, book_query: BQ, author_query: AQ, event_query: EQ) -> Self {
+impl<UQ, BQ, AQ, EQ, HQ> Query<UQ, BQ, AQ, EQ, HQ> {
+    pub fn new(
+        user_query: UQ,
+        book_query: BQ,
+        author_query: AQ,
+        event_query: EQ,
+        history_query: HQ,
+    ) -> Self {
         Self {
             user_query,
             book_query,
             author_query,
             event_query,
+            history_query,
         }
     }
 }
 
 #[Object]
-impl<UQ, BQ, AQ, EQ> Query<UQ, BQ, AQ, EQ>
+impl<UQ, BQ, AQ, EQ, HQ> Query<UQ, BQ, AQ, EQ, HQ>
 where
     UQ: UserQueryUseCase,
     BQ: BookQueryUseCase,
     AQ: AuthorQueryUseCase,
     EQ: EventQueryUseCase,
+    HQ: HistoryQueryUseCase,
 {
+    async fn operations(&self, ctx: &Context<'_>) -> Result<Vec<Operation>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        Ok(self
+            .history_query
+            .operations(&claims.sub)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    async fn operation(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+    ) -> Result<Option<Operation>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        Ok(self
+            .history_query
+            .operation(&claims.sub, id.as_str())
+            .await?
+            .map(Into::into))
+    }
+
+    async fn book_revisions(
+        &self,
+        ctx: &Context<'_>,
+        book_id: ID,
+    ) -> Result<Vec<BookRevision>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        Ok(self
+            .history_query
+            .book_revisions(&claims.sub, book_id.as_str())
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    async fn book_revision(
+        &self,
+        ctx: &Context<'_>,
+        book_id: ID,
+        revision_number: i32,
+    ) -> Result<Option<BookRevision>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        Ok(self
+            .history_query
+            .book_revision(&claims.sub, book_id.as_str(), revision_number)
+            .await?
+            .map(Into::into))
+    }
+
+    async fn author_revisions(
+        &self,
+        ctx: &Context<'_>,
+        author_id: ID,
+    ) -> Result<Vec<AuthorRevision>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        Ok(self
+            .history_query
+            .author_revisions(&claims.sub, author_id.as_str())
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    async fn author_revision(
+        &self,
+        ctx: &Context<'_>,
+        author_id: ID,
+        revision_number: i32,
+    ) -> Result<Option<AuthorRevision>, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        Ok(self
+            .history_query
+            .author_revision(&claims.sub, author_id.as_str(), revision_number)
+            .await?
+            .map(Into::into))
+    }
     async fn logged_in_user(&self, ctx: &Context<'_>) -> Result<Option<User>, PresentationalError> {
         let claims = get_claims(ctx)?;
         let user = self.user_query.find_by_id(&claims.sub).await?;

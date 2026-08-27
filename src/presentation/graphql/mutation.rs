@@ -58,8 +58,8 @@ where
 
         Ok(BookMutationPayload::new(
             book.value.into(),
-            ID(book.event_set_id),
-            ID(book.event_id.to_string()),
+            ID(book.operation_id),
+            book.revision_number,
         ))
     }
 
@@ -76,8 +76,8 @@ where
 
         Ok(BookMutationPayload::new(
             book.value.into(),
-            ID(book.event_set_id),
-            ID(book.event_id.to_string()),
+            ID(book.operation_id),
+            book.revision_number,
         ))
     }
 
@@ -94,7 +94,7 @@ where
 
         Ok(DeleteBookPayload {
             book_id: ID(result.value),
-            event_set_id: ID(result.event_set_id),
+            operation_id: ID(result.operation_id),
         })
     }
 
@@ -110,8 +110,8 @@ where
             .await?;
         Ok(AuthorMutationPayload::new(
             author.value.into(),
-            ID(author.event_set_id),
-            ID(author.event_id.to_string()),
+            ID(author.operation_id),
+            author.revision_number,
         ))
     }
 
@@ -127,8 +127,8 @@ where
             .await?;
         Ok(AuthorMutationPayload::new(
             author.value.into(),
-            ID(author.event_set_id),
-            ID(author.event_id.to_string()),
+            ID(author.operation_id),
+            author.revision_number,
         ))
     }
 
@@ -144,7 +144,7 @@ where
             .await?;
         Ok(DeleteAuthorPayload {
             author_id: ID(result.value),
-            event_set_id: ID(result.event_set_id),
+            operation_id: ID(result.operation_id),
         })
     }
 
@@ -167,43 +167,43 @@ where
             .await?;
         Ok(MergeAuthorPayload {
             author: result.value.into(),
-            event_set_id: ID(result.event_set_id),
+            operation_id: ID(result.operation_id),
         })
     }
 
     async fn restore_book(
         &self,
         ctx: &Context<'_>,
-        event_id: ID,
+        book_id: ID,
+        revision_number: i32,
     ) -> Result<RestoreBookPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let eid: i64 = event_id.parse().map_err(|_| {
-            PresentationalError::OtherError(std::sync::Arc::new(anyhow::anyhow!(
-                "event_id must be an integer"
-            )))
-        })?;
-        let book = self.book_command.restore(&claims.sub, eid).await?;
+        let book = self
+            .book_command
+            .restore(&claims.sub, book_id.as_str(), revision_number)
+            .await?;
         Ok(RestoreBookPayload {
             book: book.value.map(Book::from),
-            event_set_id: ID(book.event_set_id),
+            operation_id: ID(book.operation_id),
+            revision_number: book.revision_number,
         })
     }
 
     async fn restore_author(
         &self,
         ctx: &Context<'_>,
-        event_id: ID,
+        author_id: ID,
+        revision_number: i32,
     ) -> Result<RestoreAuthorPayload, PresentationalError> {
         let claims = get_claims(ctx)?;
-        let eid: i64 = event_id.parse().map_err(|_| {
-            PresentationalError::OtherError(std::sync::Arc::new(anyhow::anyhow!(
-                "event_id must be an integer"
-            )))
-        })?;
-        let author = self.author_command.restore(&claims.sub, eid).await?;
+        let author = self
+            .author_command
+            .restore(&claims.sub, author_id.as_str(), revision_number)
+            .await?;
         Ok(RestoreAuthorPayload {
             author: author.value.map(Author::from),
-            event_set_id: ID(author.event_set_id),
+            operation_id: ID(author.operation_id),
+            revision_number: author.revision_number,
         })
     }
 
@@ -220,7 +220,7 @@ where
             .await?;
         Ok(ImportBooksPayload {
             books: books.value.into_iter().map(Book::from).collect(),
-            event_set_id: ID(books.event_set_id),
+            operation_id: ID(books.operation_id),
         })
     }
 

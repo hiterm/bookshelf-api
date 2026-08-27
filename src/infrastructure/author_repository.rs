@@ -644,6 +644,84 @@ impl AuthorRepository for PgAuthorRepository {
         Ok(())
     }
 
+    async fn restore_revision(
+        &self,
+        tx: &mut Self::Transaction,
+        author_id: &AuthorId,
+        revision_number: i32,
+    ) -> Result<Author, DomainError> {
+        let user_id = tx.user_id().clone();
+        let source: Option<(String, String, OffsetDateTime)> = sqlx::query_as(
+            "SELECT name, yomi, author_created_at
+             FROM author_revision
+             WHERE user_id = $1 AND author_id = $2 AND revision_number = $3
+             FOR UPDATE",
+        )
+        .bind(user_id.as_str())
+        .bind(author_id.to_uuid())
+        .bind(revision_number)
+        .fetch_optional(tx.as_mut())
+        .await?;
+        let (name, yomi, created_at) = source.ok_or_else(|| DomainError::NotFound {
+            entity_type: "author_revision",
+            entity_id: format!("{author_id}:{revision_number}"),
+            user_id: user_id.as_str().to_owned(),
+        })?;
+        let before_revision_number: Option<i32> = sqlx::query_scalar(
+            "SELECT MAX(revision.revision_number)
+             FROM author_revision revision
+             WHERE revision.user_id = $1 AND revision.author_id = $2
+               AND EXISTS (
+                 SELECT 1 FROM author current
+                 WHERE current.user_id = $1 AND current.id = $2
+               )",
+        )
+        .bind(user_id.as_str())
+        .bind(author_id.to_uuid())
+        .fetch_one(tx.as_mut())
+        .await?;
+        let author = Author::new_with_timestamps(
+            author_id.clone(),
+            AuthorName::new(name)?,
+            yomi,
+            created_at,
+            OffsetDateTime::now_utc(),
+        )?;
+        sqlx::query(
+            "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (id, user_id) DO UPDATE SET
+               name = EXCLUDED.name, yomi = EXCLUDED.yomi,
+               created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at",
+        )
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(author.name().as_str())
+        .bind(author.yomi())
+        .bind(author.created_at())
+        .bind(author.updated_at())
+        .execute(tx.as_mut())
+        .await?;
+        sqlx::query(
+            "INSERT INTO author_event
+               (event_set_id, operation, author_id, user_id, name, yomi,
+                author_created_at, author_updated_at, extra)
+             VALUES ($1, 'restore', $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(tx.event_set_id())
+        .bind(author.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(author.name().as_str())
+        .bind(author.yomi())
+        .bind(author.created_at())
+        .bind(author.updated_at())
+        .bind(json!({"version": 2, "source_revision_number": revision_number}))
+        .execute(tx.as_mut())
+        .await?;
+        append_author_revision(tx, &author, before_revision_number).await?;
+        Ok(author)
+    }
+
     async fn find_by_ids_as_hash_map(
         &self,
         user_id: &UserId,
@@ -725,6 +803,7 @@ mod tests {
             entity::{
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
                 event::EventSetOperation,
+                operation::NewOperation,
                 user::User,
             },
             error::DomainError,
@@ -1506,6 +1585,45 @@ mod tests {
                 .await?
                 .is_some()
         );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn restore_revision_appends_fresh_owned_revision(pool: PgPool) -> anyhow::Result<()> {
+        let users = PgUserRepository::new(pool.clone());
+        let repository = PgAuthorRepository::new(pool.clone());
+        let user_id = prepare_user(&users, "restore-user").await?;
+        let author_id = AuthorId::new(Uuid::new_v4());
+        let original = new_author(author_id.clone(), AuthorName::new("Original".to_string())?)?;
+        create_author(&pool, &repository, &user_id, &original).await?;
+        let mut changed = original.clone();
+        changed.update(
+            crate::domain::entity::author::AuthorUpdate {
+                name: AuthorName::new("Changed".to_string())?,
+                yomi: Some(String::new()),
+            },
+            OffsetDateTime::now_utc(),
+        );
+        update_author(&pool, &repository, &user_id, &changed).await?;
+
+        let manager = PgTransactionManager::new(pool.clone());
+        let mut tx = manager
+            .begin_operation(&user_id, &NewOperation::restore_author(1))
+            .await?;
+        let restored = repository.restore_revision(&mut tx, &author_id, 1).await?;
+        let operation_id = tx.operation_id();
+        manager.commit(tx).await?;
+
+        assert_eq!(restored.name().as_str(), "Original");
+        let change: (Option<i32>, Option<i32>) = sqlx::query_as(
+            "SELECT before_revision_number, after_revision_number
+             FROM author_operation_change WHERE operation_id = $1 AND user_id = $2",
+        )
+        .bind(operation_id.to_uuid())
+        .bind(user_id.as_str())
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(change, (Some(2), Some(3)));
         Ok(())
     }
 }
