@@ -217,6 +217,7 @@ type ImportBookPreview {
 type ImportBooksPayload {
 	books: [Book!]!
 	operationId: ID!
+	eventSetId: ID! @deprecated(reason: "Use operationId")
 }
 
 type ImportBooksPreview {
@@ -231,6 +232,7 @@ scalar JSON
 type MergeAuthorPayload {
 	author: Author!
 	operationId: ID!
+	eventSetId: ID! @deprecated(reason: "Use operationId")
 }
 
 type Mutation {
@@ -330,6 +332,10 @@ type User {
 	id: ID!
 }
 
+"""
+Marks an element of a GraphQL schema as no longer supported.
+"""
+directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION | ENUM_VALUE
 """
 Directs the executor to include this field or fragment only when the `if` argument is true.
 """
