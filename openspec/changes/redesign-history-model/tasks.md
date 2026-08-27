@@ -5,7 +5,7 @@
 - [x] 1.3 Add migration tables, keys, ownership constraints, composite revision foreign keys, query indexes, and set-based per-user baseline Operations/Revisions/changes
 - [x] 1.4 Add migration integration coverage for baseline Book scalars, Book Author references, Author state, ownership, empty users, and ignored legacy history
 - [x] 1.5 Replace transaction `event_set_id` context with Operation ID and make `TransactionManager::begin` create the typed Operation
-- [ ] 1.6 Add repository interfaces and PostgreSQL adapters for owned Operation and Book/Author Revision/change queries, including batch lookup
+- [x] 1.6 Add repository interfaces and PostgreSQL adapters for owned Operation and Book/Author Revision/change queries, including batch lookup
 - [x] 1.7 Migrate single Book create, update, and delete repositories to atomically allocate Revisions and record OperationChanges
 - [x] 1.8 Migrate single Author create, update, delete, and find-or-create repositories to atomically allocate Revisions and record OperationChanges
 - [ ] 1.9 Migrate set-based import and preview paths to record all created Book/Author Revisions and changes under one ImportBooks Operation with complete rollback tests
