@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::domain::entity::{author::AuthorId, user::UserId};
+use crate::domain::entity::{author::AuthorId, event::EventSetOperation, user::UserId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OperationId(Uuid);
@@ -148,6 +148,25 @@ impl NewOperation {
             }),
             undo_of_operation_id: None,
         }
+    }
+}
+
+impl From<EventSetOperation> for NewOperation {
+    fn from(value: EventSetOperation) -> Self {
+        let operation_type = match value {
+            EventSetOperation::CreateBook => OperationType::CreateBook,
+            EventSetOperation::UpdateBook => OperationType::UpdateBook,
+            EventSetOperation::DeleteBook => OperationType::DeleteBook,
+            EventSetOperation::RestoreBook => OperationType::RestoreBook,
+            EventSetOperation::CreateAuthor => OperationType::CreateAuthor,
+            EventSetOperation::UpdateAuthor => OperationType::UpdateAuthor,
+            EventSetOperation::DeleteAuthor => OperationType::DeleteAuthor,
+            EventSetOperation::RestoreAuthor => OperationType::RestoreAuthor,
+            EventSetOperation::ImportBooks => OperationType::ImportBooks,
+            EventSetOperation::SnapshotAll => OperationType::Baseline,
+            EventSetOperation::MergeAuthor => OperationType::MergeAuthor,
+        };
+        Self::simple(operation_type)
     }
 }
 

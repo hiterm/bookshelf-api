@@ -31,7 +31,7 @@ Implementation starts from validated `main` commit `6c62075bb6cfb49612d68a457508
 
 `operation` has a UUID, owner, type, nullable JSONB detail, optional `undo_of_operation_id`, and database-managed creation time. Operation type is represented as a closed Rust enum; its detail is converted at the boundary to/from typed per-operation structures. Operation rows never contain entity snapshots.
 
-Book and Author revisions use `(entity_id, revision_number)` as their identity. Revision numbers are positive, start at 1 independently per entity, and increase monotonically. Avoiding a revision UUID makes the public restore source and ordering explicit. A pointer on the live entity is omitted initially; the latest revision is found by maximum revision number under an entity/owner lock.
+Within an authenticated tenant, Book and Author revisions use `(entity_id, revision_number)` as their API/domain identity. Because current entity primary keys permit the same UUID for different users, database primary and foreign keys additionally include `user_id`: `(user_id, entity_id, revision_number)`. Revision numbers are positive, start at 1 independently per owned entity, and increase monotonically. Avoiding a revision UUID makes the public restore source and ordering explicit. A pointer on the live entity is omitted initially; the latest revision is found by maximum revision number under an entity/owner lock.
 
 Alternative considered: keep Event IDs as revision identity. Rejected because a global surrogate conflates audit ordering with an entity's own version sequence and perpetuates the old model.
 

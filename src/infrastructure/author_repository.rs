@@ -18,7 +18,12 @@ use crate::domain::{
         AuthorRepository, DeleteAuthorEventExtra, FindOrCreateAuthorsResult,
     },
 };
-use crate::infrastructure::transaction::PgTransaction;
+use crate::infrastructure::{
+    history_recording::{
+        append_author_deletion, append_author_revision, latest_author_revision_number,
+    },
+    transaction::PgTransaction,
+};
 
 #[derive(sqlx::FromRow)]
 struct AuthorRow {
@@ -116,6 +121,8 @@ impl AuthorRepository for PgAuthorRepository {
         .fetch_one(tx.as_mut())
         .await?;
 
+        append_author_revision(tx, author, None).await?;
+
         Ok(EventId::from(event_id))
     }
 
@@ -170,6 +177,31 @@ impl AuthorRepository for PgAuthorRepository {
             .bind(&snap.yomi)
             .bind(snap.created_at)
             .bind(snap.updated_at)
+            .execute(tx.as_mut())
+            .await?;
+
+            sqlx::query(
+                "WITH inserted_revision AS (
+                   INSERT INTO author_revision (
+                     author_id, revision_number, user_id, name, yomi,
+                     author_created_at, author_updated_at
+                   ) VALUES ($1, 1, $2, $3, $4, $5, $6)
+                   RETURNING author_id, revision_number
+                 )
+                 INSERT INTO author_operation_change (
+                   operation_id, user_id, author_id, before_revision_number,
+                   after_revision_number
+                 )
+                 SELECT $7, $2, author_id, NULL, revision_number
+                 FROM inserted_revision",
+            )
+            .bind(author_id.to_uuid())
+            .bind(user_id.as_str())
+            .bind(name)
+            .bind(&snap.yomi)
+            .bind(snap.created_at)
+            .bind(snap.updated_at)
+            .bind(tx.operation_id().to_uuid())
             .execute(tx.as_mut())
             .await?;
         }
@@ -233,6 +265,36 @@ impl AuthorRepository for PgAuthorRepository {
             .bind(&yomis)
             .bind(&created_ats)
             .bind(&updated_ats)
+            .execute(tx.as_mut())
+            .await?;
+
+            sqlx::query(
+                "WITH inserted_revisions AS (
+                   INSERT INTO author_revision (
+                     author_id, revision_number, user_id, name, yomi,
+                     author_created_at, author_updated_at
+                   )
+                   SELECT author_id, 1, $1, name, yomi, created_at, updated_at
+                   FROM UNNEST(
+                     $2::uuid[], $3::text[], $4::text[], $5::timestamptz[],
+                     $6::timestamptz[]
+                   ) AS input(author_id, name, yomi, created_at, updated_at)
+                   RETURNING author_id, revision_number
+                 )
+                 INSERT INTO author_operation_change (
+                   operation_id, user_id, author_id, before_revision_number,
+                   after_revision_number
+                 )
+                 SELECT $7, $1, author_id, NULL, revision_number
+                 FROM inserted_revisions",
+            )
+            .bind(user_id.as_str())
+            .bind(&author_ids)
+            .bind(&event_names)
+            .bind(&yomis)
+            .bind(&created_ats)
+            .bind(&updated_ats)
+            .bind(tx.operation_id().to_uuid())
             .execute(tx.as_mut())
             .await?;
         }
@@ -352,6 +414,9 @@ impl AuthorRepository for PgAuthorRepository {
             }
         }
 
+        let before_revision_number =
+            latest_author_revision_number(tx, author.id().to_uuid()).await?;
+
         // Fetch post-update state and DB-managed timestamps.
         let snap: AuthorSnapshotRow = sqlx::query_as(
             "SELECT name, yomi, created_at, updated_at FROM author WHERE id = $1 AND user_id = $2",
@@ -378,6 +443,8 @@ impl AuthorRepository for PgAuthorRepository {
         .fetch_one(tx.as_mut())
         .await?;
 
+        append_author_revision(tx, author, Some(before_revision_number)).await?;
+
         Ok(EventId::from(event_id))
     }
 
@@ -403,6 +470,8 @@ impl AuthorRepository for PgAuthorRepository {
                 user_id: user_id.to_owned().into_string(),
             });
         }
+
+        let before_revision_number = latest_author_revision_number(tx, author_id.to_uuid()).await?;
 
         let (count,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM book_author WHERE user_id = $1 AND author_id = $2",
@@ -460,6 +529,8 @@ impl AuthorRepository for PgAuthorRepository {
         .bind(extra)
         .execute(tx.as_mut())
         .await?;
+
+        append_author_deletion(tx, author_id.to_uuid(), before_revision_number).await?;
 
         Ok(())
     }

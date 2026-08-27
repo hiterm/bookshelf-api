@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Entity revisions are complete append-only snapshots
-The system SHALL store complete Book and Author snapshots as append-only Revisions identified by entity ID and a positive revision number, while the ordinary entity tables remain authoritative current state.
+The system SHALL store complete Book and Author snapshots as append-only Revisions identified within an authenticated tenant by entity ID and a positive revision number, while the ordinary entity tables remain authoritative current state. Database keys MUST include the owner so equal entity UUIDs belonging to different users do not collide.
 
 #### Scenario: Book revision is recorded
 - **WHEN** a Book current state is created or changed
@@ -55,4 +55,3 @@ The system SHALL expose list and exact lookup queries for Book and Author Revisi
 #### Scenario: Revision belongs to another user
 - **WHEN** a client requests another user's entity revision
 - **THEN** the system does not return it
-

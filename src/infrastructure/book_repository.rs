@@ -19,7 +19,12 @@ use crate::{
         error::DomainError,
         repository::book_repository::BookRepository,
     },
-    infrastructure::transaction::PgTransaction,
+    infrastructure::{
+        history_recording::{
+            append_book_deletion, append_book_revision, latest_book_revision_number,
+        },
+        transaction::PgTransaction,
+    },
 };
 
 #[derive(sqlx::FromRow)]
@@ -219,6 +224,8 @@ impl BookRepository for PgBookRepository {
             .await?;
         }
 
+        append_book_revision(tx, book, None).await?;
+
         Ok(EventId::from(event_id))
     }
 
@@ -348,6 +355,71 @@ impl BookRepository for PgBookRepository {
             )
             .bind(&event_ids)
             .bind(&author_ids)
+            .execute(tx.as_mut())
+            .await?;
+        }
+
+        sqlx::query(
+            "WITH inserted_revisions AS (
+               INSERT INTO book_revision (
+                 book_id, revision_number, user_id, title, isbn, read, owned,
+                 priority, format, store, book_created_at, book_updated_at
+               )
+               SELECT id, 1, $1, title, isbn, read, owned, priority, format,
+                      store, created_at, updated_at
+               FROM UNNEST(
+                 $2::uuid[], $3::text[], $4::text[], $5::bool[], $6::bool[],
+                 $7::int4[], $8::text[], $9::text[], $10::timestamptz[],
+                 $11::timestamptz[]
+               ) AS input(id, title, isbn, read, owned, priority, format, store,
+                          created_at, updated_at)
+               RETURNING book_id, revision_number
+             )
+             INSERT INTO book_operation_change (
+               operation_id, user_id, book_id, before_revision_number, after_revision_number
+             )
+             SELECT $12, $1, book_id, NULL, revision_number FROM inserted_revisions",
+        )
+        .bind(user_id.as_str())
+        .bind(&ids)
+        .bind(&titles)
+        .bind(&isbns)
+        .bind(&reads)
+        .bind(&owneds)
+        .bind(&priorities)
+        .bind(&formats)
+        .bind(&stores)
+        .bind(&created_ats)
+        .bind(&updated_ats)
+        .bind(tx.operation_id().to_uuid())
+        .execute(tx.as_mut())
+        .await?;
+
+        let revision_relationships: Vec<(Uuid, Uuid)> = books
+            .iter()
+            .flat_map(|book| {
+                book.author_ids()
+                    .iter()
+                    .map(move |author_id| (book.id().to_uuid(), author_id.to_uuid()))
+            })
+            .collect();
+        if !revision_relationships.is_empty() {
+            let revision_book_ids: Vec<_> = revision_relationships
+                .iter()
+                .map(|(book_id, _)| *book_id)
+                .collect();
+            let revision_author_ids: Vec<_> = revision_relationships
+                .iter()
+                .map(|(_, author_id)| *author_id)
+                .collect();
+            sqlx::query(
+                "INSERT INTO book_revision_author (user_id, book_id, revision_number, author_id)
+                 SELECT $1, book_id, 1, author_id
+                 FROM UNNEST($2::uuid[], $3::uuid[]) AS input(book_id, author_id)",
+            )
+            .bind(user_id.as_str())
+            .bind(&revision_book_ids)
+            .bind(&revision_author_ids)
             .execute(tx.as_mut())
             .await?;
         }
@@ -600,6 +672,8 @@ impl BookRepository for PgBookRepository {
             }
         }
 
+        let before_revision_number = latest_book_revision_number(tx, book.id().to_uuid()).await?;
+
         let author_ids: Vec<Uuid> = book
             .author_ids()
             .iter()
@@ -661,6 +735,8 @@ impl BookRepository for PgBookRepository {
             .execute(tx.as_mut())
             .await?;
         }
+
+        append_book_revision(tx, book, Some(before_revision_number)).await?;
 
         Ok(EventId::from(event_id))
     }
@@ -828,6 +904,72 @@ impl BookRepository for PgBookRepository {
             .await?;
         }
 
+        sqlx::query(
+            "WITH next_revisions AS (
+               SELECT input.*, latest.revision_number AS before_revision_number,
+                      latest.revision_number + 1 AS revision_number
+               FROM UNNEST(
+                 $2::uuid[], $3::text[], $4::text[], $5::bool[], $6::bool[],
+                 $7::int4[], $8::text[], $9::text[], $10::timestamptz[],
+                 $11::timestamptz[]
+               ) AS input(id, title, isbn, read, owned, priority, format, store,
+                          created_at, updated_at)
+               CROSS JOIN LATERAL (
+                 SELECT MAX(revision_number) AS revision_number
+                 FROM book_revision
+                 WHERE book_id = input.id AND user_id = $1
+               ) latest
+             ), inserted_revisions AS (
+               INSERT INTO book_revision (
+                 book_id, revision_number, user_id, title, isbn, read, owned,
+                 priority, format, store, book_created_at, book_updated_at
+               )
+               SELECT id, revision_number, $1, title, isbn, read, owned, priority,
+                      format, store, created_at, updated_at
+               FROM next_revisions
+               RETURNING book_id, revision_number
+             )
+             INSERT INTO book_operation_change (
+               operation_id, user_id, book_id, before_revision_number, after_revision_number
+             )
+             SELECT $12, $1, inserted.book_id, next.before_revision_number,
+                    inserted.revision_number
+             FROM inserted_revisions inserted
+             JOIN next_revisions next ON next.id = inserted.book_id",
+        )
+        .bind(user_id.as_str())
+        .bind(&ids)
+        .bind(&titles)
+        .bind(&isbns)
+        .bind(&reads)
+        .bind(&owneds)
+        .bind(&priorities)
+        .bind(&formats)
+        .bind(&stores)
+        .bind(&created_ats)
+        .bind(&updated_ats)
+        .bind(tx.operation_id().to_uuid())
+        .execute(tx.as_mut())
+        .await?;
+
+        if !relationship_book_ids.is_empty() {
+            sqlx::query(
+                "INSERT INTO book_revision_author (user_id, book_id, revision_number, author_id)
+                 SELECT $2, input.book_id, change.after_revision_number, input.author_id
+                 FROM UNNEST($3::uuid[], $4::uuid[]) AS input(book_id, author_id)
+                 JOIN book_operation_change change
+                   ON change.operation_id = $1
+                  AND change.user_id = $2
+                  AND change.book_id = input.book_id",
+            )
+            .bind(tx.operation_id().to_uuid())
+            .bind(user_id.as_str())
+            .bind(&relationship_book_ids)
+            .bind(&author_ids)
+            .execute(tx.as_mut())
+            .await?;
+        }
+
         Ok(())
     }
 
@@ -866,6 +1008,8 @@ impl BookRepository for PgBookRepository {
             }
         }
 
+        let before_revision_number = latest_book_revision_number(tx, book_id.to_uuid()).await?;
+
         sqlx::query(
             "INSERT INTO book_event (event_set_id, operation, book_id, user_id)
              VALUES ($1, 'delete', $2, $3)",
@@ -875,6 +1019,8 @@ impl BookRepository for PgBookRepository {
         .bind(user_id.as_str())
         .execute(tx.as_mut())
         .await?;
+
+        append_book_deletion(tx, book_id.to_uuid(), before_revision_number).await?;
 
         Ok(())
     }
