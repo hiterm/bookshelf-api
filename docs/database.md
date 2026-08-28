@@ -4,7 +4,8 @@
 
 The authoritative history model stores one logical `operation`, immutable full
 `book_revision` / `author_revision` snapshots, and entity-specific
-OperationChanges. Legacy Event tables described below temporarily coexist.
+OperationChanges. Legacy Event tables described below temporarily coexist as
+read-only data until PR 3; current mutations never write them.
 
 `operation` has primary key `id` and unique `(id, user_id)` ownership identity.
 Its `type`, typed JSON `detail`, optional `undo_of_operation_id`, and timestamp

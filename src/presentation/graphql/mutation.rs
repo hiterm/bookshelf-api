@@ -167,8 +167,7 @@ where
             .await?;
         Ok(MergeAuthorPayload {
             author: result.value.into(),
-            operation_id: ID(result.operation_id.clone()),
-            event_set_id: ID(result.operation_id),
+            operation_id: ID(result.operation_id),
         })
     }
 
@@ -221,8 +220,7 @@ where
             .await?;
         Ok(ImportBooksPayload {
             books: books.value.into_iter().map(Book::from).collect(),
-            operation_id: ID(books.operation_id.clone()),
-            event_set_id: ID(books.operation_id),
+            operation_id: ID(books.operation_id),
         })
     }
 

@@ -9,7 +9,7 @@ use crate::{
         entity::{
             author::{Author, AuthorId, AuthorName, AuthorUpdate, validate_author_yomi},
             book::BookUpdate,
-            event::{EventSetOperation, NewAuthorEvent},
+            event::EventSetOperation,
             operation::NewOperation,
             user::UserId,
         },
@@ -97,7 +97,7 @@ where
 pub struct AuthorCommandInteractor<AR, BR, AER, TM> {
     author_repository: AR,
     book_repository: BR,
-    author_event_repository: AER,
+    _author_event_repository: AER,
     transaction_manager: TM,
 }
 
@@ -111,7 +111,7 @@ impl<AR, BR, AER, TM> AuthorCommandInteractor<AR, BR, AER, TM> {
         Self {
             author_repository,
             book_repository,
-            author_event_repository,
+            _author_event_repository: author_event_repository,
             transaction_manager,
         }
     }
@@ -226,12 +226,6 @@ where
                 Some(DeleteAuthorEventExtra::Merge {
                     destination_author_id: destination_id.clone(),
                 }),
-            )
-            .await?;
-        self.author_event_repository
-            .append(
-                &mut tx,
-                &NewAuthorEvent::merge_as_destination(destination_id, source_author.id()),
             )
             .await?;
         let operation_id = tx.operation_id().to_string();
@@ -395,7 +389,6 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                event::EventOperation,
             },
             error::DomainError,
             repository::{
@@ -570,7 +563,7 @@ mod tests {
         author_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(303.into()));
+            .returning(|_, _| Ok(303));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let mut author_data = CreateAuthorDto::new("Test Author".to_string());
@@ -615,9 +608,7 @@ mod tests {
     #[tokio::test]
     async fn create_author_commit_failure_returns_no_result() {
         let mut author_repository = MockAuthorRepository::new();
-        author_repository
-            .expect_create()
-            .returning(|_, _| Ok(303.into()));
+        author_repository.expect_create().returning(|_, _| Ok(303));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -695,7 +686,7 @@ mod tests {
         author_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(404.into()));
+            .returning(|_, _| Ok(404));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -730,9 +721,7 @@ mod tests {
         author_repository
             .expect_find_by_id_with_tx()
             .return_once(move |_, _, _| Ok(Some(author)));
-        author_repository
-            .expect_update()
-            .returning(|_, _| Ok(404.into()));
+        author_repository.expect_update().returning(|_, _| Ok(404));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -792,7 +781,7 @@ mod tests {
         author_repository
             .expect_update()
             .withf(|_, author| author.yomi() == "")
-            .returning(|_, _| Ok(405.into()));
+            .returning(|_, _| Ok(405));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let mut author_data =
@@ -1061,23 +1050,7 @@ mod tests {
                     )
             })
             .returning(|_, _, _| Ok(()));
-        let mut event_repository = MockAuthorEventRepository::new();
-        event_repository
-            .expect_append()
-            .withf(move |_, event| {
-                event.operation == EventOperation::MergeAsDestination
-                    && event.author_id.to_string() == destination_id
-                    && event.name.is_none()
-                    && event.yomi.is_none()
-                    && event.author_created_at.is_none()
-                    && event.author_updated_at.is_none()
-                    && event.extra
-                        == Some(serde_json::json!({
-                            "version": 1,
-                            "source_author_id": source_id,
-                        }))
-            })
-            .returning(|_, _| Ok(1.into()));
+        let event_repository = MockAuthorEventRepository::new();
         let interactor = AuthorCommandInteractor::new(
             author_repository,
             book_repository,
@@ -1204,23 +1177,7 @@ mod tests {
                         .any(|book| book.title().as_str() == "Already has destination")
             })
             .returning(|_, _| Ok(()));
-        let mut event_repository = MockAuthorEventRepository::new();
-        event_repository
-            .expect_append()
-            .withf(move |_, event| {
-                event.operation == EventOperation::MergeAsDestination
-                    && event.author_id.to_string() == destination_id
-                    && event.name.is_none()
-                    && event.yomi.is_none()
-                    && event.author_created_at.is_none()
-                    && event.author_updated_at.is_none()
-                    && event.extra
-                        == Some(serde_json::json!({
-                            "version": 1,
-                            "source_author_id": source_id,
-                        }))
-            })
-            .returning(|_, _| Ok(2.into()));
+        let event_repository = MockAuthorEventRepository::new();
         let interactor = AuthorCommandInteractor::new(
             author_repository,
             book_repository,

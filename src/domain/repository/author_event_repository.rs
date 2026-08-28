@@ -2,12 +2,7 @@ use async_trait::async_trait;
 use mockall::automock;
 
 use crate::domain::{
-    entity::{
-        author::AuthorId,
-        event::{AuthorEvent, EventId, NewAuthorEvent},
-        event_set::EventSetId,
-        user::UserId,
-    },
+    entity::{author::AuthorId, event::AuthorEvent, event_set::EventSetId, user::UserId},
     error::DomainError,
 };
 
@@ -16,11 +11,6 @@ use crate::domain::{
 pub trait AuthorEventRepository: Send + Sync + 'static {
     type Transaction: Send;
 
-    async fn append(
-        &self,
-        tx: &mut Self::Transaction,
-        event: &NewAuthorEvent,
-    ) -> Result<EventId, DomainError>;
     async fn find_by_author(
         &self,
         user_id: &UserId,

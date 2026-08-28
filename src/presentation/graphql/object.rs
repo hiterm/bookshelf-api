@@ -714,8 +714,6 @@ pub struct AuthorMutationPayload {
 pub struct MergeAuthorPayload {
     pub author: Author,
     pub operation_id: ID,
-    #[graphql(deprecation = "Use operationId")]
-    pub event_set_id: ID,
 }
 
 impl AuthorMutationPayload {
@@ -744,8 +742,6 @@ pub struct DeleteAuthorPayload {
 pub struct ImportBooksPayload {
     pub books: Vec<Book>,
     pub operation_id: ID,
-    #[graphql(deprecation = "Use operationId")]
-    pub event_set_id: ID,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]

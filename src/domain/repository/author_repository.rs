@@ -7,7 +7,6 @@ use time::OffsetDateTime;
 use crate::domain::{
     entity::{
         author::{Author, AuthorId, AuthorName},
-        event::EventId,
         user::UserId,
     },
     error::DomainError,
@@ -48,11 +47,8 @@ impl FromIterator<(String, AuthorId)> for FindOrCreateAuthorsResult {
 pub trait AuthorRepository: Send + Sync + 'static {
     type Transaction: Send;
 
-    async fn create(
-        &self,
-        tx: &mut Self::Transaction,
-        author: &Author,
-    ) -> Result<EventId, DomainError>;
+    async fn create(&self, tx: &mut Self::Transaction, author: &Author)
+    -> Result<i32, DomainError>;
     async fn find_by_id(
         &self,
         user_id: &UserId,
@@ -84,11 +80,8 @@ pub trait AuthorRepository: Send + Sync + 'static {
         names: &[AuthorName],
         created_at: OffsetDateTime,
     ) -> Result<FindOrCreateAuthorsResult, DomainError>;
-    async fn update(
-        &self,
-        tx: &mut Self::Transaction,
-        author: &Author,
-    ) -> Result<EventId, DomainError>;
+    async fn update(&self, tx: &mut Self::Transaction, author: &Author)
+    -> Result<i32, DomainError>;
     async fn record_unchanged_revision(
         &self,
         tx: &mut Self::Transaction,

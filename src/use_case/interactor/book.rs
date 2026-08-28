@@ -698,7 +698,7 @@ mod tests {
         book_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(101.into()));
+            .returning(|_, _| Ok(101));
 
         let interactor = CreateBookTestCommand::build(book_repository, make_transaction_manager());
         let book_data = CreateBookDto::new(
@@ -756,9 +756,7 @@ mod tests {
     #[tokio::test]
     async fn create_book_commit_failure_returns_no_result() {
         let mut book_repository = MockBookRepository::new();
-        book_repository
-            .expect_create()
-            .returning(|_, _| Ok(101.into()));
+        book_repository.expect_create().returning(|_, _| Ok(101));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -820,7 +818,7 @@ mod tests {
         book_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(202.into()));
+            .returning(|_, _| Ok(202));
 
         let interactor = UpdateBookTestCommand::build(book_repository, make_transaction_manager());
         let book_data = UpdateBookDto::new(
@@ -854,9 +852,7 @@ mod tests {
         book_repository
             .expect_find_by_id_with_tx()
             .return_once(move |_, _, _| Ok(Some(book)));
-        book_repository
-            .expect_update()
-            .returning(|_, _| Ok(202.into()));
+        book_repository.expect_update().returning(|_, _| Ok(202));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -1592,8 +1588,7 @@ mod import_integration_tests {
         assert_eq!(author_rows[0].0, "Existing Author");
         assert_eq!(author_rows[1].0, "New Author");
 
-        // Only the second import's New Author records an author_event (Existing
-        // Author was reused). Scope to the second import's event_set.
+        // Import writes no legacy Event/EventSet history.
         let (new_author_event_count,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM author_event ae
              JOIN event_set es ON ae.event_set_id = es.id
@@ -1603,7 +1598,7 @@ mod import_integration_tests {
         .bind(user_id.as_str())
         .fetch_one(&pool)
         .await?;
-        assert_eq!(new_author_event_count, 1);
+        assert_eq!(new_author_event_count, 0);
 
         Ok(())
     }
@@ -1641,7 +1636,7 @@ mod import_integration_tests {
     }
 
     #[sqlx::test]
-    async fn import_records_events_with_expected_fields(pool: PgPool) -> anyhow::Result<()> {
+    async fn import_records_only_operation_revision_history(pool: PgPool) -> anyhow::Result<()> {
         let user_id = prepare_user(&pool, "user1").await?;
 
         let result = interactor(&pool)
@@ -1652,55 +1647,15 @@ mod import_integration_tests {
             .await?;
         assert_eq!(result.value.len(), 1);
 
-        // event_set has the import_books row.
-        let (es_op,): (String,) = sqlx::query_as(
-            "SELECT operation FROM event_set WHERE user_id = $1 AND operation = 'import_books'",
+        let legacy_count: i64 = sqlx::query_scalar(
+            "SELECT (SELECT COUNT(*) FROM event_set WHERE user_id = $1)
+                  + (SELECT COUNT(*) FROM book_event WHERE user_id = $1)
+                  + (SELECT COUNT(*) FROM author_event WHERE user_id = $1)",
         )
         .bind(user_id.as_str())
         .fetch_one(&pool)
         .await?;
-        assert_eq!(es_op, "import_books");
-
-        // book_event records the created book.
-        let (be_op, be_title): (String, String) =
-            sqlx::query_as("SELECT operation, title FROM book_event WHERE user_id = $1")
-                .bind(user_id.as_str())
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(be_op, "create");
-        assert_eq!(be_title, "Imported Book");
-
-        let (book_event_author_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM book_event_author bea
-             JOIN book_event be ON bea.event_id = be.event_id
-             WHERE be.user_id = $1",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(book_event_author_count, 1);
-
-        // author_event records the created author.
-        let (ae_op, ae_name): (String, String) =
-            sqlx::query_as("SELECT operation, name FROM author_event WHERE user_id = $1")
-                .bind(user_id.as_str())
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(ae_op, "create");
-        assert_eq!(ae_name, "Author A");
-
-        // The book and author events share a single event_set (the import).
-        let (distinct_event_sets,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT event_set_id) FROM (
-                 SELECT event_set_id FROM book_event WHERE user_id = $1
-                 UNION ALL
-                 SELECT event_set_id FROM author_event WHERE user_id = $1
-             ) AS combined",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(distinct_event_sets, 1);
+        assert_eq!(legacy_count, 0);
 
         let (operation_id, detail): (uuid::Uuid, serde_json::Value) = sqlx::query_as(
             "SELECT id, detail FROM operation
@@ -1860,7 +1815,7 @@ mod import_integration_tests {
     }
 
     #[sqlx::test]
-    async fn import_persists_maximum_batch_with_one_event_per_book(
+    async fn import_persists_maximum_batch_without_legacy_events(
         pool: PgPool,
     ) -> anyhow::Result<()> {
         let user_id = prepare_user(&pool, "user1").await?;
@@ -1884,8 +1839,8 @@ mod import_integration_tests {
         .await?;
 
         assert_eq!(book_count, super::MAX_BOOK_BATCH as i64);
-        assert_eq!(event_count, super::MAX_BOOK_BATCH as i64);
-        assert_eq!(distinct_event_sets, 1);
+        assert_eq!(event_count, 0);
+        assert_eq!(distinct_event_sets, 0);
 
         Ok(())
     }

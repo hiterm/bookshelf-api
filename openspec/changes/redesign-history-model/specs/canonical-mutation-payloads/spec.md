@@ -33,20 +33,13 @@ The system SHALL expose the deleted entity through `bookId` or `authorId`, SHALL
 - **WHEN** an authenticated client successfully executes `deleteAuthor`
 - **THEN** the client can select `authorId` and `operationId`
 
-### Requirement: Known client migrates before Event contract removal
-The `bookshelf` client SHALL use Operation and Revision mutation metadata before `bookshelf-api` removes Event/EventSet fields. Until that client migration lands, bulk import and author merge payloads SHALL retain `eventSetId` as a deprecated alias of `operationId`; no new client SHALL depend on the alias, and it SHALL be removed with the legacy Event contract.
+### Requirement: New mutation contract is authoritative from PR 1
+All mutations SHALL expose only Operation and Revision metadata from PR 1. Legacy Event/EventSet data and read APIs MAY remain until PR 3, but mutations SHALL NOT expose `eventId` or `eventSetId` aliases and SHALL NOT write legacy history.
 
-#### Scenario: Frontend mutates an entity
-- **WHEN** the frontend creates, updates, deletes, restores, imports, merges, or undoes entities
-- **THEN** its GraphQL documents and test doubles use the canonical entity, `operationId`, and applicable `revisionNumber` fields
+#### Scenario: Existing frontend selects removed metadata
+- **WHEN** an older frontend selects `eventSetId` from any mutation after PR 1
+- **THEN** GraphQL validation fails because no compatibility alias exists
 
-#### Scenario: Existing client uses a bulk-operation payload during migration
-- **WHEN** the deployed frontend selects `eventSetId` from `importBooks` or `mergeAuthor` before its migration lands
-- **THEN** the API returns the same identifier as `operationId` through the deprecated alias without creating a second Event or Operation
-
-### Requirement: Test doubles match the canonical schema
-Frontend test doubles SHALL return the same Operation/Revision payload nesting and identifier names as the production GraphQL schema.
-
-#### Scenario: Mocked mutation responses
-- **WHEN** unit, demo-mode, or mock-API tests execute a Book or Author mutation
-- **THEN** responses expose canonical entity and Operation/Revision metadata without Event identifiers
+#### Scenario: Mutation records history while legacy tables remain
+- **WHEN** a client creates, updates, deletes, restores, imports, or merges entities before PR 3 cleanup
+- **THEN** only Operation, Revision, and OperationChange rows are written

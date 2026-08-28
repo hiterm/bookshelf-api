@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use sqlx::{PgConnection, PgPool, Postgres};
-use uuid::Uuid;
 
 use crate::domain::{
     entity::{
@@ -9,24 +8,16 @@ use crate::domain::{
         user::UserId,
     },
     error::DomainError,
-    repository::transaction::{TransactionEventSet, TransactionManager, TransactionOperation},
+    repository::transaction::{TransactionManager, TransactionOperation},
 };
 
 /// A PostgreSQL transaction carrying the Operation context generated when it
-/// was opened. The legacy EventSet id remains available only while Event
-/// writers coexist with the new history model.
+/// was opened.
 pub struct PgTransaction {
     tx: sqlx::Transaction<'static, Postgres>,
     operation_id: OperationId,
-    event_set_id: Uuid,
     user_id: UserId,
     revision_number: Option<i32>,
-}
-
-impl TransactionEventSet for PgTransaction {
-    fn event_set_id(&self) -> Uuid {
-        self.event_set_id
-    }
 }
 
 impl TransactionOperation for PgTransaction {
@@ -40,10 +31,6 @@ impl TransactionOperation for PgTransaction {
 }
 
 impl PgTransaction {
-    pub fn event_set_id(&self) -> Uuid {
-        <Self as TransactionEventSet>::event_set_id(self)
-    }
-
     pub fn operation_id(&self) -> OperationId {
         <Self as TransactionOperation>::operation_id(self)
     }
@@ -131,19 +118,9 @@ impl TransactionManager for PgTransactionManager {
         .execute(&mut *tx)
         .await?;
 
-        // Legacy Event writers still need an EventSet until PR 3 cleanup.
-        let event_set_id = Uuid::new_v4();
-        sqlx::query("INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, $3)")
-            .bind(event_set_id)
-            .bind(user_id.as_str())
-            .bind(operation.operation_type.as_str())
-            .execute(&mut *tx)
-            .await?;
-
         Ok(PgTransaction {
             tx,
             operation_id,
-            event_set_id,
             user_id: user_id.clone(),
             revision_number: None,
         })
@@ -183,7 +160,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn rollback_removes_operation_and_event_set(pool: PgPool) -> anyhow::Result<()> {
+    async fn rollback_removes_operation_without_legacy_write(pool: PgPool) -> anyhow::Result<()> {
         let user_id = user(&pool).await?;
         let manager = PgTransactionManager::new(pool.clone());
         let tx = manager
@@ -205,7 +182,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn commit_keeps_operation_and_event_set(pool: PgPool) -> anyhow::Result<()> {
+    async fn commit_keeps_operation_without_legacy_write(pool: PgPool) -> anyhow::Result<()> {
         let user_id = user(&pool).await?;
         let manager = PgTransactionManager::new(pool.clone());
         let tx = manager
@@ -217,7 +194,7 @@ mod tests {
             .bind(user_id.as_str())
             .fetch_one(&pool)
             .await?;
-        assert_eq!(count, 1);
+        assert_eq!(count, 0);
         let (operation_type,): (String,) =
             sqlx::query_as("SELECT type FROM operation WHERE user_id = $1")
                 .bind(user_id.as_str())

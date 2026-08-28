@@ -1,8 +1,9 @@
 # Operation and Revision Recording
 
 This document describes the current mutation-history architecture. Legacy
-Event/EventSet tables temporarily coexist for migration compatibility, but the
-Operation/Revision model is authoritative for new API contracts and restore.
+Operation/Revision is the authoritative write model and API contract. Legacy
+Event/EventSet tables and read paths remain temporarily until the cleanup PR,
+but no mutation writes them.
 
 ## Invariant
 
@@ -72,12 +73,13 @@ first, while exact revision lookup supports restore and nested change
 resolution. Nested Book and Author changes are loaded only when selected and
 batch by Operation IDs.
 
-## Temporary legacy coexistence
+## Temporary legacy read paths
 
-Until the cleanup PR, repositories also write legacy Event/EventSet rows so old
-internal consumers can coexist. Those identifiers are not returned by the new
-mutation contract and are not restore sources. New code must use
-Operation/Revision history.
+Until the cleanup PR, legacy Event/EventSet tables, code, and GraphQL read paths
+remain available only for history recorded before this change. They are
+read-only residuals: new mutations write only Operation/Revision history, and
+the GraphQL mutation contract exposes no Event identifiers or aliases. PR 3
+removes the residual code, API, and tables completely.
 
 ## References
 

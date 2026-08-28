@@ -12,16 +12,6 @@ use crate::domain::{
     error::DomainError,
 };
 
-pub trait TransactionEventSet {
-    fn event_set_id(&self) -> Uuid;
-}
-
-impl TransactionEventSet for () {
-    fn event_set_id(&self) -> Uuid {
-        Uuid::nil()
-    }
-}
-
 pub trait TransactionOperation {
     fn operation_id(&self) -> OperationId;
     fn revision_number(&self) -> Option<i32>;
@@ -41,7 +31,7 @@ impl TransactionOperation for () {
 #[async_trait]
 pub trait TransactionManager: Send + Sync + 'static {
     // `Send` is required so the async_trait-generated futures are `Send`.
-    type Transaction: Send + TransactionEventSet + TransactionOperation;
+    type Transaction: Send + TransactionOperation;
 
     async fn begin(
         &self,
