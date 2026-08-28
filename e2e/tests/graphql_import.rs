@@ -179,7 +179,7 @@ async fn e2e_import_books() -> Result<()> {
         "Existing Author should appear exactly once"
     );
 
-    // Verify New Author has a create event in authorEvents
+    // Legacy Event reads remain available but new imports do not write them.
     let new_author = all_authors
         .iter()
         .find(|a| a["name"].as_str() == Some("New Author"));
@@ -194,20 +194,9 @@ async fn e2e_import_books() -> Result<()> {
     let author_events = response["data"]["authorEvents"]
         .as_array()
         .context("authorEvents should be an array")?;
-    assert_eq!(
-        author_events.len(),
-        1,
-        "new author should have exactly 1 event entry"
-    );
-    assert_eq!(
-        author_events[0]["operation"].as_str(),
-        Some("create"),
-        "new author event should be create"
-    );
-    assert_eq!(
-        author_events[0]["name"].as_str(),
-        Some("New Author"),
-        "new author event name should match"
+    assert!(
+        author_events.is_empty(),
+        "new imports must not write legacy events"
     );
 
     // Cleanup
