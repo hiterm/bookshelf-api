@@ -23,11 +23,11 @@
 - [ ] 2.1 Update local `main` after PR 1 merge, record its SHA, and create a fresh `codex/` PR 2 branch
 - [ ] 2.2 Implement owned undo eligibility for create, update, delete, restore, import, and merge changes using only each affected entity's current after-state
 - [ ] 2.3 Add deterministic multi-entity locking and in-transaction revalidation for undo execution
-- [ ] 2.4 Implement inverse application that appends new Revisions for restored content, deletes creations without deleted Revisions, and records a linked Undo Operation with all changes
+- [ ] 2.4 Implement inverse application that restores Authors before Books, deletes Books before Authors, appends new Revisions for restored content, deletes creations without deleted Revisions, and records a linked Undo Operation with all changes
 - [ ] 2.5 Validate current Book Author references during undo and roll back the complete multi-entity Operation on any failure
 - [ ] 2.6 Add `undoOperation(operationId)` and decide/document whether Operation exposes computed `undoable`, while always revalidating server-side
-- [ ] 2.7 Add unit and database tests for update, create, delete, restore, import, merge, unrelated later Operations, conflicting later revisions, deleted-state matching, missing references, atomic rollback, and undo history
-- [ ] 2.8 Add/update GraphQL E2E coverage and schema assets for undo and future undo-of-undo representability
+- [ ] 2.7 Add unit and database tests for update, create, delete, restore, import, merge, related-entity restore/delete ordering, unrelated later Operations, conflicting later revisions, deleted-state matching, missing references, atomic rollback, and undo history
+- [ ] 2.8 Add/update GraphQL E2E coverage and schema assets for undo, including import/merge ordering and atomicity plus future undo-of-undo representability
 - [ ] 2.9 Run PR 2 formatting, lint, full tests, database integration, E2E, and OpenSpec validation
 - [ ] 2.10 Commit granular PR 2 changes, push, create the PR, fix CI to green, complete CodeRabbit review/replies/re-review to approval, and merge
 

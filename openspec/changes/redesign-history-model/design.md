@@ -43,7 +43,7 @@ Alternative considered: store diffs. Rejected because reads, restore, undo, sche
 
 ### Represent absence only in OperationChange
 
-`book_operation_change` and `author_operation_change` contain the operation, entity ID, nullable before revision number, and nullable after revision number. Create is `none -> rev1`, update/restore is `revN -> revN+1`, and delete is `revN -> none`. Both sides cannot be null. Nullable composite foreign keys reference the matching entity revision; ownership is enforced by repository predicates and database keys/constraints that include or validate the owning user where practical.
+`book_operation_change` and `author_operation_change` contain the operation, entity ID, nullable before revision number, and nullable after revision number. Create is `none -> rev1`, update/restore is `revN -> revN+1`, and delete is `revN -> none`. Both sides cannot be null. Nullable composite foreign keys reference the matching entity revision. Owner consistency is a mandatory invariant: database constraints include `user_id` in composite Operation and Revision foreign keys, and every repository operation is tenant-scoped.
 
 No deleted revision is created. The last full revision remains the restore source, while absence is an operation transition rather than an invented entity state.
 
@@ -73,7 +73,7 @@ The migration is transactional. Rolling back the deployment migration removes th
 
 An Operation is undoable only when it is owned, is not baseline, and every change's after-state matches current state. A non-null after revision must be the entity's current maximum revision and the entity must exist; a null after revision requires the entity to remain absent. Later Operations affecting unrelated entities do not matter.
 
-`undoOperation` begins a new `undo` Operation linked through `undo_of_operation_id`, locks every affected entity/history key in deterministic order, and repeats eligibility and reference validation. It then applies each target before-state. Restoring content appends a fresh revision; undoing a create deletes the entity and records `current -> none`. All changes commit or roll back together. Undoing an undo is not specially exposed but the model does not prohibit it.
+`undoOperation` begins a new `undo` Operation linked through `undo_of_operation_id`, locks every affected entity/history key in deterministic order, and repeats eligibility and reference validation. It then applies each target before-state. For related multi-entity Operations, restorations run Author before Book so restored Books can resolve their Authors, while deletions run Book before Author so no live Book retains a deleted Author reference. Restoring content appends a fresh revision; undoing a create deletes the entity and records `current -> none`. Import and merge E2E tests verify this ordering and that all changes commit or roll back together. Undoing an undo is not specially exposed but the model does not prohibit it.
 
 ### Replace the GraphQL history contract directly
 
