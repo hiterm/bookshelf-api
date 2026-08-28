@@ -687,7 +687,24 @@ impl AuthorRepository for PgAuthorRepository {
             created_at,
             OffsetDateTime::now_utc(),
         )?;
-        sqlx::query(
+        let conflicting_author_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (
+               SELECT 1 FROM author
+               WHERE user_id = $1 AND name = $2 AND id <> $3
+             )",
+        )
+        .bind(user_id.as_str())
+        .bind(author.name().as_str())
+        .bind(author.id().to_uuid())
+        .fetch_one(tx.as_mut())
+        .await?;
+        if conflicting_author_exists {
+            return Err(DomainError::Validation(format!(
+                "author name '{}' is already in use",
+                author.name().as_str()
+            )));
+        }
+        let upsert_result = sqlx::query(
             "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6)
              ON CONFLICT (id, user_id) DO UPDATE SET
@@ -701,7 +718,16 @@ impl AuthorRepository for PgAuthorRepository {
         .bind(author.created_at())
         .bind(author.updated_at())
         .execute(tx.as_mut())
-        .await?;
+        .await;
+        if let Err(sqlx::Error::Database(error)) = &upsert_result
+            && error.constraint() == Some("author_user_id_name_unique")
+        {
+            return Err(DomainError::Validation(format!(
+                "author name '{}' is already in use",
+                author.name().as_str()
+            )));
+        }
+        upsert_result?;
         sqlx::query(
             "INSERT INTO author_event
                (event_set_id, operation, author_id, user_id, name, yomi,
@@ -1624,6 +1650,42 @@ mod tests {
         .fetch_one(&pool)
         .await?;
         assert_eq!(change, (Some(2), Some(3)));
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn restore_revision_rejects_name_owned_by_another_author(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let users = PgUserRepository::new(pool.clone());
+        let repository = PgAuthorRepository::new(pool.clone());
+        let user_id = prepare_user(&users, "restore-conflict-user").await?;
+        let author_id = AuthorId::new(Uuid::new_v4());
+        let original = new_author(author_id.clone(), AuthorName::new("Original".to_string())?)?;
+        create_author(&pool, &repository, &user_id, &original).await?;
+        let mut changed = original.clone();
+        changed.update(
+            crate::domain::entity::author::AuthorUpdate {
+                name: AuthorName::new("Changed".to_string())?,
+                yomi: Some(String::new()),
+            },
+            OffsetDateTime::now_utc(),
+        );
+        update_author(&pool, &repository, &user_id, &changed).await?;
+        let conflicting = new_author(
+            AuthorId::new(Uuid::new_v4()),
+            AuthorName::new("Original".to_string())?,
+        )?;
+        create_author(&pool, &repository, &user_id, &conflicting).await?;
+
+        let manager = PgTransactionManager::new(pool);
+        let mut tx = manager
+            .begin_operation(&user_id, &NewOperation::restore_author(1))
+            .await?;
+        let result = repository.restore_revision(&mut tx, &author_id, 1).await;
+
+        assert!(matches!(result, Err(DomainError::Validation(_))));
+        manager.rollback(tx).await?;
         Ok(())
     }
 }

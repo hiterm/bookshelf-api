@@ -4,8 +4,8 @@
 The system SHALL expose Book and Author restore mutations that identify the entity and source revision number, copy the source snapshot into current state, and append a new Revision rather than making the historical Revision current.
 
 #### Scenario: Existing Book is restored to old content
-- **WHEN** an owner restores an existing Book at revision N from an earlier revision
-- **THEN** the current Book matches the source content and a new revision N+1 records the restored current state
+- **WHEN** an owner restores an existing Book from an earlier revision
+- **THEN** the current Book matches the source content and a revision numbered one greater than the entity's current latest revision records the restored state
 
 #### Scenario: Deleted Author is restored
 - **WHEN** an owner restores a deleted Author from its last or earlier Revision
@@ -39,4 +39,3 @@ The system MUST record a restore Operation, the new Revision, and an OperationCh
 #### Scenario: Restore recording fails
 - **WHEN** any current-state or history write for restore fails
 - **THEN** neither the restored entity nor partial restore history is committed
-

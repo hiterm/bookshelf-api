@@ -213,4 +213,26 @@ mod tests {
             .unwrap();
         assert_eq!(result[&id], vec![]);
     }
+
+    #[tokio::test]
+    async fn author_changes_parse_ids_and_preserve_empty_entries() {
+        let operation_id = OperationId::from(Uuid::new_v4());
+        let expected = operation_id.clone();
+        let expected_for_match = expected.clone();
+        let mut repository = MockHistoryRepository::new();
+        repository
+            .expect_find_author_changes_by_operation_ids()
+            .withf(move |user_id, ids| {
+                user_id.as_str() == "user1" && ids == [expected_for_match.clone()]
+            })
+            .return_once(move |_, _| Ok(HashMap::from([(operation_id, vec![])])));
+        let id = expected.to_string();
+
+        let result = HistoryQueryInteractor::new(repository)
+            .author_changes("user1", std::slice::from_ref(&id))
+            .await
+            .unwrap();
+
+        assert_eq!(result[&id], vec![]);
+    }
 }

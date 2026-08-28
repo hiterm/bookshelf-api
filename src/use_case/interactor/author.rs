@@ -547,6 +547,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restore_author_rejects_invalid_revision_before_transaction() {
+        let author_id = AuthorId::new(Uuid::new_v4());
+        let mut authors = MockAuthorRepository::new();
+        authors.expect_restore_revision().times(0);
+        let interactor = AuthorCommandInteractor::new(
+            authors,
+            MockBookRepository::new(),
+            MockAuthorEventRepository::new(),
+            MockTransactionManager::new(),
+        );
+
+        let result = interactor.restore("user1", &author_id.to_string(), 0).await;
+
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[tokio::test]
     async fn create_author_success() {
         // Given
         let mut author_repository = MockAuthorRepository::new();

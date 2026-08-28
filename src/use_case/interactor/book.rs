@@ -1422,7 +1422,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_book_success_preserves_created_at_and_refreshes_updated_at() {
+    async fn restore_book_returns_revision_state_from_repository() {
         let book_id = Uuid::new_v4();
         let mut restored_book = make_book(book_id);
         restored_book.update(

@@ -571,7 +571,7 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
     }
 
     let (_, response) = graphql_request(
-        r#"{ books { id } authors { id } eventSets { id } }"#,
+        r#"{ books { id } authors { id } operations { id } }"#,
         Some(&token),
     )
     .await?;
@@ -590,11 +590,11 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
         "invalid createAuthor request should not create authors"
     );
     assert!(
-        response["data"]["eventSets"]
+        response["data"]["operations"]
             .as_array()
-            .context("eventSets should be an array")?
+            .context("operations should be an array")?
             .is_empty(),
-        "invalid create requests should not create event sets"
+        "invalid create requests should not create operations"
     );
 
     Ok(())

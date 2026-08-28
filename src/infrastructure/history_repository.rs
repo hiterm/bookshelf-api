@@ -456,6 +456,7 @@ mod tests {
     #[sqlx::test]
     async fn revisions_and_changes_are_owned_and_batched(pool: PgPool) -> anyhow::Result<()> {
         let owner = user(&pool, "revision-owner").await?;
+        let other = user(&pool, "revision-other").await?;
         let operation_id = Uuid::new_v4();
         let book_id = Uuid::new_v4();
         let author_id = Uuid::new_v4();
@@ -475,6 +476,19 @@ mod tests {
         .execute(&pool)
         .await?;
         sqlx::query(
+            "INSERT INTO author_revision (
+               author_id, revision_number, user_id, name, yomi,
+               author_created_at, author_updated_at
+             ) VALUES
+               ($1, 2, $2, 'Author Two', '', current_timestamp, current_timestamp),
+               ($1, 7, $3, 'Other Author', '', current_timestamp, current_timestamp)",
+        )
+        .bind(author_id)
+        .bind(owner.as_str())
+        .bind(other.as_str())
+        .execute(&pool)
+        .await?;
+        sqlx::query(
             "INSERT INTO book_revision (
                book_id, revision_number, user_id, title, isbn, read, owned,
                priority, format, store, book_created_at, book_updated_at
@@ -483,6 +497,21 @@ mod tests {
         )
         .bind(book_id)
         .bind(owner.as_str())
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO book_revision (
+               book_id, revision_number, user_id, title, isbn, read, owned,
+               priority, format, store, book_created_at, book_updated_at
+             ) VALUES
+               ($1, 2, $2, 'Book Two', '', false, true, 4, 'Printed',
+                'Unknown', current_timestamp, current_timestamp),
+               ($1, 7, $3, 'Other Book', '', false, true, 4, 'Printed',
+                'Unknown', current_timestamp, current_timestamp)",
+        )
+        .bind(book_id)
+        .bind(owner.as_str())
+        .bind(other.as_str())
         .execute(&pool)
         .await?;
         sqlx::query(
@@ -526,9 +555,33 @@ mod tests {
             .expect("owned Book revision");
         assert_eq!(book_revision.title.as_str(), "Book");
         assert_eq!(book_revision.author_ids, vec![author_id.clone()]);
+        let book_revisions = repository.find_book_revisions(&owner, &book_id).await?;
+        assert_eq!(
+            book_revisions
+                .iter()
+                .map(|revision| revision.revision_number.value())
+                .collect::<Vec<_>>(),
+            vec![2, 1]
+        );
+        assert!(
+            repository
+                .find_book_revision(&owner, &book_id, RevisionNumber::try_from(7)?)
+                .await?
+                .is_none()
+        );
         let author_revisions = repository.find_author_revisions(&owner, &author_id).await?;
-        assert_eq!(author_revisions.len(), 1);
-        assert_eq!(author_revisions[0].name.as_str(), "Author");
+        assert_eq!(author_revisions.len(), 2);
+        let author_revision = repository
+            .find_author_revision(&owner, &author_id, RevisionNumber::try_from(2)?)
+            .await?
+            .expect("requested owned Author revision");
+        assert_eq!(author_revision.name.as_str(), "Author Two");
+        assert!(
+            repository
+                .find_author_revision(&owner, &author_id, RevisionNumber::try_from(7)?)
+                .await?
+                .is_none()
+        );
 
         let book_changes = repository
             .find_book_changes_by_operation_ids(&owner, std::slice::from_ref(&operation_id))
