@@ -5,15 +5,13 @@ use serde_json::Value;
 use time::OffsetDateTime;
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
-use crate::dependency_injection::{AQ, BQ, EQ, HQ};
+use crate::dependency_injection::{AQ, BQ, HQ};
 use crate::presentation::extractor::claims::Claims;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{
     BookDto, CreateBookDto, ImportAuthorPreviewDto, ImportAuthorStatus as ImportAuthorStatusDto,
     ImportBookEntryDto, ImportBookPreviewDto, ImportBooksPreviewDto, UpdateBookDto,
 };
-use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
-use crate::use_case::dto::event_set::EventSetDto;
 use crate::use_case::dto::history::{
     AuthorOperationChangeDto, AuthorRevisionDto, BookOperationChangeDto, BookRevisionDto,
     OperationDto,
@@ -21,8 +19,7 @@ use crate::use_case::dto::history::{
 use crate::use_case::traits::history::HistoryQueryUseCase;
 
 use super::loader::{
-    AuthorChangesByOperationLoader, AuthorEventsByEventSetLoader, AuthorLoader,
-    BookChangesByOperationLoader, BookEventsByEventSetLoader, BooksByAuthorLoader,
+    AuthorChangesByOperationLoader, AuthorLoader, BookChangesByOperationLoader, BooksByAuthorLoader,
 };
 
 #[derive(Clone, SimpleObject)]
@@ -572,117 +569,6 @@ impl From<ImportBookInput> for ImportBookEntryDto {
             format: input.format.into(),
             store: input.store.into(),
         }
-    }
-}
-
-#[derive(Clone, SimpleObject)]
-pub struct BookEventEntry {
-    pub event_id: ID,
-    pub event_set_id: ID,
-    pub operation: String,
-    pub book_id: ID,
-    pub title: Option<String>,
-    pub author_ids: Vec<ID>,
-    pub isbn: Option<String>,
-    pub read: Option<bool>,
-    pub owned: Option<bool>,
-    pub priority: Option<i32>,
-    pub format: Option<BookFormat>,
-    pub store: Option<BookStore>,
-    pub book_created_at: Option<i64>,
-    pub book_updated_at: Option<i64>,
-    pub changed_at: i64,
-    pub extra: Option<Json<Value>>,
-}
-
-impl From<BookEventDto> for BookEventEntry {
-    fn from(dto: BookEventDto) -> Self {
-        Self {
-            event_id: ID(dto.event_id.to_string()),
-            event_set_id: ID(dto.event_set_id),
-            operation: dto.operation,
-            book_id: ID(dto.book_id),
-            title: dto.title,
-            author_ids: dto.author_ids.into_iter().map(ID).collect(),
-            isbn: dto.isbn,
-            read: dto.read,
-            owned: dto.owned,
-            priority: dto.priority,
-            format: dto.format.map(Into::into),
-            store: dto.store.map(Into::into),
-            book_created_at: dto.book_created_at.map(|t| t.unix_timestamp()),
-            book_updated_at: dto.book_updated_at.map(|t| t.unix_timestamp()),
-            changed_at: dto.changed_at.unix_timestamp(),
-            extra: dto.extra.map(Json),
-        }
-    }
-}
-
-#[derive(Clone, SimpleObject)]
-pub struct AuthorEventEntry {
-    pub event_id: ID,
-    pub event_set_id: ID,
-    pub operation: String,
-    pub author_id: ID,
-    pub name: Option<String>,
-    pub yomi: Option<String>,
-    pub author_created_at: Option<i64>,
-    pub author_updated_at: Option<i64>,
-    pub changed_at: i64,
-    pub extra: Option<Json<Value>>,
-}
-
-impl From<AuthorEventDto> for AuthorEventEntry {
-    fn from(dto: AuthorEventDto) -> Self {
-        Self {
-            event_id: ID(dto.event_id.to_string()),
-            event_set_id: ID(dto.event_set_id),
-            operation: dto.operation,
-            author_id: ID(dto.author_id),
-            name: dto.name,
-            yomi: dto.yomi,
-            author_created_at: dto.author_created_at.map(|t| t.unix_timestamp()),
-            author_updated_at: dto.author_updated_at.map(|t| t.unix_timestamp()),
-            changed_at: dto.changed_at.unix_timestamp(),
-            extra: dto.extra.map(Json),
-        }
-    }
-}
-
-#[derive(SimpleObject)]
-#[graphql(complex)]
-pub struct EventSet {
-    pub id: ID,
-    pub operation: String,
-    pub created_at: i64,
-}
-
-impl From<EventSetDto> for EventSet {
-    fn from(dto: EventSetDto) -> Self {
-        Self {
-            id: ID(dto.id),
-            operation: dto.operation,
-            created_at: dto.created_at.unix_timestamp(),
-        }
-    }
-}
-
-#[ComplexObject]
-impl EventSet {
-    async fn book_events(&self, ctx: &Context<'_>) -> Result<Vec<BookEventEntry>> {
-        let loader = ctx.data_unchecked::<DataLoader<BookEventsByEventSetLoader<EQ>>>();
-        Ok(loader
-            .load_one(self.id.to_string())
-            .await?
-            .unwrap_or_default())
-    }
-
-    async fn author_events(&self, ctx: &Context<'_>) -> Result<Vec<AuthorEventEntry>> {
-        let loader = ctx.data_unchecked::<DataLoader<AuthorEventsByEventSetLoader<EQ>>>();
-        Ok(loader
-            .load_one(self.id.to_string())
-            .await?
-            .unwrap_or_default())
     }
 }
 

@@ -3,7 +3,6 @@ use bookshelf_api::{
     use_case::traits::{
         author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
         book::{MockBookCommandUseCase, MockBookQueryUseCase},
-        event::MockEventQueryUseCase,
         history::MockHistoryQueryUseCase,
         user::{MockUserCommandUseCase, MockUserQueryUseCase},
     },
@@ -17,7 +16,6 @@ async fn main() {
         MockUserQueryUseCase::new(),
         MockBookQueryUseCase::new(),
         MockAuthorQueryUseCase::new(),
-        MockEventQueryUseCase::new(),
         MockHistoryQueryUseCase::new(),
     );
     let mutation = Mutation::new(

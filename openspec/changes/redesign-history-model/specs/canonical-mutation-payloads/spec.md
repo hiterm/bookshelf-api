@@ -34,7 +34,7 @@ The system SHALL expose the deleted entity through `bookId` or `authorId`, SHALL
 - **THEN** the client can select `authorId` and `operationId`
 
 ### Requirement: New mutation contract is authoritative from PR 1
-All mutations SHALL expose only Operation and Revision metadata from PR 1. Legacy Event/EventSet data and read APIs MAY remain until PR 3, but mutations SHALL NOT expose `eventId` or `eventSetId` aliases and SHALL NOT write legacy history.
+All mutations SHALL expose only Operation and Revision metadata from PR 1. Legacy Event/EventSet tables and internal code MAY remain until PR 3, but their GraphQL APIs SHALL be absent from PR 1. Mutations SHALL NOT expose `eventId` or `eventSetId` aliases and SHALL NOT write legacy history.
 
 #### Scenario: Existing frontend selects removed metadata
 - **WHEN** an older frontend selects `eventSetId` from any mutation after PR 1

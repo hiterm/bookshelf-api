@@ -7,19 +7,6 @@ type Author {
 	books: [Book!]!
 }
 
-type AuthorEventEntry {
-	eventId: ID!
-	eventSetId: ID!
-	operation: String!
-	authorId: ID!
-	name: String
-	yomi: String
-	authorCreatedAt: Int
-	authorUpdatedAt: Int
-	changedAt: Int!
-	extra: JSON
-}
-
 type AuthorMutationPayload {
 	author: Author!
 	operationId: ID!
@@ -54,25 +41,6 @@ type Book {
 	createdAt: Int!
 	updatedAt: Int!
 	authors: [Author!]!
-}
-
-type BookEventEntry {
-	eventId: ID!
-	eventSetId: ID!
-	operation: String!
-	bookId: ID!
-	title: String
-	authorIds: [ID!]!
-	isbn: String
-	read: Boolean
-	owned: Boolean
-	priority: Int
-	format: BookFormat
-	store: BookStore
-	bookCreatedAt: Int
-	bookUpdatedAt: Int
-	changedAt: Int!
-	extra: JSON
 }
 
 enum BookFormat {
@@ -148,14 +116,6 @@ type DeleteAuthorPayload {
 type DeleteBookPayload {
 	bookId: ID!
 	operationId: ID!
-}
-
-type EventSet {
-	id: ID!
-	operation: String!
-	createdAt: Int!
-	bookEvents: [BookEventEntry!]!
-	authorEvents: [AuthorEventEntry!]!
 }
 
 type ImportAuthorPreview {
@@ -276,24 +236,6 @@ type Query {
 	books: [Book!]!
 	author(id: ID!): Author
 	authors: [Author!]!
-	"""
-	Returns the change history for a book.
-	Entries are sorted by `changedAt` in descending order (newest first).
-	"""
-	bookEvents(bookId: ID!): [BookEventEntry!]!
-	"""
-	Returns the change history for an author.
-	Entries are sorted by `changedAt` in descending order (newest first).
-	"""
-	authorEvents(authorId: ID!): [AuthorEventEntry!]!
-	"""
-	Returns the logged-in user's event sets, newest first.
-	"""
-	eventSets: [EventSet!]!
-	"""
-	Returns a single event set with nested events, or null if not found.
-	"""
-	eventSet(id: ID!): EventSet
 }
 
 type RestoreAuthorPayload {

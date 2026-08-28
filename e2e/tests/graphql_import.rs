@@ -179,26 +179,12 @@ async fn e2e_import_books() -> Result<()> {
         "Existing Author should appear exactly once"
     );
 
-    // Legacy Event reads remain available but new imports do not write them.
     let new_author = all_authors
         .iter()
         .find(|a| a["name"].as_str() == Some("New Author"));
     let new_author_id = new_author
         .and_then(|a| a["id"].as_str())
         .context("new author should have an id")?;
-    let author_events_query = format!(
-        r#"{{ authorEvents(authorId: "{}") {{ operation name }} }}"#,
-        new_author_id
-    );
-    let (_, response) = graphql_request(&author_events_query, Some(&token)).await?;
-    let author_events = response["data"]["authorEvents"]
-        .as_array()
-        .context("authorEvents should be an array")?;
-    assert!(
-        author_events.is_empty(),
-        "new imports must not write legacy events"
-    );
-
     // Cleanup
     delete_test_book(book_one_id, &token).await?;
     delete_test_book(book_two_id, &token).await?;
@@ -424,7 +410,7 @@ async fn e2e_import_books_rolls_back_when_one_entry_is_invalid() -> Result<()> {
     assert_graphql_errors(&response, "importBooks with one invalid entry");
 
     let (_, response) = graphql_request(
-        r#"{ books { title } authors { name } eventSets { operation } }"#,
+        r#"{ books { title } authors { name } operations { type } }"#,
         Some(&token),
     )
     .await?;
@@ -434,9 +420,9 @@ async fn e2e_import_books_rolls_back_when_one_entry_is_invalid() -> Result<()> {
     let authors = response["data"]["authors"]
         .as_array()
         .context("authors should be an array")?;
-    let event_sets = response["data"]["eventSets"]
+    let operations = response["data"]["operations"]
         .as_array()
-        .context("eventSets should be an array")?;
+        .context("operations should be an array")?;
     assert!(
         books
             .iter()
@@ -451,10 +437,10 @@ async fn e2e_import_books_rolls_back_when_one_entry_is_invalid() -> Result<()> {
         "failed import should not persist any import authors"
     );
     assert!(
-        event_sets
+        operations
             .iter()
-            .all(|set| set["operation"].as_str() != Some("import_books")),
-        "failed import should not create an import_books event set"
+            .all(|operation| operation["type"].as_str() != Some("import_books")),
+        "failed import should not create an import_books operation"
     );
 
     Ok(())
@@ -489,7 +475,7 @@ async fn e2e_import_books_rejects_more_than_max_batch() -> Result<()> {
     assert_graphql_errors(&response, "importBooks above the max batch size");
 
     let (_, response) =
-        graphql_request(r#"{ books { id } eventSets { operation } }"#, Some(&token)).await?;
+        graphql_request(r#"{ books { id } operations { type } }"#, Some(&token)).await?;
     assert!(
         response["data"]["books"]
             .as_array()
@@ -498,12 +484,12 @@ async fn e2e_import_books_rejects_more_than_max_batch() -> Result<()> {
         "rejected oversized import should not create books"
     );
     assert!(
-        response["data"]["eventSets"]
+        response["data"]["operations"]
             .as_array()
-            .context("eventSets should be an array")?
+            .context("operations should be an array")?
             .iter()
-            .all(|set| set["operation"].as_str() != Some("import_books")),
-        "rejected oversized import should not create an import event set"
+            .all(|operation| operation["type"].as_str() != Some("import_books")),
+        "rejected oversized import should not create an import operation"
     );
 
     Ok(())
@@ -649,7 +635,7 @@ async fn e2e_import_books_empty_returns_error() -> Result<()> {
 async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
     let existing_author_id = create_test_author("Preview Existing", &token).await?;
-    let before_query = "{ books { id } authors { id } eventSets { id } }";
+    let before_query = "{ books { id } authors { id } operations { id } }";
     let (_, before) = graphql_request(before_query, Some(&token)).await?;
 
     let preview = r#"

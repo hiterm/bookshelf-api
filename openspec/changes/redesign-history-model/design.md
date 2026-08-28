@@ -83,7 +83,7 @@ Mutation payloads replace `eventSetId` with `operationId`; create/update/restore
 
 ### Deliver in three implementation stages
 
-PR 1 adds the new schema, baseline, transaction context, revision recording, restore, queries, payloads, and tests while legacy tables/code may coexist as read-only residuals. New mutations write only the new model and use it as the sole API contract. PR 2 adds undo and its full test matrix. PR 3 removes all Event/EventSet code, GraphQL fields, database objects, stale names, and old specs, then updates architecture documentation. The OpenSpec change describes this final state and is archived only after all three PRs merge.
+PR 1 adds the new schema, baseline, transaction context, revision recording, restore, queries, payloads, and tests while legacy tables and internal code may coexist as read-only residuals. PR 1 removes the Event/EventSet GraphQL surface completely; new mutations write only the new model, and Operation/Revision is the sole API contract. PR 2 adds undo and its full test matrix. PR 3 removes the remaining internal Event/EventSet code, database objects, stale names, and old specs, then updates architecture documentation. The OpenSpec change describes this final state and is archived only after all three PRs merge.
 
 ## Risks / Trade-offs
 

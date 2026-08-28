@@ -1,7 +1,6 @@
 use crate::use_case::traits::{
     author::{AuthorCommandUseCase, AuthorQueryUseCase},
     book::{BookCommandUseCase, BookQueryUseCase},
-    event::EventQueryUseCase,
     history::HistoryQueryUseCase,
     user::{UserCommandUseCase, UserQueryUseCase},
 };
@@ -9,18 +8,17 @@ use crate::use_case::traits::{
 use super::{mutation::Mutation, query::Query};
 use async_graphql::{EmptySubscription, Schema};
 
-pub type GraphqlSchema<UQ, BQ, AQ, EQ, HQ, UC, BC, AC> =
-    Schema<Query<UQ, BQ, AQ, EQ, HQ>, Mutation<UC, BC, AC>, EmptySubscription>;
+pub type GraphqlSchema<UQ, BQ, AQ, HQ, UC, BC, AC> =
+    Schema<Query<UQ, BQ, AQ, HQ>, Mutation<UC, BC, AC>, EmptySubscription>;
 
-pub fn build_schema<UQ, BQ, AQ, EQ, HQ, UC, BC, AC>(
-    query: Query<UQ, BQ, AQ, EQ, HQ>,
+pub fn build_schema<UQ, BQ, AQ, HQ, UC, BC, AC>(
+    query: Query<UQ, BQ, AQ, HQ>,
     mutation: Mutation<UC, BC, AC>,
-) -> GraphqlSchema<UQ, BQ, AQ, EQ, HQ, UC, BC, AC>
+) -> GraphqlSchema<UQ, BQ, AQ, HQ, UC, BC, AC>
 where
     UQ: UserQueryUseCase,
     BQ: BookQueryUseCase,
     AQ: AuthorQueryUseCase,
-    EQ: EventQueryUseCase,
     HQ: HistoryQueryUseCase,
     UC: UserCommandUseCase,
     BC: BookCommandUseCase,
@@ -47,7 +45,6 @@ mod tests {
             traits::{
                 author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
                 book::{MockBookCommandUseCase, MockBookQueryUseCase},
-                event::MockEventQueryUseCase,
                 history::MockHistoryQueryUseCase,
                 user::{MockUserCommandUseCase, MockUserQueryUseCase},
             },
@@ -60,14 +57,12 @@ mod tests {
         MockUserQueryUseCase,
         MockBookQueryUseCase,
         MockAuthorQueryUseCase,
-        MockEventQueryUseCase,
         MockHistoryQueryUseCase,
     > {
         Query::new(
             MockUserQueryUseCase::new(),
             MockBookQueryUseCase::new(),
             MockAuthorQueryUseCase::new(),
-            MockEventQueryUseCase::new(),
             MockHistoryQueryUseCase::new(),
         )
     }
@@ -105,7 +100,6 @@ mod tests {
             MockUserQueryUseCase::new(),
             MockBookQueryUseCase::new(),
             author_query,
-            MockEventQueryUseCase::new(),
             MockHistoryQueryUseCase::new(),
         );
         let mutation = mutation();
@@ -258,7 +252,6 @@ mod tests {
                 MockUserQueryUseCase::new(),
                 MockBookQueryUseCase::new(),
                 MockAuthorQueryUseCase::new(),
-                MockEventQueryUseCase::new(),
                 history,
             ),
             mutation(),
@@ -319,16 +312,20 @@ mod tests {
     }
 
     #[test]
-    fn event_set_uses_one_graphql_type_for_list_and_detail() {
+    fn legacy_event_graphql_contract_is_absent() {
         let sdl = build_schema(query(), mutation()).sdl();
 
-        assert!(sdl.contains("type EventSet {"));
-        assert!(!sdl.contains("type EventSetEntry"));
-        assert!(!sdl.contains("type EventSetDetail"));
-        assert!(sdl.contains("\teventSets: [EventSet!]!"));
-        assert!(sdl.contains("\teventSet(id: ID!): EventSet"));
-        assert!(sdl.contains("\tbookEvents: [BookEventEntry!]!"));
-        assert!(sdl.contains("\tauthorEvents: [AuthorEventEntry!]!"));
+        for legacy_name in [
+            "type EventSet",
+            "type BookEventEntry",
+            "type AuthorEventEntry",
+            "\teventSets:",
+            "\teventSet(",
+            "\tbookEvents(",
+            "\tauthorEvents(",
+        ] {
+            assert!(!sdl.contains(legacy_name), "found {legacy_name} in SDL");
+        }
     }
 
     #[cfg(feature = "test-with-database")]
@@ -386,8 +383,7 @@ mod tests {
         .execute(&pool)
         .await?;
 
-        let (author_query, book_query, _event_query, _history_query, schema) =
-            dependency_injection(pool);
+        let (author_query, book_query, _history_query, schema) = dependency_injection(pool);
         let claims = Claims {
             sub: "user1".to_string(),
             _permissions: None,

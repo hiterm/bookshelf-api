@@ -14,7 +14,7 @@
 - [x] 1.12 Add Operation and Revision use-case DTOs/interactors with unit tests for type/detail, ownership, revision ordering, exact lookup, and selection-independent batch methods
 - [x] 1.13 Replace GraphQL Event mutation metadata and restore arguments with `operationId` and applicable `revisionNumber`
 - [x] 1.14 Add `operations`, `operation`, Book Revision, and Author Revision GraphQL queries plus selection-driven batched nested changes and before/after Revision resolution
-- [x] 1.15 Update generated GraphQL schema, API E2E contracts, fixtures, and architecture/database docs for the breaking Operation/Revision contract; migrate the frontend separately
+- [x] 1.15 Remove Event/EventSet GraphQL queries, types, loaders, mutation metadata, and restore arguments; update the generated schema, API E2E contracts, fixtures, and architecture/database docs for the breaking Operation/Revision-only contract; migrate the frontend separately
 - [x] 1.16 Run PR 1 unit, database integration, migration, rollback, import, merge, restore, E2E, formatting, lint, full test, and OpenSpec validation suites
 - [ ] 1.17 Commit granular PR 1 changes, push, create the PR, fix CI to green, request `@coderabbitai review`, address and reply to findings, re-request after fixes or rate-limit expiry, obtain approval, and merge
 
@@ -37,7 +37,7 @@
 - [ ] 3.2 Remove Event/EventSet domain IDs, operations, entities, and conversion tests after confirming all runtime consumers use Operation/Revision
 - [ ] 3.3 Remove Event/EventSet repository traits, PostgreSQL adapters, mocks, and repository tests
 - [ ] 3.4 Remove Event query/DTO/interactor boundaries and legacy Event-based restore lookup
-- [ ] 3.5 Remove EventSet/entity Event GraphQL queries, types, loaders, mutation fields, arguments, generated schema entries, fixtures, and E2E expectations
+- [ ] 3.5 Remove remaining internal presentation fixtures and test terminology tied to Event/EventSet after confirming no public GraphQL contract remains
 - [ ] 3.6 Add the final migration that drops legacy relationship, entity Event, EventSet, and lookup tables in foreign-key dependency order
 - [ ] 3.7 Update migration-from-existing-schema tests and verify current state plus Operation/Revision history survive legacy table removal
 - [ ] 3.8 Search the repository for legacy history names and remove unintended `event`, `event_set`, EventId, EventSetId, EventOperation, and EventSetOperation references

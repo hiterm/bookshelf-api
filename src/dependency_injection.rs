@@ -5,14 +5,13 @@ use crate::{
     infrastructure::{
         author_event_repository::PgAuthorEventRepository, author_repository::PgAuthorRepository,
         book_event_repository::PgBookEventRepository, book_repository::PgBookRepository,
-        event_set_repository::PgEventSetRepository, history_repository::PgHistoryRepository,
-        transaction::PgTransactionManager, user_repository::PgUserRepository,
+        history_repository::PgHistoryRepository, transaction::PgTransactionManager,
+        user_repository::PgUserRepository,
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
         author::{AuthorCommandInteractor, AuthorQueryInteractor},
         book::{BookCommandInteractor, BookQueryInteractor},
-        event::EventQueryInteractor,
         history::HistoryQueryInteractor,
         user::{UserCommandInteractor, UserQueryInteractor},
     },
@@ -34,21 +33,18 @@ pub type AC = AuthorCommandInteractor<
     PgAuthorEventRepository,
     PgTransactionManager,
 >;
-pub type EQ =
-    EventQueryInteractor<PgBookEventRepository, PgAuthorEventRepository, PgEventSetRepository>;
 pub type HQ = HistoryQueryInteractor<PgHistoryRepository>;
 
-pub type AppQuery = Query<UQ, BQ, AQ, EQ, HQ>;
+pub type AppQuery = Query<UQ, BQ, AQ, HQ>;
 pub type AppMutation = Mutation<UC, BC, AC>;
 pub type AppSchema = Schema<AppQuery, AppMutation, EmptySubscription>;
 
-pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, EQ, HQ, AppSchema) {
+pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, AppSchema) {
     let user_repository = PgUserRepository::new(pool.clone());
     let book_repository = PgBookRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
     let book_event_repository = PgBookEventRepository::new(pool.clone());
     let author_event_repository = PgAuthorEventRepository::new(pool.clone());
-    let event_set_repository = PgEventSetRepository::new(pool.clone());
     let history_query = HistoryQueryInteractor::new(PgHistoryRepository::new(pool.clone()));
     let transaction_manager = PgTransactionManager::new(pool);
 
@@ -68,21 +64,14 @@ pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, EQ, HQ, AppSchema)
         author_event_repository.clone(),
         transaction_manager,
     );
-    let event_query = EventQueryInteractor::new(
-        book_event_repository,
-        author_event_repository,
-        event_set_repository,
-    );
-
     let query = Query::new(
         user_query,
         book_query.clone(),
         author_query.clone(),
-        event_query.clone(),
         history_query.clone(),
     );
     let mutation = Mutation::new(user_command, book_command, author_command);
     let schema = build_schema(query, mutation);
 
-    (author_query, book_query, event_query, history_query, schema)
+    (author_query, book_query, history_query, schema)
 }
