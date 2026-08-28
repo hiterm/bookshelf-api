@@ -1,5 +1,29 @@
 # Database Design
 
+## Operation and Revision history
+
+The authoritative history model stores one logical `operation`, immutable full
+`book_revision` / `author_revision` snapshots, and entity-specific
+OperationChanges. Legacy Event tables described below temporarily coexist as
+read-only data until PR 3; current mutations never write them.
+
+`operation` has primary key `id` and unique `(id, user_id)` ownership identity.
+Its `type`, typed JSON `detail`, optional `undo_of_operation_id`, and timestamp
+describe the complete logical mutation. Baseline operations seed revision 1
+from live state but are hidden from normal Operation lists.
+
+`book_revision` uses primary key `(user_id, book_id, revision_number)`;
+`author_revision` uses `(user_id, author_id, revision_number)`. Book Author
+membership is snapshotted in `book_revision_author`, whose foreign key includes
+the same owner and revision identity. Revision numbers are positive and are
+allocated per `(user_id, entity_id)`.
+
+`book_operation_change` and `author_operation_change` carry `operation_id`,
+`user_id`, entity ID, and nullable before/after revision numbers. At least one
+side must be present. Composite foreign keys `(operation_id, user_id)` and
+`(user_id, entity_id, revision_number)` prevent cross-tenant Operation and
+Revision references at the database level.
+
 ## Overview
 
 The event log records every state change to `book` and `author` entities.

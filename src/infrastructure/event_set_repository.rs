@@ -123,7 +123,15 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
         author_repo.create(&mut tx, author).await?;
-        tm.commit(tx).await
+        tm.commit(tx).await?;
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_author')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(user_id.as_str())
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     async fn create_book(
@@ -135,7 +143,15 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
         book_repo.create(&mut tx, book).await?;
-        tm.commit(tx).await
+        tm.commit(tx).await?;
+        sqlx::query(
+            "INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, 'create_book')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(user_id.as_str())
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     fn make_book(

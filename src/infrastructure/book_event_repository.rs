@@ -297,7 +297,8 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
         book_repo.create(&mut tx, book).await?;
-        tm.commit(tx).await
+        tm.commit(tx).await?;
+        seed_book_event(pool, user_id, book, "create", "create_book").await
     }
 
     async fn update_book(
@@ -309,7 +310,54 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, EventSetOperation::UpdateBook).await?;
         book_repo.update(&mut tx, book).await?;
-        tm.commit(tx).await
+        tm.commit(tx).await?;
+        seed_book_event(pool, user_id, book, "update", "update_book").await
+    }
+
+    async fn seed_book_event(
+        pool: &PgPool,
+        user_id: &UserId,
+        book: &Book,
+        event_operation: &str,
+        event_set_operation: &str,
+    ) -> Result<(), DomainError> {
+        let event_set_id = Uuid::new_v4();
+        sqlx::query("INSERT INTO event_set (id, user_id, operation) VALUES ($1, $2, $3)")
+            .bind(event_set_id)
+            .bind(user_id.as_str())
+            .bind(event_set_operation)
+            .execute(pool)
+            .await?;
+        let event_id: i64 = sqlx::query_scalar(
+            "INSERT INTO book_event (
+               event_set_id, operation, book_id, user_id, title, isbn, read,
+               owned, priority, format, store, book_created_at, book_updated_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+             RETURNING event_id",
+        )
+        .bind(event_set_id)
+        .bind(event_operation)
+        .bind(book.id().to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.title().as_str())
+        .bind(book.isbn().as_str())
+        .bind(book.read().to_bool())
+        .bind(book.owned().to_bool())
+        .bind(book.priority().to_i32())
+        .bind(book.format().to_string())
+        .bind(book.store().to_string())
+        .bind(book.created_at())
+        .bind(book.updated_at())
+        .fetch_one(pool)
+        .await?;
+        for author_id in book.author_ids() {
+            sqlx::query("INSERT INTO book_event_author (event_id, author_id) VALUES ($1, $2)")
+                .bind(event_id)
+                .bind(author_id.to_uuid())
+                .execute(pool)
+                .await?;
+        }
+        Ok(())
     }
 
     async fn create_author(

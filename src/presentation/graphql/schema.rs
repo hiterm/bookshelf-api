@@ -1,25 +1,25 @@
 use crate::use_case::traits::{
     author::{AuthorCommandUseCase, AuthorQueryUseCase},
     book::{BookCommandUseCase, BookQueryUseCase},
-    event::EventQueryUseCase,
+    history::HistoryQueryUseCase,
     user::{UserCommandUseCase, UserQueryUseCase},
 };
 
 use super::{mutation::Mutation, query::Query};
 use async_graphql::{EmptySubscription, Schema};
 
-pub type GraphqlSchema<UQ, BQ, AQ, EQ, UC, BC, AC> =
-    Schema<Query<UQ, BQ, AQ, EQ>, Mutation<UC, BC, AC>, EmptySubscription>;
+pub type GraphqlSchema<UQ, BQ, AQ, HQ, UC, BC, AC> =
+    Schema<Query<UQ, BQ, AQ, HQ>, Mutation<UC, BC, AC>, EmptySubscription>;
 
-pub fn build_schema<UQ, BQ, AQ, EQ, UC, BC, AC>(
-    query: Query<UQ, BQ, AQ, EQ>,
+pub fn build_schema<UQ, BQ, AQ, HQ, UC, BC, AC>(
+    query: Query<UQ, BQ, AQ, HQ>,
     mutation: Mutation<UC, BC, AC>,
-) -> GraphqlSchema<UQ, BQ, AQ, EQ, UC, BC, AC>
+) -> GraphqlSchema<UQ, BQ, AQ, HQ, UC, BC, AC>
 where
     UQ: UserQueryUseCase,
     BQ: BookQueryUseCase,
     AQ: AuthorQueryUseCase,
-    EQ: EventQueryUseCase,
+    HQ: HistoryQueryUseCase,
     UC: UserCommandUseCase,
     BC: BookCommandUseCase,
     AC: AuthorCommandUseCase,
@@ -37,11 +37,15 @@ mod tests {
             graphql::{mutation::Mutation, query::Query},
         },
         use_case::{
-            dto::{author::AuthorDto, mutation::SingleEventMutationResultDto},
+            dto::{
+                author::AuthorDto,
+                history::{AuthorRevisionDto, BookRevisionDto, OperationDto},
+                mutation::SingleEventMutationResultDto,
+            },
             traits::{
                 author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
                 book::{MockBookCommandUseCase, MockBookQueryUseCase},
-                event::MockEventQueryUseCase,
+                history::MockHistoryQueryUseCase,
                 user::{MockUserCommandUseCase, MockUserQueryUseCase},
             },
         },
@@ -53,13 +57,13 @@ mod tests {
         MockUserQueryUseCase,
         MockBookQueryUseCase,
         MockAuthorQueryUseCase,
-        MockEventQueryUseCase,
+        MockHistoryQueryUseCase,
     > {
         Query::new(
             MockUserQueryUseCase::new(),
             MockBookQueryUseCase::new(),
             MockAuthorQueryUseCase::new(),
-            MockEventQueryUseCase::new(),
+            MockHistoryQueryUseCase::new(),
         )
     }
 
@@ -96,7 +100,7 @@ mod tests {
             MockUserQueryUseCase::new(),
             MockBookQueryUseCase::new(),
             author_query,
-            MockEventQueryUseCase::new(),
+            MockHistoryQueryUseCase::new(),
         );
         let mutation = mutation();
         let schema = build_schema(query, mutation);
@@ -120,7 +124,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_author_payload_exposes_numeric_event_id_as_graphql_id() {
+    async fn create_author_payload_exposes_operation_and_revision() {
         let mut author_command = MockAuthorCommandUseCase::new();
         author_command
             .expect_create()
@@ -135,7 +139,7 @@ mod tests {
                         updated_at: time::OffsetDateTime::UNIX_EPOCH,
                     },
                     "e77df9d5-b7bf-47f2-8753-03f285d440e3".to_string(),
-                    1234.into(),
+                    1234,
                 ))
             });
         let schema = build_schema(
@@ -154,19 +158,134 @@ mod tests {
         let response = schema
             .execute(
                 async_graphql::Request::from(
-                    r#"mutation { createAuthor(authorData: { name: "Author" }) { eventId eventSetId author { name } } }"#,
+                    r#"mutation { createAuthor(authorData: { name: "Author" }) { operationId revisionNumber author { name } } }"#,
                 )
                 .data(claims),
             )
             .await;
         let json = serde_json::to_value(response).unwrap();
 
-        assert_eq!(json["data"]["createAuthor"]["eventId"], "1234");
+        assert_eq!(json["data"]["createAuthor"]["revisionNumber"], 1234);
         assert_eq!(
-            json["data"]["createAuthor"]["eventSetId"],
+            json["data"]["createAuthor"]["operationId"],
             "e77df9d5-b7bf-47f2-8753-03f285d440e3"
         );
         assert_eq!(json["data"]["createAuthor"]["author"]["name"], "Author");
+    }
+
+    #[tokio::test]
+    async fn history_resolvers_forward_owner_ids_and_revision_numbers() {
+        use crate::common::types::{BookFormat, BookStore};
+
+        let operation_id = "e77df9d5-b7bf-47f2-8753-03f285d440e3";
+        let book_id = "d065a358-4fa7-4236-ae19-f6f2f9467c35";
+        let author_id = "006099b4-6c42-4ec4-8645-f6bd5b63eddc";
+        let operation = OperationDto {
+            id: operation_id.to_string(),
+            operation_type: "create_book".to_string(),
+            detail: None,
+            undo_of_operation_id: None,
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+        };
+        let book_revision = BookRevisionDto {
+            book_id: book_id.to_string(),
+            revision_number: 2,
+            title: "Revision Title".to_string(),
+            author_ids: vec![author_id.to_string()],
+            isbn: String::new(),
+            read: false,
+            owned: true,
+            priority: 50,
+            format: BookFormat::Printed,
+            store: BookStore::Unknown,
+            book_created_at: time::OffsetDateTime::UNIX_EPOCH,
+            book_updated_at: time::OffsetDateTime::UNIX_EPOCH,
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+        };
+        let author_revision = AuthorRevisionDto {
+            author_id: author_id.to_string(),
+            revision_number: 3,
+            name: "Revision Author".to_string(),
+            yomi: String::new(),
+            author_created_at: time::OffsetDateTime::UNIX_EPOCH,
+            author_updated_at: time::OffsetDateTime::UNIX_EPOCH,
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+        };
+        let mut history = MockHistoryQueryUseCase::new();
+        let listed_operation = operation.clone();
+        history
+            .expect_operations()
+            .with(predicate::eq("user1"))
+            .return_once(move |_| Ok(vec![listed_operation]));
+        history
+            .expect_operation()
+            .with(predicate::eq("user1"), predicate::eq(operation_id))
+            .return_once(move |_, _| Ok(Some(operation)));
+        let listed_book_revision = book_revision.clone();
+        history
+            .expect_book_revisions()
+            .with(predicate::eq("user1"), predicate::eq(book_id))
+            .return_once(move |_, _| Ok(vec![listed_book_revision]));
+        history
+            .expect_book_revision()
+            .with(
+                predicate::eq("user1"),
+                predicate::eq(book_id),
+                predicate::eq(2),
+            )
+            .return_once(move |_, _, _| Ok(Some(book_revision)));
+        let listed_author_revision = author_revision.clone();
+        history
+            .expect_author_revisions()
+            .with(predicate::eq("user1"), predicate::eq(author_id))
+            .return_once(move |_, _| Ok(vec![listed_author_revision]));
+        history
+            .expect_author_revision()
+            .with(
+                predicate::eq("user1"),
+                predicate::eq(author_id),
+                predicate::eq(3),
+            )
+            .return_once(move |_, _, _| Ok(Some(author_revision)));
+        let schema = build_schema(
+            Query::new(
+                MockUserQueryUseCase::new(),
+                MockBookQueryUseCase::new(),
+                MockAuthorQueryUseCase::new(),
+                history,
+            ),
+            mutation(),
+        );
+
+        let response = schema
+            .execute(
+                async_graphql::Request::from(format!(
+                    r#"{{
+                        operations {{ id type }}
+                        operation(id: "{operation_id}") {{ id type }}
+                        bookRevisions(bookId: "{book_id}") {{ revisionNumber title }}
+                        bookRevision(bookId: "{book_id}", revisionNumber: 2) {{ revisionNumber title }}
+                        authorRevisions(authorId: "{author_id}") {{ revisionNumber name }}
+                        authorRevision(authorId: "{author_id}", revisionNumber: 3) {{ revisionNumber name }}
+                    }}"#
+                ))
+                .data(Claims {
+                    sub: "user1".to_string(),
+                    _permissions: None,
+                }),
+            )
+            .await;
+        let json = serde_json::to_value(response).unwrap();
+
+        assert_eq!(json["data"]["operations"][0]["type"], "create_book");
+        assert_eq!(json["data"]["operation"]["id"], operation_id);
+        assert_eq!(json["data"]["bookRevisions"][0]["title"], "Revision Title");
+        assert_eq!(json["data"]["bookRevision"]["revisionNumber"], 2);
+        assert_eq!(
+            json["data"]["authorRevisions"][0]["name"],
+            "Revision Author"
+        );
+        assert_eq!(json["data"]["authorRevision"]["revisionNumber"], 3);
     }
 
     #[test]
@@ -176,13 +295,13 @@ mod tests {
         let sdl = build_schema(query, mutation).sdl();
 
         assert!(sdl.contains(
-            "type BookMutationPayload {\n\tbook: Book!\n\teventSetId: ID!\n\teventId: ID!\n}"
+            "type BookMutationPayload {\n\tbook: Book!\n\toperationId: ID!\n\trevisionNumber: Int!\n}"
         ));
         assert!(sdl.contains(
-            "type AuthorMutationPayload {\n\tauthor: Author!\n\teventSetId: ID!\n\teventId: ID!\n}"
+            "type AuthorMutationPayload {\n\tauthor: Author!\n\toperationId: ID!\n\trevisionNumber: Int!\n}"
         ));
-        assert!(sdl.contains("type DeleteBookPayload {\n\tbookId: ID!\n\teventSetId: ID!\n}"));
-        assert!(sdl.contains("type DeleteAuthorPayload {\n\tauthorId: ID!\n\teventSetId: ID!\n}"));
+        assert!(sdl.contains("type DeleteBookPayload {\n\tbookId: ID!\n\toperationId: ID!\n}"));
+        assert!(sdl.contains("type DeleteAuthorPayload {\n\tauthorId: ID!\n\toperationId: ID!\n}"));
     }
 
     #[test]
@@ -193,16 +312,20 @@ mod tests {
     }
 
     #[test]
-    fn event_set_uses_one_graphql_type_for_list_and_detail() {
+    fn legacy_event_graphql_contract_is_absent() {
         let sdl = build_schema(query(), mutation()).sdl();
 
-        assert!(sdl.contains("type EventSet {"));
-        assert!(!sdl.contains("type EventSetEntry"));
-        assert!(!sdl.contains("type EventSetDetail"));
-        assert!(sdl.contains("\teventSets: [EventSet!]!"));
-        assert!(sdl.contains("\teventSet(id: ID!): EventSet"));
-        assert!(sdl.contains("\tbookEvents: [BookEventEntry!]!"));
-        assert!(sdl.contains("\tauthorEvents: [AuthorEventEntry!]!"));
+        for legacy_name in [
+            "type EventSet",
+            "type BookEventEntry",
+            "type AuthorEventEntry",
+            "\teventSets:",
+            "\teventSet(",
+            "\tbookEvents(",
+            "\tauthorEvents(",
+        ] {
+            assert!(!sdl.contains(legacy_name), "found {legacy_name} in SDL");
+        }
     }
 
     #[cfg(feature = "test-with-database")]
@@ -260,7 +383,7 @@ mod tests {
         .execute(&pool)
         .await?;
 
-        let (author_query, book_query, _event_query, schema) = dependency_injection(pool);
+        let (author_query, book_query, _history_query, schema) = dependency_injection(pool);
         let claims = Claims {
             sub: "user1".to_string(),
             _permissions: None,

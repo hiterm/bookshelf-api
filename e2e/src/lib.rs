@@ -188,9 +188,9 @@ pub async fn create_test_author(name: &str, token: &str) -> Result<String> {
 pub async fn create_test_author_with_event(
     name: &str,
     token: &str,
-) -> Result<(String, String, String)> {
+) -> Result<(String, i32, String)> {
     let query = format!(
-        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} eventId eventSetId }} }}"#,
+        r#"mutation {{ createAuthor(authorData: {{ name: "{}" }}) {{ author {{ id }} revisionNumber operationId }} }}"#,
         name
     );
     let (_, response) = graphql_request(&query, Some(token)).await?;
@@ -199,15 +199,15 @@ pub async fn create_test_author_with_event(
         .as_str()
         .context("createAuthor id should be a string")?
         .to_owned();
-    let event_id = payload["eventId"]
+    let revision_number = payload["revisionNumber"]
+        .as_i64()
+        .context("createAuthor revisionNumber should be an integer")?
+        .try_into()?;
+    let operation_id = payload["operationId"]
         .as_str()
-        .context("createAuthor eventId should be a string")?
+        .context("createAuthor operationId should be a string")?
         .to_owned();
-    let event_set_id = payload["eventSetId"]
-        .as_str()
-        .context("createAuthor eventSetId should be a string")?
-        .to_owned();
-    Ok((id, event_id, event_set_id))
+    Ok((id, revision_number, operation_id))
 }
 
 pub async fn create_test_book(title: &str, author_id: &str, token: &str) -> Result<String> {
@@ -219,7 +219,7 @@ pub async fn create_test_book_with_event(
     title: &str,
     author_id: &str,
     token: &str,
-) -> Result<(String, String, String)> {
+) -> Result<(String, i32, String)> {
     let query = format!(
         r#"
         mutation {{
@@ -232,7 +232,7 @@ pub async fn create_test_book_with_event(
                 priority: 50
                 format: E_BOOK
                 store: KINDLE
-            }}) {{ book {{ id }} eventId eventSetId }}
+            }}) {{ book {{ id }} revisionNumber operationId }}
         }}
         "#,
         title, author_id
@@ -243,15 +243,15 @@ pub async fn create_test_book_with_event(
         .as_str()
         .context("createBook id should be a string")?
         .to_owned();
-    let event_id = payload["eventId"]
+    let revision_number = payload["revisionNumber"]
+        .as_i64()
+        .context("createBook revisionNumber should be an integer")?
+        .try_into()?;
+    let operation_id = payload["operationId"]
         .as_str()
-        .context("createBook eventId should be a string")?
+        .context("createBook operationId should be a string")?
         .to_owned();
-    let event_set_id = payload["eventSetId"]
-        .as_str()
-        .context("createBook eventSetId should be a string")?
-        .to_owned();
-    Ok((id, event_id, event_set_id))
+    Ok((id, revision_number, operation_id))
 }
 
 pub fn assert_graphql_errors(response: &serde_json::Value, context: &str) {

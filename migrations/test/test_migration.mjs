@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Migration test: verifies that the add_event_tables migration correctly
-// creates snapshot events for all existing books and authors.
+// Migration test: verifies baseline history migrations for existing entities.
 //
 // Requires two empty PostgreSQL databases to be created before running:
 //   MIGRATION_TEST_EMPTY_URL  - for the empty-DB scenario
@@ -70,6 +69,15 @@ function assertEqual(actual, expected, label) {
   }
 }
 
+function assertSqlFails(url, sql, label) {
+  try {
+    psql(url, sql);
+  } catch {
+    return;
+  }
+  throw new Error(`${label}: expected SQL to fail`);
+}
+
 // ---- Setup ----
 
 console.log('Applying base schema...');
@@ -86,11 +94,15 @@ psql(DATA_URL, `
   INSERT INTO book (id, user_id, title, isbn, read, owned, priority, format, store) VALUES
     ('a0000000-0000-0000-0000-000000000001', 'user_alpha', 'Book A1', 'ISBN-A1', false, true,  0, 'Unknown', 'Unknown'),
     ('a0000000-0000-0000-0000-000000000002', 'user_alpha', 'Book A2', 'ISBN-A2', true,  false, 1, 'eBook',   'Kindle'),
-    ('b0000000-0000-0000-0000-000000000001', 'user_beta',  'Book B1', 'ISBN-B1', false, false, 0, 'Unknown', 'Unknown');
+    ('b0000000-0000-0000-0000-000000000001', 'user_beta',  'Book B1', 'ISBN-B1', false, false, 0, 'Unknown', 'Unknown'),
+    ('c0000000-0000-0000-0000-000000000001', 'user_alpha', 'Book A3', 'ISBN-A3', false, false, 0, 'Unknown', 'Unknown'),
+    ('c0000000-0000-0000-0000-000000000001', 'user_beta',  'Book B2', 'ISBN-B2', false, false, 0, 'Unknown', 'Unknown');
 
   INSERT INTO author (id, user_id, name, yomi) VALUES
     ('a1000000-0000-0000-0000-000000000001', 'user_alpha', 'Author A', 'おーさーえー'),
-    ('b1000000-0000-0000-0000-000000000001', 'user_beta',  'Author B', 'おーさーびー');
+    ('b1000000-0000-0000-0000-000000000001', 'user_beta',  'Author B', 'おーさーびー'),
+    ('c1000000-0000-0000-0000-000000000001', 'user_alpha', 'Author C alpha', 'しーえー'),
+    ('c1000000-0000-0000-0000-000000000001', 'user_beta',  'Author C beta', 'しーびー');
 
   -- user_alpha Book A1 and A2 both written by Author A
   INSERT INTO book_author (user_id, book_id, author_id) VALUES
@@ -140,17 +152,17 @@ test('user_gamma (no books or authors) has no event_set', () => {
   );
 });
 
-test('3 book snapshot events (one per book)', () => {
+test('5 book snapshot events (one per owned book)', () => {
   assertEqual(
     queryOne(DATA_URL, "SELECT COUNT(*) FROM book_event WHERE operation = 'snapshot'"),
-    3, 'book_event snapshot count',
+    5, 'book_event snapshot count',
   );
 });
 
-test('2 author snapshot events (one per author)', () => {
+test('4 author snapshot events (one per owned author)', () => {
   assertEqual(
     queryOne(DATA_URL, "SELECT COUNT(*) FROM author_event WHERE operation = 'snapshot'"),
-    2, 'author_event snapshot count',
+    4, 'author_event snapshot count',
   );
 });
 
@@ -285,7 +297,7 @@ test('each snapshot event_set is linked to the correct user', () => {
       JOIN event_set es ON be.event_set_id = es.id
       WHERE es.user_id = 'user_alpha' AND be.operation = 'snapshot'
     `),
-    2, 'user_alpha book snapshot event count',
+    3, 'user_alpha book snapshot event count',
   );
   assertEqual(
     queryOne(DATA_URL, `
@@ -293,8 +305,146 @@ test('each snapshot event_set is linked to the correct user', () => {
       JOIN event_set es ON be.event_set_id = es.id
       WHERE es.user_id = 'user_beta' AND be.operation = 'snapshot'
     `),
-    1, 'user_beta book snapshot event count',
+    2, 'user_beta book snapshot event count',
   );
+});
+
+// ---- Operation/Revision baseline migration ----
+
+console.log('\nApplying operation/revision migration...');
+applyMigration(EMPTY_URL, '20260820000000_add_merge_author_operations.sql');
+applyMigration(DATA_URL, '20260820000000_add_merge_author_operations.sql');
+applyMigration(EMPTY_URL, '20260826000000_add_operation_revision_tables.sql');
+applyMigration(DATA_URL, '20260826000000_add_operation_revision_tables.sql');
+
+console.log('\n-- operation/revision empty DB --');
+
+test('empty DB: no baseline Operations or Revisions are created', () => {
+  assertEqual(queryOne(EMPTY_URL, 'SELECT COUNT(*) FROM operation'), 0, 'Operation count');
+  assertEqual(queryOne(EMPTY_URL, 'SELECT COUNT(*) FROM book_revision'), 0, 'Book Revision count');
+  assertEqual(queryOne(EMPTY_URL, 'SELECT COUNT(*) FROM author_revision'), 0, 'Author Revision count');
+});
+
+console.log('\n-- operation/revision data DB --');
+
+test('one baseline Operation is created for each user with current data', () => {
+  assertEqual(
+    queryOne(DATA_URL, "SELECT COUNT(*) FROM operation WHERE type = 'baseline'"),
+    2,
+    'baseline Operation count',
+  );
+  assertEqual(
+    queryOne(DATA_URL, "SELECT COUNT(*) FROM operation WHERE user_id = 'user_gamma'"),
+    0,
+    'empty user Operation count',
+  );
+});
+
+test('every current Book receives complete revision 1 state', () => {
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM book_revision'), 5, 'Book Revision count');
+  assertEqual(
+    queryOne(DATA_URL, `
+      SELECT title || '|' || isbn || '|' || read || '|' || owned || '|' ||
+             priority || '|' || format || '|' || store
+      FROM book_revision
+      WHERE book_id = 'a0000000-0000-0000-0000-000000000002'
+        AND revision_number = 1
+        AND book_created_at IS NOT NULL
+        AND book_updated_at IS NOT NULL
+    `),
+    'Book A2|ISBN-A2|true|false|1|eBook|Kindle',
+    'Book revision snapshot',
+  );
+});
+
+test('Book revision Author references match current relationships', () => {
+  assertEqual(
+    queryOne(DATA_URL, 'SELECT COUNT(*) FROM book_revision_author'),
+    2,
+    'Book Revision Author count',
+  );
+  assertEqual(
+    queryOne(DATA_URL, `
+      SELECT COUNT(*)
+      FROM book_revision_author
+      WHERE book_id = 'a0000000-0000-0000-0000-000000000001'
+        AND revision_number = 1
+        AND author_id = 'a1000000-0000-0000-0000-000000000001'
+    `),
+    1,
+    'Book A1 revision Author reference',
+  );
+});
+
+test('every current Author receives complete revision 1 state', () => {
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM author_revision'), 4, 'Author Revision count');
+  assertEqual(
+    queryOne(DATA_URL, `
+      SELECT name || '|' || yomi
+      FROM author_revision
+      WHERE author_id = 'a1000000-0000-0000-0000-000000000001'
+        AND revision_number = 1
+        AND author_created_at IS NOT NULL
+        AND author_updated_at IS NOT NULL
+    `),
+    'Author A|おーさーえー',
+    'Author revision snapshot',
+  );
+});
+
+test('baseline changes are none to revision 1 under the correct owner', () => {
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM book_operation_change'), 5, 'Book change count');
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM author_operation_change'), 4, 'Author change count');
+  assertEqual(
+    queryOne(DATA_URL, `
+      SELECT COUNT(*)
+      FROM book_operation_change boc
+      JOIN operation o ON o.id = boc.operation_id
+      JOIN book_revision br
+        ON br.book_id = boc.book_id
+       AND br.revision_number = boc.after_revision_number
+      WHERE boc.before_revision_number IS NULL
+        AND boc.after_revision_number = 1
+        AND o.user_id = br.user_id
+    `),
+    5,
+    'owned Book baseline changes',
+  );
+});
+
+test('legacy Event history is not converted into additional Revisions', () => {
+  assertEqual(
+    queryOne(DATA_URL, 'SELECT MAX(revision_number) FROM book_revision'),
+    1,
+    'maximum Book revision',
+  );
+  assertEqual(
+    queryOne(DATA_URL, 'SELECT MAX(revision_number) FROM author_revision'),
+    1,
+    'maximum Author revision',
+  );
+});
+
+test('OperationChange rejects a Revision owned by another Operation owner', () => {
+  assertSqlFails(DATA_URL, `
+    BEGIN;
+    INSERT INTO operation (id, user_id, type)
+    VALUES ('cccccccc-0000-0000-0000-000000000001', 'user_beta', 'update_book');
+    INSERT INTO book_operation_change (
+      operation_id,
+      user_id,
+      book_id,
+      before_revision_number,
+      after_revision_number
+    ) VALUES (
+      'cccccccc-0000-0000-0000-000000000001',
+      'user_alpha',
+      'a0000000-0000-0000-0000-000000000001',
+      1,
+      1
+    );
+    COMMIT;
+  `, 'cross-owner OperationChange');
 });
 
 // ---- Summary ----

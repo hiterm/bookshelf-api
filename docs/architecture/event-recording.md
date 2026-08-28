@@ -1,94 +1,87 @@
-# Event Recording
+# Operation and Revision Recording
 
-This document describes the *current* architecture for recording entity
-change events. It is a description of how the code is built today, not an
-immutable rule — it may change as the codebase evolves. It complements
-`docs/database.md`, which documents the event-log database schema.
+This document describes the current mutation-history architecture.
+Operation/Revision is the authoritative write model and the only GraphQL
+history contract. Legacy Event/EventSet tables and internal code remain
+temporarily until the cleanup PR, but no mutation writes them and GraphQL does
+not expose them.
 
 ## Invariant
 
-Every `create`, `update`, `delete`, and `restore` operation on any entity
-records an event inside the same database transaction. This applies to
-existing entities (`Book`, `Author`) and any new entity added in the future.
+Every Book or Author create, update, delete, restore, import, or merge creates
+exactly one owned `operation` and records every affected entity in the same
+database transaction. A state that exists is represented by an immutable full
+Revision. Absence is represented only by a nullable side of an
+OperationChange:
 
-An event `extra` object always contains a numeric `version`. If it contains a
-`type`, that version describes the schema for that type; otherwise it describes
-the extra schema for the event operation itself.
+- create: `none -> revision 1`
+- update or restore: `revision N -> revision N+1`
+- delete: `revision N -> none`
 
-## Transaction boundary (use-case layer)
+No current-state mutation may commit without its Operation, Revision where
+applicable, and OperationChange.
 
-The transaction boundary is owned by the use-case layer via the
-`TransactionManager` domain trait: an interactor calls
-`transaction_manager.begin(user_id, operation)` to open a transaction,
-passes the resulting transaction by `&mut` into each mutating repository method,
-and calls `transaction_manager.commit(tx)` at the end. Mutating repositories get
-the user from the transaction opened by `begin`; callers do not pass a second
-`user_id` to those methods. This lets a single interactor compose multiple
-repositories (e.g. the bulk import composes `BookRepository` and
-`AuthorRepository`) inside one transaction.
+## Transaction boundary
 
-The use-case layer knows two event concepts: the `EventSetOperation` passed
-to `begin`, and the generated `event_set.id` exposed by the transaction so
-mutation results can return an `eventSetId` after a successful commit. Event
-row creation and persistence details remain in the infrastructure layer.
+The use-case layer opens one transaction through
+`TransactionManager::begin_operation(user_id, NewOperation)`. The transaction
+carries the authenticated `user_id` and generated `operation_id`; repositories
+derive both values from it. The use case composes repositories and commits only
+after all current-state and history writes succeed. Preview explicitly rolls
+the same path back.
 
-Single-entity Book and Author `create` and `update` mutations also return an
-`eventId`. The two identifiers have different scopes:
+`NewOperation` supplies a validated type and optional typed detail. Import
+records its item count, merge records source and destination Author IDs, and
+restore records the source revision number. Mutation responses expose the
+Operation ID and, for a single resulting entity revision, its revision number.
 
-- `eventSetId` identifies the complete logical operation and can group one or
-  more entity events.
-- `eventId` identifies the newly recorded Book or Author snapshot for that
-  create or update mutation. It is the same per-entity event identifier exposed
-  by history queries and accepted as the source by the corresponding restore
-  mutation.
+## Tenant-aware identity
 
-Internally, create/update repository results carry the domain `EventId` newtype.
-Only the PostgreSQL adapter handles its underlying `BIGINT`/`i64` value, and the
-GraphQL boundary converts it to the decimal string representation required by
-GraphQL `ID`.
+GraphQL identifies a revision as `(entityId, revisionNumber)`. The server adds
+`user_id` from authentication. Database identity and foreign keys include that
+owner:
 
-Mutations that do not guarantee exactly one newly recorded entity snapshot do
-not return a single `eventId`. This includes delete, restore, bulk import, and
-user registration. Their payload contracts remain specific to the operation;
-in particular, an import can record multiple Book and Author events under one
-`eventSetId`.
+- Book Revision: `(user_id, book_id, revision_number)`
+- Author Revision: `(user_id, author_id, revision_number)`
+- Operation ownership: `(operation_id, user_id)`
 
-## Infrastructure responsibilities
+OperationChange rows carry `user_id` and reference both Operation and Revision
+through composite foreign keys. The database therefore rejects cross-tenant
+history links even when two users own entities with the same UUID.
 
-- `PgTransactionManager::begin` generates the `event_set` UUID, binds the
-  transaction to the user, exposes that id on the transaction, and inserts the
-  single `event_set` row (the one place `event_set` rows are created).
-- Each mutating `Pg*` repository method reads `tx.user_id()` for row ownership,
-  reads `tx.event_set_id()` for event recording, and inserts the per-event
-  `<entity>_event` rows. Domain repository traits expose only an associated
-  `Transaction` type; they carry no other event knowledge.
+Revision numbers are allocated independently for each `(user_id, entity_id)`.
+Single-entity updates lock the owned current row before allocation. Restoring a
+deleted entity locks an owned source revision as a stable serialization key.
+Bulk paths use deterministic ordering and set-based statements.
 
-Normally the entity repository records an event while changing entity state.
-When an entity participates in a logical operation without changing state, a
-transaction-aware event repository write may record that participation. It
-must receive the transaction opened by the use case, derive `user_id` and
-`event_set_id` from it, and must not open another transaction or event set.
+## Restore
 
-## Adding a new entity or mutation operation
+`restoreBook(bookId, revisionNumber)` and `restoreAuthor(authorId,
+revisionNumber)` load only an owned source revision. Restore preserves the
+source lifecycle creation time, refreshes the lifecycle update time, writes the
+current row, and appends a fresh revision; it never makes an old revision
+current by identity.
 
-- Drive the operation inside a single transaction opened via
-  `TransactionManager::begin` with the appropriate `EventSetOperation`.
-- Mutating repository methods accept `tx: &mut Self::Transaction`, read the
-  user from the transaction, and read `tx.event_set_id()`; they must not open
-  their own transaction, accept a separate `user_id`, or create `event_set`
-  rows.
-- Create a dedicated `<entity>_event` table (and `<entity>_event_author`-style
-  join tables if needed) following the `book_event` / `author_event` schema.
-- The `event_set` row is inserted once in `PgTransactionManager::begin`; each
-  operation inserts one row into the entity's event table.
-- Add a new `EventSetOperation` variant (with its `as_str` round-trip) and the
-  matching `event_set_operation` value via migration (e.g. `create_foo`,
-  `update_foo`).
+A Book restore verifies that every Author referenced by the source revision is
+currently present for the same user. Missing or cross-tenant references abort
+the complete transaction.
+
+## Reads
+
+`operations` hides baseline operations and returns newest first;
+`operation(id)` is ownership scoped. Book and Author revision lists are newest
+first, while exact revision lookup supports restore and nested change
+resolution. Nested Book and Author changes are loaded only when selected and
+batch by Operation IDs.
+
+## Temporary legacy internals
+
+Until the cleanup PR, legacy Event/EventSet tables and internal code remain as
+read-only residuals for history recorded before this change. They are not part
+of the GraphQL schema, and new mutations write only Operation/Revision history.
+PR 3 removes the residual code and tables completely.
 
 ## References
 
-- `docs/database.md` — event-log database schema.
-- `.agent/plans/20260429-add-change-history.md` — the full design and the
-  Decision Log for rationale.
-- `.agent/plans/20260612-remove-import-books-repository.md` — the move of the
-  transaction boundary into the use-case layer.
+- `docs/database.md` — database tables and constraints
+- `openspec/changes/redesign-history-model/design.md` — redesign decisions

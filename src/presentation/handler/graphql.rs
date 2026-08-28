@@ -9,11 +9,11 @@ use axum::{
 };
 
 use crate::{
-    dependency_injection::{AQ, AppSchema, BQ, EQ},
+    dependency_injection::{AQ, AppSchema, BQ, HQ},
     presentation::{
         extractor::claims::Claims,
         graphql::loader::{
-            AuthorEventsByEventSetLoader, AuthorLoader, BookEventsByEventSetLoader,
+            AuthorChangesByOperationLoader, AuthorLoader, BookChangesByOperationLoader,
             BooksByAuthorLoader,
         },
     },
@@ -24,7 +24,7 @@ pub async fn graphql_handler(
     schema: Extension<AppSchema>,
     Extension(author_query): Extension<AQ>,
     Extension(book_query): Extension<BQ>,
-    Extension(event_query): Extension<EQ>,
+    Extension(history_query): Extension<HQ>,
     req: GraphQLRequest,
 ) -> GraphQLResponse {
     let author_loader = DataLoader::new(
@@ -35,12 +35,12 @@ pub async fn graphql_handler(
         BooksByAuthorLoader::new(claims.clone(), book_query),
         tokio::spawn,
     );
-    let book_events_by_event_set_loader = DataLoader::new(
-        BookEventsByEventSetLoader::new(claims.clone(), event_query.clone()),
+    let book_changes_loader = DataLoader::new(
+        BookChangesByOperationLoader::new(claims.clone(), history_query.clone()),
         tokio::spawn,
     );
-    let author_events_by_event_set_loader = DataLoader::new(
-        AuthorEventsByEventSetLoader::new(claims.clone(), event_query),
+    let author_changes_loader = DataLoader::new(
+        AuthorChangesByOperationLoader::new(claims.clone(), history_query.clone()),
         tokio::spawn,
     );
 
@@ -50,8 +50,9 @@ pub async fn graphql_handler(
                 .data(claims)
                 .data(author_loader)
                 .data(books_by_author_loader)
-                .data(book_events_by_event_set_loader)
-                .data(author_events_by_event_set_loader),
+                .data(book_changes_loader)
+                .data(author_changes_loader)
+                .data(history_query),
         )
         .await
         .into()

@@ -9,14 +9,15 @@ use crate::{
         entity::{
             author::{Author, AuthorId, AuthorName, AuthorUpdate, validate_author_yomi},
             book::BookUpdate,
-            event::{EventOperation, EventSetOperation, NewAuthorEvent},
+            event::EventSetOperation,
+            operation::NewOperation,
             user::UserId,
         },
         repository::{
             author_event_repository::AuthorEventRepository,
             author_repository::{AuthorRepository, DeleteAuthorEventExtra},
             book_repository::BookRepository,
-            transaction::{TransactionEventSet, TransactionManager},
+            transaction::{TransactionManager, TransactionOperation},
         },
     },
     use_case::{
@@ -96,7 +97,7 @@ where
 pub struct AuthorCommandInteractor<AR, BR, AER, TM> {
     author_repository: AR,
     book_repository: BR,
-    author_event_repository: AER,
+    _author_event_repository: AER,
     transaction_manager: TM,
 }
 
@@ -110,7 +111,7 @@ impl<AR, BR, AER, TM> AuthorCommandInteractor<AR, BR, AER, TM> {
         Self {
             author_repository,
             book_repository,
-            author_event_repository,
+            _author_event_repository: author_event_repository,
             transaction_manager,
         }
     }
@@ -142,7 +143,10 @@ where
 
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::MergeAuthor)
+            .begin_operation(
+                &user_id,
+                &NewOperation::merge_author(&source_id, &destination_id),
+            )
             .await?;
 
         // Book updates lock their Book row before book_author inserts acquire
@@ -212,6 +216,10 @@ where
         self.book_repository.update_all(&mut tx, &books).await?;
 
         self.author_repository
+            .record_unchanged_revision(&mut tx, &destination_author)
+            .await?;
+
+        self.author_repository
             .delete(
                 &mut tx,
                 source_author.id(),
@@ -220,18 +228,12 @@ where
                 }),
             )
             .await?;
-        self.author_event_repository
-            .append(
-                &mut tx,
-                &NewAuthorEvent::merge_as_destination(destination_id, source_author.id()),
-            )
-            .await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let operation_id = tx.operation_id().to_string();
         self.transaction_manager.commit(tx).await?;
 
         Ok(MutationResultDto::new(
             destination_author.into(),
-            event_set_id,
+            operation_id,
         ))
     }
 
@@ -252,14 +254,17 @@ where
             .transaction_manager
             .begin(&user_id, EventSetOperation::CreateAuthor)
             .await?;
-        let event_id = self.author_repository.create(&mut tx, &author).await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let _event_id = self.author_repository.create(&mut tx, &author).await?;
+        let operation_id = tx.operation_id().to_string();
+        let revision_number = tx.revision_number().ok_or_else(|| {
+            UseCaseError::Unexpected("Author mutation did not record a revision".to_string())
+        })?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(SingleEventMutationResultDto::new(
             author.into(),
-            event_set_id,
-            event_id,
+            operation_id,
+            revision_number,
         ))
     }
 
@@ -300,14 +305,17 @@ where
             OffsetDateTime::now_utc(),
         );
 
-        let event_id = self.author_repository.update(&mut tx, &author).await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let _event_id = self.author_repository.update(&mut tx, &author).await?;
+        let operation_id = tx.operation_id().to_string();
+        let revision_number = tx.revision_number().ok_or_else(|| {
+            UseCaseError::Unexpected("Author mutation did not record a revision".to_string())
+        })?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(SingleEventMutationResultDto::new(
             author.into(),
-            event_set_id,
-            event_id,
+            operation_id,
+            revision_number,
         ))
     }
 
@@ -327,83 +335,40 @@ where
         self.author_repository
             .delete(&mut tx, &author_id, None)
             .await?;
-        let event_set_id = tx.event_set_id().hyphenated().to_string();
+        let operation_id = tx.operation_id().to_string();
         self.transaction_manager.commit(tx).await?;
 
-        Ok(MutationResultDto::new(author_id_value, event_set_id))
+        Ok(MutationResultDto::new(author_id_value, operation_id))
     }
 
     async fn restore(
         &self,
         user_id: &str,
-        event_id: i64,
+        author_id: &str,
+        revision_number: i32,
     ) -> Result<RestoreAuthorResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
-        let event = self
-            .author_event_repository
-            .find_by_event_id(&user_id, event_id)
-            .await?
-            .ok_or(UseCaseError::NotFound {
-                entity_type: "author_event",
-                entity_id: event_id.to_string(),
-                user_id: user_id.as_str().to_string(),
-            })?;
-
-        match event.operation {
-            EventOperation::Create
-            | EventOperation::Update
-            | EventOperation::Restore
-            | EventOperation::Snapshot => {
-                let restored_at = OffsetDateTime::now_utc();
-                let name = event.name.ok_or_else(|| {
-                    UseCaseError::Validation("author_event name is null".to_string())
-                })?;
-                let yomi = event.yomi.ok_or_else(|| {
-                    UseCaseError::Validation("author_event yomi is null".to_string())
-                })?;
-                let author_name = AuthorName::new(name)?;
-                let created_at = event.author_created_at.ok_or_else(|| {
-                    UseCaseError::Validation("author_event author_created_at is null".to_string())
-                })?;
-                event.author_updated_at.ok_or_else(|| {
-                    UseCaseError::Validation("author_event author_updated_at is null".to_string())
-                })?;
-                let author = Author::new_with_timestamps(
-                    event.author_id,
-                    author_name,
-                    yomi,
-                    created_at,
-                    restored_at,
-                )?;
-
-                let dto = AuthorDto::from(author.clone());
-                let mut tx = self
-                    .transaction_manager
-                    .begin(&user_id, EventSetOperation::RestoreAuthor)
-                    .await?;
-                self.author_repository
-                    .restore(&mut tx, event_id, Some(author))
-                    .await?;
-                let event_set_id = tx.event_set_id().hyphenated().to_string();
-                self.transaction_manager.commit(tx).await?;
-                Ok(MutationResultDto::new(Some(dto), event_set_id))
-            }
-            EventOperation::Delete => {
-                let mut tx = self
-                    .transaction_manager
-                    .begin(&user_id, EventSetOperation::RestoreAuthor)
-                    .await?;
-                self.author_repository
-                    .restore(&mut tx, event_id, None)
-                    .await?;
-                let event_set_id = tx.event_set_id().hyphenated().to_string();
-                self.transaction_manager.commit(tx).await?;
-                Ok(MutationResultDto::new(None, event_set_id))
-            }
-            EventOperation::MergeAsDestination => Err(UseCaseError::Validation(
-                "merge_as_destination events cannot be restored".to_string(),
-            )),
-        }
+        let author_id = AuthorId::try_from(author_id)?;
+        crate::domain::entity::revision::RevisionNumber::try_from(revision_number)?;
+        let operation = NewOperation::restore_author(revision_number);
+        let mut tx = self
+            .transaction_manager
+            .begin_operation(&user_id, &operation)
+            .await?;
+        let restored = self
+            .author_repository
+            .restore_revision(&mut tx, &author_id, revision_number)
+            .await?;
+        let operation_id = tx.operation_id().to_string();
+        let restored_revision_number = tx.revision_number().ok_or_else(|| {
+            UseCaseError::Unexpected("Author restore did not record a revision".to_string())
+        })?;
+        self.transaction_manager.commit(tx).await?;
+        Ok(SingleEventMutationResultDto::new(
+            Some(restored.into()),
+            operation_id,
+            restored_revision_number,
+        ))
     }
 }
 
@@ -424,8 +389,6 @@ mod tests {
             entity::{
                 author::{Author, AuthorId, AuthorName},
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                event::{AuthorEvent, EventOperation},
-                event_set::EventSetId,
             },
             error::DomainError,
             repository::{
@@ -448,6 +411,7 @@ mod tests {
     fn make_transaction_manager() -> MockTransactionManager {
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().returning(|_| Ok(()));
         tm
     }
@@ -519,74 +483,77 @@ mod tests {
         assert!(result.is_empty());
     }
 
-    fn author_event(operation: EventOperation) -> AuthorEvent {
-        AuthorEvent {
-            event_id: 2,
-            event_set_id: EventSetId::from(Uuid::new_v4()),
-            operation,
-            author_id: AuthorId::new(Uuid::new_v4()),
-            name: Some("Old Name".to_string()),
-            yomi: Some("おーるど".to_string()),
-            author_created_at: Some(OffsetDateTime::UNIX_EPOCH),
-            author_updated_at: Some(OffsetDateTime::from_unix_timestamp(1).unwrap()),
-            changed_at: OffsetDateTime::now_utc(),
-            extra: None,
-        }
-    }
-
     #[tokio::test]
-    async fn restore_author_applies_event_state() {
-        let event = author_event(EventOperation::Update);
-        let mut events = MockAuthorEventRepository::new();
-        events
-            .expect_find_by_event_id()
-            .return_once(move |_, _| Ok(Some(event)));
+    async fn restore_author_applies_revision_state() {
+        let author_id = AuthorId::new(Uuid::new_v4());
+        let restored_author = Author::new_with_timestamps(
+            author_id.clone(),
+            AuthorName::new("Old Name".to_string()).unwrap(),
+            "おーるど".to_string(),
+            OffsetDateTime::UNIX_EPOCH,
+            OffsetDateTime::now_utc(),
+        )
+        .unwrap();
         let mut authors = MockAuthorRepository::new();
+        let expected_author_id = author_id.clone();
         authors
-            .expect_restore()
-            .withf(|_, event_id, author| {
-                *event_id == 2
-                    && author
-                        .as_ref()
-                        .is_some_and(|author| author.yomi() == "おーるど")
-            })
-            .returning(|_, _, _| Ok(()));
+            .expect_restore_revision()
+            .withf(move |_, id, revision| id == &expected_author_id && *revision == 2)
+            .return_once(move |_, _, _| Ok(restored_author));
         let interactor = AuthorCommandInteractor::new(
             authors,
             MockBookRepository::new(),
-            events,
+            MockAuthorEventRepository::new(),
             make_transaction_manager(),
         );
 
-        let restored = interactor.restore("user1", 2).await.unwrap();
+        let restored = interactor
+            .restore("user1", &author_id.to_string(), 2)
+            .await
+            .unwrap();
 
         assert_eq!(restored.value.unwrap().name, "Old Name");
     }
 
     #[tokio::test]
     async fn restore_author_failure_does_not_commit() {
-        let event = author_event(EventOperation::Update);
-        let mut events = MockAuthorEventRepository::new();
-        events
-            .expect_find_by_event_id()
-            .return_once(move |_, _| Ok(Some(event)));
+        let author_id = AuthorId::new(Uuid::new_v4());
         let mut authors = MockAuthorRepository::new();
         authors
-            .expect_restore()
+            .expect_restore_revision()
             .returning(|_, _, _| Err(DomainError::Unexpected("restore failed".to_string())));
         let mut transaction_manager = MockTransactionManager::new();
-        transaction_manager.expect_begin().returning(|_, _| Ok(()));
+        transaction_manager
+            .expect_begin_operation()
+            .returning(|_, _| Ok(()));
         transaction_manager.expect_commit().times(0);
         let interactor = AuthorCommandInteractor::new(
             authors,
             MockBookRepository::new(),
-            events,
+            MockAuthorEventRepository::new(),
             transaction_manager,
         );
 
-        let result = interactor.restore("user1", 2).await;
+        let result = interactor.restore("user1", &author_id.to_string(), 2).await;
 
         assert!(matches!(result, Err(UseCaseError::Unexpected(_))));
+    }
+
+    #[tokio::test]
+    async fn restore_author_rejects_invalid_revision_before_transaction() {
+        let author_id = AuthorId::new(Uuid::new_v4());
+        let mut authors = MockAuthorRepository::new();
+        authors.expect_restore_revision().times(0);
+        let interactor = AuthorCommandInteractor::new(
+            authors,
+            MockBookRepository::new(),
+            MockAuthorEventRepository::new(),
+            MockTransactionManager::new(),
+        );
+
+        let result = interactor.restore("user1", &author_id.to_string(), 0).await;
+
+        assert!(matches!(result, Err(UseCaseError::Validation(_))));
     }
 
     #[tokio::test]
@@ -596,7 +563,7 @@ mod tests {
         author_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(303.into()));
+            .returning(|_, _| Ok(303));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let mut author_data = CreateAuthorDto::new("Test Author".to_string());
@@ -615,7 +582,7 @@ mod tests {
         assert_eq!(dto.value.created_at, dto.value.updated_at);
         assert!(dto.value.created_at >= before);
         assert!(dto.value.created_at <= after);
-        assert_eq!(dto.event_id.value(), 303);
+        assert_eq!(dto.revision_number, 1);
     }
 
     #[tokio::test]
@@ -641,9 +608,7 @@ mod tests {
     #[tokio::test]
     async fn create_author_commit_failure_returns_no_result() {
         let mut author_repository = MockAuthorRepository::new();
-        author_repository
-            .expect_create()
-            .returning(|_, _| Ok(303.into()));
+        author_repository.expect_create().returning(|_, _| Ok(303));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -721,7 +686,7 @@ mod tests {
         author_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(404.into()));
+            .returning(|_, _| Ok(404));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -740,7 +705,7 @@ mod tests {
         assert!(updated.value.updated_at >= previous_updated_at);
         assert!(updated.value.updated_at >= before);
         assert!(updated.value.updated_at <= after);
-        assert_eq!(updated.event_id.value(), 404);
+        assert_eq!(updated.revision_number, 1);
     }
 
     #[tokio::test]
@@ -756,9 +721,7 @@ mod tests {
         author_repository
             .expect_find_by_id_with_tx()
             .return_once(move |_, _, _| Ok(Some(author)));
-        author_repository
-            .expect_update()
-            .returning(|_, _| Ok(404.into()));
+        author_repository.expect_update().returning(|_, _| Ok(404));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin().returning(|_, _| Ok(()));
@@ -818,7 +781,7 @@ mod tests {
         author_repository
             .expect_update()
             .withf(|_, author| author.yomi() == "")
-            .returning(|_, _| Ok(405.into()));
+            .returning(|_, _| Ok(405));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let mut author_data =
@@ -1071,6 +1034,11 @@ mod tests {
             .times(1)
             .returning(|_, _| Ok(()));
         author_repository
+            .expect_record_unchanged_revision()
+            .withf(move |_, author| author.id().to_string() == destination_id)
+            .times(1)
+            .returning(|_, _| Ok(()));
+        author_repository
             .expect_delete()
             .withf(move |_, author_id, extra| {
                 author_id.to_string() == source_id
@@ -1082,23 +1050,7 @@ mod tests {
                     )
             })
             .returning(|_, _, _| Ok(()));
-        let mut event_repository = MockAuthorEventRepository::new();
-        event_repository
-            .expect_append()
-            .withf(move |_, event| {
-                event.operation == EventOperation::MergeAsDestination
-                    && event.author_id.to_string() == destination_id
-                    && event.name.is_none()
-                    && event.yomi.is_none()
-                    && event.author_created_at.is_none()
-                    && event.author_updated_at.is_none()
-                    && event.extra
-                        == Some(serde_json::json!({
-                            "version": 1,
-                            "source_author_id": source_id,
-                        }))
-            })
-            .returning(|_, _| Ok(1.into()));
+        let event_repository = MockAuthorEventRepository::new();
         let interactor = AuthorCommandInteractor::new(
             author_repository,
             book_repository,
@@ -1179,6 +1131,11 @@ mod tests {
             .times(2)
             .returning(move |_, _, _| Ok(Some(locked.next().unwrap())));
         author_repository
+            .expect_record_unchanged_revision()
+            .withf(move |_, author| author.id().to_string() == destination_id)
+            .times(1)
+            .returning(|_, _| Ok(()));
+        author_repository
             .expect_delete()
             .withf(move |_, author_id, extra| {
                 author_id.to_string() == source_id
@@ -1220,23 +1177,7 @@ mod tests {
                         .any(|book| book.title().as_str() == "Already has destination")
             })
             .returning(|_, _| Ok(()));
-        let mut event_repository = MockAuthorEventRepository::new();
-        event_repository
-            .expect_append()
-            .withf(move |_, event| {
-                event.operation == EventOperation::MergeAsDestination
-                    && event.author_id.to_string() == destination_id
-                    && event.name.is_none()
-                    && event.yomi.is_none()
-                    && event.author_created_at.is_none()
-                    && event.author_updated_at.is_none()
-                    && event.extra
-                        == Some(serde_json::json!({
-                            "version": 1,
-                            "source_author_id": source_id,
-                        }))
-            })
-            .returning(|_, _| Ok(2.into()));
+        let event_repository = MockAuthorEventRepository::new();
         let interactor = AuthorCommandInteractor::new(
             author_repository,
             book_repository,

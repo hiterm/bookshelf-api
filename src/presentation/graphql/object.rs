@@ -5,18 +5,226 @@ use serde_json::Value;
 use time::OffsetDateTime;
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
-use crate::dependency_injection::{AQ, BQ, EQ};
+use crate::dependency_injection::{AQ, BQ, HQ};
+use crate::presentation::extractor::claims::Claims;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{
     BookDto, CreateBookDto, ImportAuthorPreviewDto, ImportAuthorStatus as ImportAuthorStatusDto,
     ImportBookEntryDto, ImportBookPreviewDto, ImportBooksPreviewDto, UpdateBookDto,
 };
-use crate::use_case::dto::event::{AuthorEventDto, BookEventDto};
-use crate::use_case::dto::event_set::EventSetDto;
+use crate::use_case::dto::history::{
+    AuthorOperationChangeDto, AuthorRevisionDto, BookOperationChangeDto, BookRevisionDto,
+    OperationDto,
+};
+use crate::use_case::traits::history::HistoryQueryUseCase;
 
 use super::loader::{
-    AuthorEventsByEventSetLoader, AuthorLoader, BookEventsByEventSetLoader, BooksByAuthorLoader,
+    AuthorChangesByOperationLoader, AuthorLoader, BookChangesByOperationLoader, BooksByAuthorLoader,
 };
+
+#[derive(Clone, SimpleObject)]
+#[graphql(complex)]
+pub struct Operation {
+    pub id: ID,
+    #[graphql(name = "type")]
+    pub operation_type: String,
+    pub detail: Option<Json<Value>>,
+    pub undo_of_operation_id: Option<ID>,
+    pub created_at: OffsetDateTime,
+}
+
+impl From<OperationDto> for Operation {
+    fn from(dto: OperationDto) -> Self {
+        Self {
+            id: ID(dto.id),
+            operation_type: dto.operation_type,
+            detail: dto
+                .detail
+                .map(|detail| Json(serde_json::to_value(detail).expect("typed detail serializes"))),
+            undo_of_operation_id: dto.undo_of_operation_id.map(ID),
+            created_at: dto.created_at,
+        }
+    }
+}
+
+#[ComplexObject]
+impl Operation {
+    async fn book_changes(&self, ctx: &Context<'_>) -> Result<Vec<BookOperationChange>> {
+        let loader = ctx.data_unchecked::<DataLoader<BookChangesByOperationLoader<HQ>>>();
+        Ok(loader
+            .load_one(self.id.to_string())
+            .await?
+            .unwrap_or_default())
+    }
+
+    async fn author_changes(&self, ctx: &Context<'_>) -> Result<Vec<AuthorOperationChange>> {
+        let loader = ctx.data_unchecked::<DataLoader<AuthorChangesByOperationLoader<HQ>>>();
+        Ok(loader
+            .load_one(self.id.to_string())
+            .await?
+            .unwrap_or_default())
+    }
+}
+
+#[derive(Clone, SimpleObject)]
+pub struct BookRevision {
+    pub book_id: ID,
+    pub revision_number: i32,
+    pub title: String,
+    pub author_ids: Vec<ID>,
+    pub isbn: String,
+    pub read: bool,
+    pub owned: bool,
+    pub priority: i32,
+    pub format: BookFormat,
+    pub store: BookStore,
+    pub book_created_at: OffsetDateTime,
+    pub book_updated_at: OffsetDateTime,
+    pub created_at: OffsetDateTime,
+}
+
+impl From<BookRevisionDto> for BookRevision {
+    fn from(dto: BookRevisionDto) -> Self {
+        Self {
+            book_id: ID(dto.book_id),
+            revision_number: dto.revision_number,
+            title: dto.title,
+            author_ids: dto.author_ids.into_iter().map(ID).collect(),
+            isbn: dto.isbn,
+            read: dto.read,
+            owned: dto.owned,
+            priority: dto.priority,
+            format: dto.format.into(),
+            store: dto.store.into(),
+            book_created_at: dto.book_created_at,
+            book_updated_at: dto.book_updated_at,
+            created_at: dto.created_at,
+        }
+    }
+}
+
+#[derive(Clone, SimpleObject)]
+pub struct AuthorRevision {
+    pub author_id: ID,
+    pub revision_number: i32,
+    pub name: String,
+    pub yomi: String,
+    pub author_created_at: OffsetDateTime,
+    pub author_updated_at: OffsetDateTime,
+    pub created_at: OffsetDateTime,
+}
+
+impl From<AuthorRevisionDto> for AuthorRevision {
+    fn from(dto: AuthorRevisionDto) -> Self {
+        Self {
+            author_id: ID(dto.author_id),
+            revision_number: dto.revision_number,
+            name: dto.name,
+            yomi: dto.yomi,
+            author_created_at: dto.author_created_at,
+            author_updated_at: dto.author_updated_at,
+            created_at: dto.created_at,
+        }
+    }
+}
+
+#[derive(Clone, SimpleObject)]
+#[graphql(complex)]
+pub struct BookOperationChange {
+    #[graphql(skip)]
+    pub operation_id: String,
+    pub book_id: ID,
+    #[graphql(skip)]
+    pub before_revision_number: Option<i32>,
+    #[graphql(skip)]
+    pub after_revision_number: Option<i32>,
+}
+
+impl From<BookOperationChangeDto> for BookOperationChange {
+    fn from(dto: BookOperationChangeDto) -> Self {
+        Self {
+            operation_id: dto.operation_id,
+            book_id: ID(dto.book_id),
+            before_revision_number: dto.before_revision_number,
+            after_revision_number: dto.after_revision_number,
+        }
+    }
+}
+
+#[ComplexObject]
+impl BookOperationChange {
+    async fn before_revision(&self, ctx: &Context<'_>) -> Result<Option<BookRevision>> {
+        revision_book(ctx, self, self.before_revision_number).await
+    }
+    async fn after_revision(&self, ctx: &Context<'_>) -> Result<Option<BookRevision>> {
+        revision_book(ctx, self, self.after_revision_number).await
+    }
+}
+
+async fn revision_book(
+    ctx: &Context<'_>,
+    change: &BookOperationChange,
+    number: Option<i32>,
+) -> Result<Option<BookRevision>> {
+    let Some(number) = number else {
+        return Ok(None);
+    };
+    let claims = ctx.data_unchecked::<Claims>();
+    let history = ctx.data_unchecked::<HQ>();
+    Ok(history
+        .book_revision(&claims.sub, change.book_id.as_str(), number)
+        .await?
+        .map(Into::into))
+}
+
+#[derive(Clone, SimpleObject)]
+#[graphql(complex)]
+pub struct AuthorOperationChange {
+    #[graphql(skip)]
+    pub operation_id: String,
+    pub author_id: ID,
+    #[graphql(skip)]
+    pub before_revision_number: Option<i32>,
+    #[graphql(skip)]
+    pub after_revision_number: Option<i32>,
+}
+
+impl From<AuthorOperationChangeDto> for AuthorOperationChange {
+    fn from(dto: AuthorOperationChangeDto) -> Self {
+        Self {
+            operation_id: dto.operation_id,
+            author_id: ID(dto.author_id),
+            before_revision_number: dto.before_revision_number,
+            after_revision_number: dto.after_revision_number,
+        }
+    }
+}
+
+#[ComplexObject]
+impl AuthorOperationChange {
+    async fn before_revision(&self, ctx: &Context<'_>) -> Result<Option<AuthorRevision>> {
+        revision_author(ctx, self, self.before_revision_number).await
+    }
+    async fn after_revision(&self, ctx: &Context<'_>) -> Result<Option<AuthorRevision>> {
+        revision_author(ctx, self, self.after_revision_number).await
+    }
+}
+
+async fn revision_author(
+    ctx: &Context<'_>,
+    change: &AuthorOperationChange,
+    number: Option<i32>,
+) -> Result<Option<AuthorRevision>> {
+    let Some(number) = number else {
+        return Ok(None);
+    };
+    let claims = ctx.data_unchecked::<Claims>();
+    let history = ctx.data_unchecked::<HQ>();
+    Ok(history
+        .author_revision(&claims.sub, change.author_id.as_str(), number)
+        .await?
+        .map(Into::into))
+}
 
 #[derive(SimpleObject)]
 pub struct User {
@@ -364,130 +572,19 @@ impl From<ImportBookInput> for ImportBookEntryDto {
     }
 }
 
-#[derive(Clone, SimpleObject)]
-pub struct BookEventEntry {
-    pub event_id: ID,
-    pub event_set_id: ID,
-    pub operation: String,
-    pub book_id: ID,
-    pub title: Option<String>,
-    pub author_ids: Vec<ID>,
-    pub isbn: Option<String>,
-    pub read: Option<bool>,
-    pub owned: Option<bool>,
-    pub priority: Option<i32>,
-    pub format: Option<BookFormat>,
-    pub store: Option<BookStore>,
-    pub book_created_at: Option<i64>,
-    pub book_updated_at: Option<i64>,
-    pub changed_at: i64,
-    pub extra: Option<Json<Value>>,
-}
-
-impl From<BookEventDto> for BookEventEntry {
-    fn from(dto: BookEventDto) -> Self {
-        Self {
-            event_id: ID(dto.event_id.to_string()),
-            event_set_id: ID(dto.event_set_id),
-            operation: dto.operation,
-            book_id: ID(dto.book_id),
-            title: dto.title,
-            author_ids: dto.author_ids.into_iter().map(ID).collect(),
-            isbn: dto.isbn,
-            read: dto.read,
-            owned: dto.owned,
-            priority: dto.priority,
-            format: dto.format.map(Into::into),
-            store: dto.store.map(Into::into),
-            book_created_at: dto.book_created_at.map(|t| t.unix_timestamp()),
-            book_updated_at: dto.book_updated_at.map(|t| t.unix_timestamp()),
-            changed_at: dto.changed_at.unix_timestamp(),
-            extra: dto.extra.map(Json),
-        }
-    }
-}
-
-#[derive(Clone, SimpleObject)]
-pub struct AuthorEventEntry {
-    pub event_id: ID,
-    pub event_set_id: ID,
-    pub operation: String,
-    pub author_id: ID,
-    pub name: Option<String>,
-    pub yomi: Option<String>,
-    pub author_created_at: Option<i64>,
-    pub author_updated_at: Option<i64>,
-    pub changed_at: i64,
-    pub extra: Option<Json<Value>>,
-}
-
-impl From<AuthorEventDto> for AuthorEventEntry {
-    fn from(dto: AuthorEventDto) -> Self {
-        Self {
-            event_id: ID(dto.event_id.to_string()),
-            event_set_id: ID(dto.event_set_id),
-            operation: dto.operation,
-            author_id: ID(dto.author_id),
-            name: dto.name,
-            yomi: dto.yomi,
-            author_created_at: dto.author_created_at.map(|t| t.unix_timestamp()),
-            author_updated_at: dto.author_updated_at.map(|t| t.unix_timestamp()),
-            changed_at: dto.changed_at.unix_timestamp(),
-            extra: dto.extra.map(Json),
-        }
-    }
-}
-
-#[derive(SimpleObject)]
-#[graphql(complex)]
-pub struct EventSet {
-    pub id: ID,
-    pub operation: String,
-    pub created_at: i64,
-}
-
-impl From<EventSetDto> for EventSet {
-    fn from(dto: EventSetDto) -> Self {
-        Self {
-            id: ID(dto.id),
-            operation: dto.operation,
-            created_at: dto.created_at.unix_timestamp(),
-        }
-    }
-}
-
-#[ComplexObject]
-impl EventSet {
-    async fn book_events(&self, ctx: &Context<'_>) -> Result<Vec<BookEventEntry>> {
-        let loader = ctx.data_unchecked::<DataLoader<BookEventsByEventSetLoader<EQ>>>();
-        Ok(loader
-            .load_one(self.id.to_string())
-            .await?
-            .unwrap_or_default())
-    }
-
-    async fn author_events(&self, ctx: &Context<'_>) -> Result<Vec<AuthorEventEntry>> {
-        let loader = ctx.data_unchecked::<DataLoader<AuthorEventsByEventSetLoader<EQ>>>();
-        Ok(loader
-            .load_one(self.id.to_string())
-            .await?
-            .unwrap_or_default())
-    }
-}
-
 #[derive(SimpleObject)]
 pub struct BookMutationPayload {
     pub book: Book,
-    pub event_set_id: ID,
-    pub event_id: ID,
+    pub operation_id: ID,
+    pub revision_number: i32,
 }
 
 impl BookMutationPayload {
-    pub fn new(book: Book, event_set_id: ID, event_id: ID) -> Self {
+    pub fn new(book: Book, operation_id: ID, revision_number: i32) -> Self {
         Self {
             book,
-            event_set_id,
-            event_id,
+            operation_id,
+            revision_number,
         }
     }
 }
@@ -495,22 +592,22 @@ impl BookMutationPayload {
 #[derive(SimpleObject)]
 pub struct AuthorMutationPayload {
     pub author: Author,
-    pub event_set_id: ID,
-    pub event_id: ID,
+    pub operation_id: ID,
+    pub revision_number: i32,
 }
 
 #[derive(SimpleObject)]
 pub struct MergeAuthorPayload {
     pub author: Author,
-    pub event_set_id: ID,
+    pub operation_id: ID,
 }
 
 impl AuthorMutationPayload {
-    pub fn new(author: Author, event_set_id: ID, event_id: ID) -> Self {
+    pub fn new(author: Author, operation_id: ID, revision_number: i32) -> Self {
         Self {
             author,
-            event_set_id,
-            event_id,
+            operation_id,
+            revision_number,
         }
     }
 }
@@ -518,19 +615,19 @@ impl AuthorMutationPayload {
 #[derive(SimpleObject)]
 pub struct DeleteBookPayload {
     pub book_id: ID,
-    pub event_set_id: ID,
+    pub operation_id: ID,
 }
 
 #[derive(SimpleObject)]
 pub struct DeleteAuthorPayload {
     pub author_id: ID,
-    pub event_set_id: ID,
+    pub operation_id: ID,
 }
 
 #[derive(SimpleObject)]
 pub struct ImportBooksPayload {
     pub books: Vec<Book>,
-    pub event_set_id: ID,
+    pub operation_id: ID,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -610,11 +707,13 @@ impl From<ImportBooksPreviewDto> for ImportBooksPreview {
 #[derive(SimpleObject)]
 pub struct RestoreBookPayload {
     pub book: Option<Book>,
-    pub event_set_id: ID,
+    pub operation_id: ID,
+    pub revision_number: i32,
 }
 
 #[derive(SimpleObject)]
 pub struct RestoreAuthorPayload {
     pub author: Option<Author>,
-    pub event_set_id: ID,
+    pub operation_id: ID,
+    pub revision_number: i32,
 }
