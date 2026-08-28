@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.15.0](https://github.com/hiterm/bookshelf-api/compare/2.14.0...2.15.0) - 2026-08-28
+
+### Other Changes
+- Unify GraphQL event set model by @hiterm in https://github.com/hiterm/bookshelf-api/pull/318
+- Remove mutation result Deref impls by @hiterm in https://github.com/hiterm/bookshelf-api/pull/320
+- Fix OpenSpec validation and archive changes by @hiterm in https://github.com/hiterm/bookshelf-api/pull/321
+- Redesign history with operations and revisions by @hiterm in https://github.com/hiterm/bookshelf-api/pull/324
+
 ## [2.14.0](https://github.com/hiterm/bookshelf-api/compare/2.13.3...2.14.0) - 2026-08-24
 
 ### Other Changes
