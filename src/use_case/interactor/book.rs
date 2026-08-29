@@ -1509,7 +1509,6 @@ mod import_integration_tests {
     }
 
     #[sqlx::test]
-    #[ignore = "legacy Event assertions were removed"]
     async fn import_creates_new_authors_and_reuses_existing(pool: PgPool) -> anyhow::Result<()> {
         let user_id = prepare_user(&pool, "user1").await?;
 
@@ -1542,18 +1541,6 @@ mod import_integration_tests {
         assert_eq!(author_rows.len(), 2);
         assert_eq!(author_rows[0].0, "Existing Author");
         assert_eq!(author_rows[1].0, "New Author");
-
-        // Import writes no legacy Event/EventSet history.
-        let (new_author_event_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM author_event ae
-             JOIN event_set es ON ae.event_set_id = es.id
-             WHERE ae.user_id = $1 AND es.operation = 'import_books'
-               AND ae.name = 'New Author'",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(new_author_event_count, 0);
 
         Ok(())
     }
@@ -1591,7 +1578,6 @@ mod import_integration_tests {
     }
 
     #[sqlx::test]
-    #[ignore = "legacy Event assertions were removed"]
     async fn import_records_only_operation_revision_history(pool: PgPool) -> anyhow::Result<()> {
         let user_id = prepare_user(&pool, "user1").await?;
 
@@ -1602,16 +1588,6 @@ mod import_integration_tests {
             )
             .await?;
         assert_eq!(result.value.len(), 1);
-
-        let legacy_count: i64 = sqlx::query_scalar(
-            "SELECT (SELECT COUNT(*) FROM event_set WHERE user_id = $1)
-                  + (SELECT COUNT(*) FROM book_event WHERE user_id = $1)
-                  + (SELECT COUNT(*) FROM author_event WHERE user_id = $1)",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(legacy_count, 0);
 
         let (operation_id, detail): (uuid::Uuid, serde_json::Value) = sqlx::query_as(
             "SELECT id, detail FROM operation
@@ -1681,7 +1657,6 @@ mod import_integration_tests {
     }
 
     #[sqlx::test]
-    #[ignore = "legacy Event assertions were removed"]
     async fn import_rolls_back_on_failure(pool: PgPool) -> anyhow::Result<()> {
         // The interactor now generates fresh book UUIDs internally, so the
         // old "duplicate book_id" trigger is no longer expressible. We instead
@@ -1717,18 +1692,10 @@ mod import_integration_tests {
                 .await?;
         assert_eq!(author_count, 0, "no author rows should be persisted");
 
-        let (event_set_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
-                .bind(user_id.as_str())
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(event_set_count, 0, "no event_set rows should be persisted");
-
         Ok(())
     }
 
     #[sqlx::test]
-    #[ignore = "legacy Event assertions were removed"]
     async fn import_empty_author_names(pool: PgPool) -> anyhow::Result<()> {
         let user_id = prepare_user(&pool, "user1").await?;
 
@@ -1756,24 +1723,10 @@ mod import_integration_tests {
             "book_author should be empty when no authors"
         );
 
-        let (book_event_author_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM book_event_author bea
-             JOIN book_event be ON bea.event_id = be.event_id
-             WHERE be.user_id = $1",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(
-            book_event_author_count, 0,
-            "book_event_author should be empty when no authors"
-        );
-
         Ok(())
     }
 
     #[sqlx::test]
-    #[ignore = "legacy Event assertions were removed"]
     async fn import_persists_maximum_batch_without_legacy_events(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1789,17 +1742,7 @@ mod import_integration_tests {
             .bind(user_id.as_str())
             .fetch_one(&pool)
             .await?;
-        let (event_count, distinct_event_sets): (i64, i64) = sqlx::query_as(
-            "SELECT COUNT(*), COUNT(DISTINCT event_set_id)
-             FROM book_event WHERE user_id = $1",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-
         assert_eq!(book_count, super::MAX_BOOK_BATCH as i64);
-        assert_eq!(event_count, 0);
-        assert_eq!(distinct_event_sets, 0);
 
         Ok(())
     }
