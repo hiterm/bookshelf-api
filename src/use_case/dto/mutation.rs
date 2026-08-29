@@ -14,15 +14,15 @@ impl<T> MutationResultDto<T> {
     }
 }
 
-/// Result of a mutation that produces exactly one event for the mutated entity.
+/// Result of a mutation that produces exactly one revision for the entity.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SingleEventMutationResultDto<T> {
+pub struct SingleRevisionMutationResultDto<T> {
     pub value: T,
     pub operation_id: String,
     pub revision_number: i32,
 }
 
-impl<T> SingleEventMutationResultDto<T> {
+impl<T> SingleRevisionMutationResultDto<T> {
     pub fn new(value: T, operation_id: String, revision_number: i32) -> Self {
         Self {
             value,
@@ -32,10 +32,10 @@ impl<T> SingleEventMutationResultDto<T> {
     }
 }
 
-pub type BookMutationResultDto = SingleEventMutationResultDto<BookDto>;
-pub type AuthorMutationResultDto = SingleEventMutationResultDto<AuthorDto>;
+pub type BookMutationResultDto = SingleRevisionMutationResultDto<BookDto>;
+pub type AuthorMutationResultDto = SingleRevisionMutationResultDto<AuthorDto>;
 pub type DeleteBookResultDto = MutationResultDto<String>;
 pub type DeleteAuthorResultDto = MutationResultDto<String>;
 pub type ImportBooksResultDto = MutationResultDto<Vec<BookDto>>;
-pub type RestoreBookResultDto = SingleEventMutationResultDto<Option<BookDto>>;
-pub type RestoreAuthorResultDto = SingleEventMutationResultDto<Option<AuthorDto>>;
+pub type RestoreBookResultDto = SingleRevisionMutationResultDto<Option<BookDto>>;
+pub type RestoreAuthorResultDto = SingleRevisionMutationResultDto<Option<AuthorDto>>;

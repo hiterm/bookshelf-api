@@ -29,19 +29,19 @@
 - [x] 2.7 Add unit and database tests for update, create, delete, restore, import, merge, related-entity restore/delete ordering, unrelated later Operations, conflicting later revisions, deleted-state matching, missing references, atomic rollback, and undo history
 - [x] 2.8 Add/update GraphQL E2E coverage and schema assets for undo, including import/merge ordering and atomicity plus future undo-of-undo representability
 - [x] 2.9 Run PR 2 formatting, lint, full tests, database integration, E2E, and OpenSpec validation
-- [ ] 2.10 Commit granular PR 2 changes, push, create the PR, fix CI to green, complete CodeRabbit review/replies/re-review to approval, and merge
+- [x] 2.10 Commit granular PR 2 changes, push, create the PR, fix CI to green, complete CodeRabbit review/replies/re-review to approval, and merge
 
 ## 3. PR 3 — Legacy Event/EventSet cleanup
 
-- [ ] 3.1 Update local `main` after PR 2 merge, record its SHA, and create a fresh `codex/` PR 3 branch
-- [ ] 3.2 Remove Event/EventSet domain IDs, operations, entities, and conversion tests after confirming all runtime consumers use Operation/Revision
-- [ ] 3.3 Remove Event/EventSet repository traits, PostgreSQL adapters, mocks, and repository tests
-- [ ] 3.4 Remove Event query/DTO/interactor boundaries and legacy Event-based restore lookup
-- [ ] 3.5 Remove remaining internal presentation fixtures and test terminology tied to Event/EventSet after confirming no public GraphQL contract remains
-- [ ] 3.6 Add the final migration that drops legacy relationship, entity Event, EventSet, and lookup tables in foreign-key dependency order
-- [ ] 3.7 Update migration-from-existing-schema tests and verify current state plus Operation/Revision history survive legacy table removal
-- [ ] 3.8 Search the repository for legacy history names and remove unintended `event`, `event_set`, EventId, EventSetId, EventOperation, and EventSetOperation references
-- [ ] 3.9 Replace current Event-recording architecture and database documentation with final Operation/Revision/Undo documentation
+- [x] 3.1 Update local `main` after PR 2 merge, record its SHA (`41f046e`), and create a fresh `codex/` PR 3 branch (`codex/legacy-event-cleanup`)
+- [x] 3.2 Remove Event/EventSet domain IDs, operations, entities, and conversion tests after confirming all runtime consumers use Operation/Revision
+- [x] 3.3 Remove Event/EventSet repository traits, PostgreSQL adapters, mocks, and repository tests
+- [x] 3.4 Remove Event query/DTO/interactor boundaries and legacy Event-based restore lookup
+- [x] 3.5 Remove remaining internal presentation fixtures and test terminology tied to Event/EventSet after confirming no public GraphQL contract remains
+- [x] 3.6 Add the final migration that drops legacy relationship, entity Event, EventSet, and lookup tables in foreign-key dependency order
+- [x] 3.7 Update migration-from-existing-schema tests and verify current state plus Operation/Revision history survive legacy table removal
+- [x] 3.8 Search the repository for legacy history names and remove unintended `event`, `event_set`, EventId, EventSetId, EventOperation, and EventSetOperation references
+- [x] 3.9 Replace current Event-recording architecture and database documentation with final Operation/Revision/Undo documentation
 - [ ] 3.10 Run PR 3 formatting, lint, full tests, database integration, migration, GraphQL schema/E2E, and OpenSpec validation
 - [ ] 3.11 Commit granular PR 3 changes, push, create the PR, fix CI to green, complete CodeRabbit review/replies/re-review to approval, and merge
 

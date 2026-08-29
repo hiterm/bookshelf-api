@@ -3,8 +3,7 @@ use sqlx::{PgConnection, PgPool, Postgres};
 
 use crate::domain::{
     entity::{
-        event::EventSetOperation,
-        operation::{NewOperation, OperationId},
+        operation::{NewOperation, OperationId, OperationType},
         user::UserId,
     },
     error::DomainError,
@@ -82,9 +81,10 @@ impl TransactionManager for PgTransactionManager {
     async fn begin(
         &self,
         user_id: &UserId,
-        operation: EventSetOperation,
+        operation_type: OperationType,
     ) -> Result<Self::Transaction, DomainError> {
-        self.begin_operation(user_id, &operation.into()).await
+        self.begin_operation(user_id, &NewOperation::simple(operation_type))
+            .await
     }
 
     async fn begin_operation(
@@ -142,7 +142,6 @@ mod tests {
     use crate::{
         domain::{
             entity::{
-                event::EventSetOperation,
                 operation::{NewOperation, OperationDetail, OperationType},
                 user::{User, UserId},
             },
@@ -160,19 +159,12 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn rollback_removes_operation_without_legacy_write(pool: PgPool) -> anyhow::Result<()> {
+    async fn rollback_removes_operation(pool: PgPool) -> anyhow::Result<()> {
         let user_id = user(&pool).await?;
         let manager = PgTransactionManager::new(pool.clone());
-        let tx = manager
-            .begin(&user_id, EventSetOperation::ImportBooks)
-            .await?;
+        let tx = manager.begin(&user_id, OperationType::ImportBooks).await?;
         manager.rollback(tx).await?;
 
-        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
-            .bind(user_id.as_str())
-            .fetch_one(&pool)
-            .await?;
-        assert_eq!(count, 0);
         let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM operation WHERE user_id = $1")
             .bind(user_id.as_str())
             .fetch_one(&pool)
@@ -182,19 +174,12 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn commit_keeps_operation_without_legacy_write(pool: PgPool) -> anyhow::Result<()> {
+    async fn commit_keeps_operation(pool: PgPool) -> anyhow::Result<()> {
         let user_id = user(&pool).await?;
         let manager = PgTransactionManager::new(pool.clone());
-        let tx = manager
-            .begin(&user_id, EventSetOperation::ImportBooks)
-            .await?;
+        let tx = manager.begin(&user_id, OperationType::ImportBooks).await?;
         manager.commit(tx).await?;
 
-        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
-            .bind(user_id.as_str())
-            .fetch_one(&pool)
-            .await?;
-        assert_eq!(count, 0);
         let (operation_type,): (String,) =
             sqlx::query_as("SELECT type FROM operation WHERE user_id = $1")
                 .bind(user_id.as_str())

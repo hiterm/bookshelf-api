@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use serde_json::json;
 use sqlx::{Executor, PgPool, Postgres};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -830,95 +829,6 @@ impl BookRepository for PgBookRepository {
         Ok(())
     }
 
-    async fn restore(
-        &self,
-        tx: &mut Self::Transaction,
-        source_event_id: i64,
-        book: Option<Book>,
-    ) -> Result<(), DomainError> {
-        let user_id = tx.user_id().clone();
-        let extra = json!({"version": 1, "source_event_id": source_event_id});
-
-        match book {
-            Some(book) => {
-                let author_ids: Vec<Uuid> =
-                    book.author_ids().iter().map(|id| id.to_uuid()).collect();
-
-                sqlx::query(
-                    "INSERT INTO book (id, user_id, title, isbn, read, owned, priority,
-                       format, store, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                     ON CONFLICT (id, user_id) DO UPDATE SET
-                       title=$3, isbn=$4, read=$5, owned=$6, priority=$7,
-                       format=$8, store=$9, created_at=$10, updated_at=$11",
-                )
-                .bind(book.id().to_uuid())
-                .bind(user_id.as_str())
-                .bind(book.title().as_str())
-                .bind(book.isbn().as_str())
-                .bind(book.read().to_bool())
-                .bind(book.owned().to_bool())
-                .bind(book.priority().to_i32())
-                .bind(book.format().to_string())
-                .bind(book.store().to_string())
-                .bind(book.created_at())
-                .bind(book.updated_at())
-                .execute(tx.as_mut())
-                .await?;
-
-                sqlx::query(
-                    "DELETE FROM book_author WHERE user_id=$1 AND book_id=$2 AND author_id != ALL($3)",
-                )
-                .bind(user_id.as_str())
-                .bind(book.id().to_uuid())
-                .bind(&author_ids)
-                .execute(tx.as_mut())
-                .await?;
-
-                sqlx::query(
-                    "INSERT INTO book_author (user_id, book_id, author_id)
-                            SELECT $1, $2::uuid, * FROM UNNEST($3::uuid[])
-                     ON CONFLICT DO NOTHING",
-                )
-                .bind(user_id.as_str())
-                .bind(book.id().to_uuid())
-                .bind(&author_ids)
-                .execute(tx.as_mut())
-                .await?;
-
-                let _ = extra;
-            }
-            None => {
-                // book_id comes from the event; we need to identify which book to delete.
-                // The caller ensures source_event_id belongs to user_id so we look it up.
-                let (book_id,): (Uuid,) = sqlx::query_as(
-                    "SELECT book_id FROM book_event WHERE event_id = $1 AND user_id = $2",
-                )
-                .bind(source_event_id)
-                .bind(user_id.as_str())
-                .fetch_one(tx.as_mut())
-                .await?;
-
-                sqlx::query("DELETE FROM book_author WHERE user_id=$1 AND book_id=$2")
-                    .bind(user_id.as_str())
-                    .bind(book_id)
-                    .execute(tx.as_mut())
-                    .await?;
-
-                // 0 rows affected is acceptable (book already absent)
-                sqlx::query("DELETE FROM book WHERE user_id=$1 AND id=$2")
-                    .bind(user_id.as_str())
-                    .bind(book_id)
-                    .execute(tx.as_mut())
-                    .await?;
-
-                let _ = extra;
-            }
-        }
-
-        Ok(())
-    }
-
     async fn restore_revision(
         &self,
         tx: &mut Self::Transaction,
@@ -1067,7 +977,7 @@ mod tests {
         },
     };
 
-    use crate::domain::entity::event::EventSetOperation;
+    use crate::domain::entity::operation::OperationType;
     use crate::domain::repository::transaction::TransactionManager;
 
     use super::*;
@@ -1086,7 +996,7 @@ mod tests {
         book: &Book,
     ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
+        let mut tx = tm.begin(user_id, OperationType::CreateBook).await?;
         let event_id = book_repository.create(&mut tx, book).await?;
         tm.commit(tx).await?;
         Ok(i64::from(event_id))
@@ -1099,7 +1009,7 @@ mod tests {
         book: &Book,
     ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::UpdateBook).await?;
+        let mut tx = tm.begin(user_id, OperationType::UpdateBook).await?;
         let event_id = book_repository.update(&mut tx, book).await?;
         tm.commit(tx).await?;
         Ok(i64::from(event_id))
@@ -1112,11 +1022,12 @@ mod tests {
         book_id: &BookId,
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::DeleteBook).await?;
+        let mut tx = tm.begin(user_id, OperationType::DeleteBook).await?;
         book_repository.delete(&mut tx, book_id).await?;
         tm.commit(tx).await
     }
 
+    #[cfg(any())]
     async fn restore_book(
         pool: &PgPool,
         book_repository: &PgBookRepository,
@@ -1125,7 +1036,7 @@ mod tests {
         book: Option<Book>,
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::RestoreBook).await?;
+        let mut tx = tm.begin(user_id, OperationType::RestoreBook).await?;
         book_repository
             .restore(&mut tx, source_event_id, book)
             .await?;
@@ -1139,7 +1050,7 @@ mod tests {
         author: &Author,
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
+        let mut tx = tm.begin(user_id, OperationType::CreateAuthor).await?;
         author_repository.create(&mut tx, author).await?;
         tm.commit(tx).await
     }
@@ -1179,7 +1090,7 @@ mod tests {
         let expected = book_repository.find_by_id(&user_id, book.id()).await?;
 
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateBook).await?;
+        let mut tx = tm.begin(&user_id, OperationType::UpdateBook).await?;
         let actual = book_repository
             .find_by_id_with_tx(&mut tx, &user_id, book.id())
             .await?;
@@ -1202,7 +1113,7 @@ mod tests {
         create_book(&pool, &book_repository, &user_id, &book).await?;
 
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateBook).await?;
+        let mut tx = tm.begin(&user_id, OperationType::UpdateBook).await?;
         let actual = book_repository
             .find_by_id_with_tx(&mut tx, &other_user_id, book.id())
             .await?;
@@ -1325,7 +1236,7 @@ mod tests {
         create_book(&pool, &book_repository, &user2_id, &user2_book).await?;
 
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user1_id, EventSetOperation::MergeAuthor).await?;
+        let mut tx = tm.begin(&user1_id, OperationType::MergeAuthor).await?;
         let books = book_repository
             .find_by_author_id_with_tx(&mut tx, &user1_id, &user1_author_ids[0])
             .await?;
@@ -1440,7 +1351,7 @@ mod tests {
         );
 
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user_id, EventSetOperation::MergeAuthor).await?;
+        let mut tx = tm.begin(&user_id, OperationType::MergeAuthor).await?;
         book_repository
             .update_all(&mut tx, &[book1.clone(), book2.clone()])
             .await?;
@@ -1478,7 +1389,7 @@ mod tests {
         let event_count_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM book_event")
             .fetch_one(&pool)
             .await?;
-        let mut tx = tm.begin(&user_id, EventSetOperation::MergeAuthor).await?;
+        let mut tx = tm.begin(&user_id, OperationType::MergeAuthor).await?;
         book_repository.update_all(&mut tx, &[]).await?;
         tm.commit(tx).await?;
         let event_count_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM book_event")
@@ -1521,7 +1432,7 @@ mod tests {
 
         {
             let tm = PgTransactionManager::new(pool.clone());
-            let mut tx = tm.begin(&user1_id, EventSetOperation::MergeAuthor).await?;
+            let mut tx = tm.begin(&user1_id, OperationType::MergeAuthor).await?;
             let result = book_repository
                 .update_all(&mut tx, &[user1_book, user2_book.clone()])
                 .await;
@@ -2012,6 +1923,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(any())]
     #[sqlx::test]
     #[ignore = "legacy Event restore is outside the PR 1 mutation contract"]
     async fn test_restore_some_upserts_existing_book(pool: PgPool) -> anyhow::Result<()> {
@@ -2101,6 +2013,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(any())]
     #[sqlx::test]
     #[ignore = "legacy Event restore is outside the PR 1 mutation contract"]
     async fn test_restore_some_inserts_when_book_absent(pool: PgPool) -> anyhow::Result<()> {
@@ -2139,6 +2052,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(any())]
     #[sqlx::test]
     #[ignore = "legacy Event restore is outside the PR 1 mutation contract"]
     async fn test_restore_none_deletes_book_and_records_event(pool: PgPool) -> anyhow::Result<()> {
@@ -2281,9 +2195,7 @@ mod tests {
         assert_eq!(change, (Some(2), Some(3)));
 
         delete_book(&pool, &repository, &user_id, original.id()).await?;
-        let mut tx = manager
-            .begin(&user_id, EventSetOperation::DeleteAuthor)
-            .await?;
+        let mut tx = manager.begin(&user_id, OperationType::DeleteAuthor).await?;
         authors.delete(&mut tx, &author_ids[0], None).await?;
         manager.commit(tx).await?;
         let mut tx = manager

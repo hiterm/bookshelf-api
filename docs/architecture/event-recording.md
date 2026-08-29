@@ -2,9 +2,7 @@
 
 This document describes the current mutation-history architecture.
 Operation/Revision is the authoritative write model and the only GraphQL
-history contract. Legacy Event/EventSet tables and internal code remain
-temporarily until the cleanup PR, but no mutation writes them and GraphQL does
-not expose them.
+history contract. The legacy Event/EventSet code and tables have been removed.
 
 ## Invariant
 
@@ -73,13 +71,6 @@ the complete transaction.
 first, while exact revision lookup supports restore and nested change
 resolution. Nested Book and Author changes are loaded only when selected and
 batch by Operation IDs.
-
-## Temporary legacy internals
-
-Until the cleanup PR, legacy Event/EventSet tables and internal code remain as
-read-only residuals for history recorded before this change. They are not part
-of the GraphQL schema, and new mutations write only Operation/Revision history.
-PR 3 removes the residual code and tables completely.
 
 ## References
 

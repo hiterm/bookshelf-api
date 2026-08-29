@@ -113,39 +113,39 @@ async fn e2e_import_books() -> Result<()> {
         import_operation_id
     );
     let (_, response) = graphql_request(&operation_query, Some(&token)).await?;
-    let event_set = &response["data"]["operation"];
-    assert!(!event_set.is_null(), "import operation should be found");
+    let operation = &response["data"]["operation"];
+    assert!(!operation.is_null(), "import operation should be found");
     assert_eq!(
-        event_set["type"].as_str(),
+        operation["type"].as_str(),
         Some("import_books"),
-        "import event set operation should be import_books"
+        "import operation type should be import_books"
     );
-    let grouped_book_events = event_set["bookChanges"]
+    let grouped_book_changes = operation["bookChanges"]
         .as_array()
-        .context("bookEvents should be an array")?;
+        .context("bookChanges should be an array")?;
     assert_eq!(
-        grouped_book_events.len(),
+        grouped_book_changes.len(),
         2,
-        "import event set should group both book create events"
+        "import operation should group both Book changes"
     );
-    let grouped_book_ids: Vec<&str> = grouped_book_events
+    let grouped_book_ids: Vec<&str> = grouped_book_changes
         .iter()
         .filter_map(|e| e["bookId"].as_str())
         .collect();
     assert!(grouped_book_ids.contains(&book_one_id));
     assert!(grouped_book_ids.contains(&book_two_id));
-    let grouped_author_events = event_set["authorChanges"]
+    let grouped_author_changes = operation["authorChanges"]
         .as_array()
-        .context("authorEvents should be an array")?;
+        .context("authorChanges should be an array")?;
     assert_eq!(
-        grouped_author_events.len(),
+        grouped_author_changes.len(),
         1,
-        "import event set should group the newly created author event"
+        "import operation should group the newly created Author change"
     );
     assert_eq!(
-        grouped_author_events[0]["afterRevision"]["name"].as_str(),
+        grouped_author_changes[0]["afterRevision"]["name"].as_str(),
         Some("New Author"),
-        "grouped author event should be the new author"
+        "grouped Author change should be the new Author"
     );
 
     // Verify Book Two has "New Author"
@@ -298,37 +298,37 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         import_set_id
     );
     let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
-    let event_set = &response["data"]["operation"];
-    assert_eq!(event_set["type"].as_str(), Some("import_books"));
-    let grouped_book_events = event_set["bookChanges"]
+    let operation = &response["data"]["operation"];
+    assert_eq!(operation["type"].as_str(), Some("import_books"));
+    let grouped_book_changes = operation["bookChanges"]
         .as_array()
-        .context("bookEvents should be an array")?;
+        .context("bookChanges should be an array")?;
     assert_eq!(
-        grouped_book_events.len(),
+        grouped_book_changes.len(),
         import_count,
-        "bulk import event set should group every book create event"
+        "bulk import operation should group every Book change"
     );
     for book_id in &imported_book_ids {
         assert!(
-            grouped_book_events
+            grouped_book_changes
                 .iter()
                 .any(|event| event["bookId"].as_str() == Some(book_id.as_str())),
-            "bulk import event set should contain book id {book_id}"
+            "bulk import operation should contain Book id {book_id}"
         );
     }
 
-    let grouped_author_events = event_set["authorChanges"]
+    let grouped_author_changes = operation["authorChanges"]
         .as_array()
-        .context("authorEvents should be an array")?;
+        .context("authorChanges should be an array")?;
     assert_eq!(
-        grouped_author_events.len(),
+        grouped_author_changes.len(),
         import_count,
-        "bulk import event set should only group newly created author events"
+        "bulk import operation should only group newly created Author changes"
     );
     for i in 0..import_count {
         let new_author_name = format!("Bulk New Author {run_id} {i:02}");
         assert!(
-            grouped_author_events.iter().any(|event| {
+            grouped_author_changes.iter().any(|event| {
                 event["afterRevision"]["name"].as_str() == Some(new_author_name.as_str())
             }),
             "bulk import event set should contain author event for {new_author_name}"

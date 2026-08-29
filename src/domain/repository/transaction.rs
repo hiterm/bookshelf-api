@@ -5,8 +5,7 @@ use uuid::Uuid;
 
 use crate::domain::{
     entity::{
-        event::EventSetOperation,
-        operation::{NewOperation, OperationId},
+        operation::{NewOperation, OperationId, OperationType},
         user::UserId,
     },
     error::DomainError,
@@ -36,7 +35,7 @@ pub trait TransactionManager: Send + Sync + 'static {
     async fn begin(
         &self,
         user_id: &UserId,
-        operation: EventSetOperation,
+        operation_type: OperationType,
     ) -> Result<Self::Transaction, DomainError>;
 
     async fn begin_operation(

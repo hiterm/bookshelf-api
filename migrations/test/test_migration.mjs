@@ -447,6 +447,39 @@ test('OperationChange rejects a Revision owned by another Operation owner', () =
   `, 'cross-owner OperationChange');
 });
 
+// ---- Legacy Event cleanup migration ----
+
+console.log('\nApplying legacy Event cleanup migration...');
+applyMigration(EMPTY_URL, '20260829000000_drop_legacy_event_tables.sql');
+applyMigration(DATA_URL, '20260829000000_drop_legacy_event_tables.sql');
+
+test('legacy Event tables and lookup tables are removed', () => {
+  for (const table of [
+    'book_event_author',
+    'book_event',
+    'author_event',
+    'event_set',
+    'event_operation',
+    'event_set_operation',
+  ]) {
+    assertEqual(queryOne(DATA_URL, `SELECT to_regclass('public.${table}') IS NULL`), 't', `${table} removed`);
+  }
+});
+
+test('current Books, Authors, and relationships survive Event cleanup', () => {
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM book'), 5, 'Book count');
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM author'), 4, 'Author count');
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM book_author'), 2, 'Book Author count');
+});
+
+test('Operation and Revision history survives Event cleanup', () => {
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM operation'), 2, 'Operation count');
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM book_revision'), 5, 'Book Revision count');
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM author_revision'), 4, 'Author Revision count');
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM book_operation_change'), 5, 'Book change count');
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM author_operation_change'), 4, 'Author change count');
+});
+
 // ---- Summary ----
 
 console.log(`\n${passed} passed, ${failed} failed`);
