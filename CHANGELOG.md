@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.15.1](https://github.com/hiterm/bookshelf-api/compare/2.15.0...2.15.1) - 2026-08-29
+
+### Other Changes
+- Add atomic operation undo by @hiterm in https://github.com/hiterm/bookshelf-api/pull/325
+
 ## [2.15.0](https://github.com/hiterm/bookshelf-api/compare/2.14.0...2.15.0) - 2026-08-28
 
 ### Other Changes
