@@ -17,18 +17,15 @@ without changing the `importBooks` contract.
 - **THEN** its response contains no book ID, author ID, event ID, event-set ID, creation timestamp, or update timestamp
 
 ### Requirement: Preview executes the real import path and rolls it back
-The system MUST run preview and import through the same validation, bulk author
-resolution, book construction, repository persistence, database constraints,
-and event-recording path, and MUST explicitly roll back a successfully executed
-preview transaction.
+The system MUST run preview and import through the same validation, bulk author resolution, book construction, repository persistence, database constraints, Operation creation, Revision recording, and OperationChange recording path, and MUST explicitly roll back a successfully executed preview transaction.
 
 #### Scenario: Preview reaches transactional persistence
 - **WHEN** valid input is previewed
-- **THEN** author, book, relationship, event-set, and entity-event writes execute inside one transaction using `ImportBooks` operation semantics before rollback
+- **THEN** author, book, relationship, Operation, Revision, revision-author, and OperationChange writes execute inside one transaction using `ImportBooks` semantics before rollback
 
 #### Scenario: Database state is unchanged
 - **WHEN** a preview completes successfully
-- **THEN** no author, book, book-author relationship, event set, book event, author event, or related event relationship created by the preview remains in the database
+- **THEN** no Author, Book, Book-Author relationship, Operation, Revision, revision-author relationship, or OperationChange created by the preview remains in the database
 
 #### Scenario: Validation parity
 - **WHEN** preview and import receive the same empty, oversized, or invalid batch

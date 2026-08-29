@@ -42,12 +42,12 @@
 - [x] 3.7 Update migration-from-existing-schema tests and verify current state plus Operation/Revision history survive legacy table removal
 - [x] 3.8 Search the repository for legacy history names and remove unintended `event`, `event_set`, EventId, EventSetId, EventOperation, and EventSetOperation references
 - [x] 3.9 Replace current Event-recording architecture and database documentation with final Operation/Revision/Undo documentation
-- [ ] 3.10 Run PR 3 formatting, lint, full tests, database integration, migration, GraphQL schema/E2E, and OpenSpec validation
-- [ ] 3.11 Commit granular PR 3 changes, push, create the PR, fix CI to green, complete CodeRabbit review/replies/re-review to approval, and merge
+- [x] 3.10 Run PR 3 formatting, lint, full tests, database integration, migration, GraphQL schema/E2E, and OpenSpec validation
+- [x] 3.11 Commit granular PR 3 changes, push, create the PR, fix CI to green, complete CodeRabbit review/replies/re-review to approval, and merge
 
 ## 4. OpenSpec archive PR
 
-- [ ] 4.1 Update local `main` after PR 3 merge and verify every implementation task and completion condition
-- [ ] 4.2 Run final OpenSpec validation and archive `redesign-history-model`, synchronizing delta specs and removing/replacing legacy Event specifications
-- [ ] 4.3 Verify Operation, Revision, restore, undo, import/merge, payload, and cleanup requirements are correct in `openspec/specs`
-- [ ] 4.4 Create the archive-only PR, confirm validation and CI green without CodeRabbit review, merge it, and verify the change is archived on `main`
+- [x] 4.1 Update local `main` after PR 3 merge and verify every implementation task and completion condition
+- [x] 4.2 Run final OpenSpec validation and archive `redesign-history-model`, synchronizing delta specs and removing/replacing legacy Event specifications
+- [x] 4.3 Verify Operation, Revision, restore, undo, import/merge, payload, and cleanup requirements are correct in `openspec/specs`
+- [x] 4.4 Create the archive-only PR, confirm validation and CI green without CodeRabbit review, merge it, and verify the change is archived on `main`

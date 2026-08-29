@@ -18,14 +18,11 @@ unique author names.
 - **THEN** the system persists the complete batch through the bounded bulk path
 
 ### Requirement: Bulk author resolution preserves creation semantics
-The system MUST deduplicate requested author names, use the tenant-scoped
-author uniqueness constraint to insert missing authors, resolve all requested
-author IDs and created-versus-existing statuses in one lookup, and record an
-author event only for each author created by the import or preview execution.
+The system MUST deduplicate requested author names, use the tenant-scoped author uniqueness constraint to insert missing authors, resolve all requested author IDs and created-versus-existing statuses in one lookup, and record an Author Revision and OperationChange only for each Author created by the import or preview execution.
 
 #### Scenario: Existing and new authors are mixed
 - **WHEN** an import or preview references both existing and previously unknown author names
-- **THEN** all names resolve to their tenant-scoped IDs and statuses and only newly inserted authors receive author events
+- **THEN** all names resolve to their tenant-scoped IDs and statuses and only newly inserted Authors receive Author Revisions and changes
 
 #### Scenario: Author names repeat
 - **WHEN** one author name occurs in multiple books or more than once in one book
@@ -36,26 +33,21 @@ author event only for each author created by the import or preview execution.
 - **THEN** the database uniqueness constraint prevents duplicates and each execution resolves the surviving author ID with the status produced by its own find-or-create operation
 
 ### Requirement: Bulk book persistence records complete snapshots
-The system SHALL bulk-insert all books, book-author relationships, one create
-event per book, and matching event-author relationships while preserving the
-same snapshots as single-book creation.
+The system SHALL bulk-insert all Books, Book-Author relationships, one revision 1 per Book, matching revision-author relationships, and one BookOperationChange per Book while preserving the same complete snapshots as single-Book creation.
 
 #### Scenario: Books have varied author counts
-- **WHEN** an import contains books with zero, one, and multiple authors
-- **THEN** every book and all applicable current and event-snapshot author relationships are persisted correctly
+- **WHEN** an import contains Books with zero, one, and multiple Authors
+- **THEN** every Book and all applicable current and Revision Author relationships are persisted correctly
 
-#### Scenario: Events share the import event set
-- **WHEN** books and new authors are persisted by one import
-- **THEN** every entity event references the single event set created for `ImportBooks`
+#### Scenario: Changes share the import Operation
+- **WHEN** Books and new Authors are persisted by one import
+- **THEN** every entity OperationChange references the single `ImportBooks` Operation
 
 ### Requirement: Bulk import remains atomic and compatible
-The system MUST preserve the existing `importBooks` GraphQL schema, validation,
-response semantics, 1,000-book limit, and single-transaction behavior while
-sharing its validation and transactional execution path with book import
-preview.
+The system MUST preserve the `importBooks` validation, response entity semantics, 1,000-Book limit, and single-transaction behavior while replacing Event identifiers with Operation metadata and sharing its validation and transactional execution path with book import preview.
 
 #### Scenario: A bulk statement fails
-- **WHEN** any author, book, relationship, or event statement fails before commit
+- **WHEN** any Author, Book, relationship, Operation, Revision, or OperationChange statement fails before commit
 - **THEN** the complete import is rolled back without partial rows
 
 #### Scenario: Validation fails
@@ -64,4 +56,4 @@ preview.
 
 #### Scenario: Import succeeds after preview
 - **WHEN** a valid batch is previewed and then imported without intervening database changes
-- **THEN** `importBooks` commits the same normalized books and author relationships and returns its existing books and event-set payload
+- **THEN** `importBooks` commits the same normalized Books and Author relationships and returns its Books and Operation ID

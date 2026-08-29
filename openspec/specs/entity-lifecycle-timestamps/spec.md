@@ -23,19 +23,19 @@ The system SHALL have each Book and Author mutation use case choose one UTC life
 - **THEN** the existing Author's creation and update timestamps remain unchanged
 
 ### Requirement: Restore records a new lifecycle update
-The system SHALL preserve an entity's historical creation timestamp when restoring a Book or Author snapshot and SHALL set its update timestamp to the restore operation timestamp.
+The system SHALL preserve an entity's historical creation timestamp when restoring a Book or Author Revision and SHALL set its update timestamp to the restore Operation timestamp.
 
 #### Scenario: Restore an entity snapshot
-- **WHEN** a Book or Author is restored from a non-delete history event
-- **THEN** the restored entity retains the snapshot creation timestamp and receives the restore operation timestamp as its update timestamp
+- **WHEN** a Book or Author is restored from a historical Revision
+- **THEN** the restored entity retains the snapshot creation timestamp and receives the restore Operation timestamp as its update timestamp
 
-#### Scenario: Restore a deleted state
-- **WHEN** a delete history event is restored and the entity becomes absent
-- **THEN** the system does not create entity lifecycle timestamps for that absent entity
+#### Scenario: Restore a deleted entity
+- **WHEN** a deleted Book or Author is restored from a Revision
+- **THEN** the recreated current entity and newly appended Revision share the preserved creation time and new update time
 
 ### Requirement: Audit time remains database-managed
-The system SHALL treat event-set creation timestamps and entity-event change timestamps as database-recording times independent of entity lifecycle timestamps.
+The system SHALL treat Operation and Revision creation timestamps as database-recording times independent of entity lifecycle timestamps.
 
-#### Scenario: Record a mutation event
+#### Scenario: Record a mutation revision
 - **WHEN** a Book or Author mutation is committed
-- **THEN** PostgreSQL records the event audit timestamp without requiring it to equal the entity lifecycle timestamp
+- **THEN** PostgreSQL records Operation and Revision audit timestamps without requiring them to equal entity lifecycle timestamps
