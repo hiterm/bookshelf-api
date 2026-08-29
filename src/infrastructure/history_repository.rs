@@ -189,6 +189,96 @@ impl HistoryRepository for PgHistoryRepository {
         .transpose()
     }
 
+    async fn is_operation_undoable(
+        &self,
+        user_id: &UserId,
+        operation_id: &OperationId,
+    ) -> Result<bool, DomainError> {
+        let undoable = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (
+                 SELECT 1
+                 FROM operation target
+                 WHERE target.user_id = $1
+                   AND target.id = $2
+                   AND target.type <> 'baseline'
+                   AND EXISTS (
+                       SELECT 1 FROM book_operation_change
+                       WHERE user_id = target.user_id AND operation_id = target.id
+                       UNION ALL
+                       SELECT 1 FROM author_operation_change
+                       WHERE user_id = target.user_id AND operation_id = target.id
+                   )
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM book_operation_change change
+                       WHERE change.user_id = target.user_id
+                         AND change.operation_id = target.id
+                         AND (
+                           (change.after_revision_number IS NULL AND EXISTS (
+                               SELECT 1 FROM book current
+                               WHERE current.user_id = change.user_id
+                                 AND current.id = change.book_id
+                           ))
+                           OR
+                           (change.after_revision_number IS NOT NULL AND (
+                               NOT EXISTS (
+                                   SELECT 1 FROM book current
+                                   WHERE current.user_id = change.user_id
+                                     AND current.id = change.book_id
+                               )
+                               OR change.after_revision_number <> (
+                                   SELECT MAX(revision.revision_number)
+                                   FROM book_revision revision
+                                   WHERE revision.user_id = change.user_id
+                                     AND revision.book_id = change.book_id
+                               )
+                           ))
+                         )
+                   )
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM author_operation_change change
+                       WHERE change.user_id = target.user_id
+                         AND change.operation_id = target.id
+                         AND (
+                           (change.after_revision_number IS NULL AND EXISTS (
+                               SELECT 1 FROM author current
+                               WHERE current.user_id = change.user_id
+                                 AND current.id = change.author_id
+                           ))
+                           OR
+                           (change.after_revision_number IS NOT NULL AND (
+                               NOT EXISTS (
+                                   SELECT 1 FROM author current
+                                   WHERE current.user_id = change.user_id
+                                     AND current.id = change.author_id
+                               )
+                               OR change.after_revision_number <> (
+                                   SELECT MAX(revision.revision_number)
+                                   FROM author_revision revision
+                                   WHERE revision.user_id = change.user_id
+                                     AND revision.author_id = change.author_id
+                               )
+                           ))
+                         )
+                   )
+             )",
+        )
+        .bind(user_id.as_str())
+        .bind(operation_id.to_uuid())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(undoable)
+    }
+
+    async fn undo_operation(
+        &self,
+        user_id: &UserId,
+        operation_id: &OperationId,
+    ) -> Result<OperationId, DomainError> {
+        super::undo::undo_operation(&self.pool, user_id, operation_id).await
+    }
+
     async fn find_book_revisions(
         &self,
         user_id: &UserId,
@@ -591,6 +681,86 @@ mod tests {
             .find_author_changes_by_operation_ids(&owner, std::slice::from_ref(&operation_id))
             .await?;
         assert_eq!(author_changes[&operation_id].len(), 1);
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn undo_eligibility_matches_only_the_current_after_state(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let owner = user(&pool, "undo-owner").await?;
+        let other = user(&pool, "undo-other").await?;
+        let operation_id = Uuid::new_v4();
+        let book_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO operation (id, user_id, type)
+             VALUES ($1, $2, 'create_book')",
+        )
+        .bind(operation_id)
+        .bind(owner.as_str())
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO book (
+               id, user_id, title, isbn, read, owned, priority, format, store
+             ) VALUES ($1, $2, 'Book', '', false, true, 4, 'Printed', 'Unknown')",
+        )
+        .bind(book_id)
+        .bind(owner.as_str())
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO book_revision (
+               book_id, revision_number, user_id, title, isbn, read, owned,
+               priority, format, store, book_created_at, book_updated_at
+             ) VALUES ($1, 1, $2, 'Book', '', false, true, 4, 'Printed',
+                       'Unknown', current_timestamp, current_timestamp)",
+        )
+        .bind(book_id)
+        .bind(owner.as_str())
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO book_operation_change
+               (operation_id, user_id, book_id, after_revision_number)
+             VALUES ($1, $2, $3, 1)",
+        )
+        .bind(operation_id)
+        .bind(owner.as_str())
+        .bind(book_id)
+        .execute(&pool)
+        .await?;
+
+        let repository = PgHistoryRepository::new(pool.clone());
+        let operation_id = OperationId::from(operation_id);
+        assert!(
+            repository
+                .is_operation_undoable(&owner, &operation_id)
+                .await?
+        );
+        assert!(
+            !repository
+                .is_operation_undoable(&other, &operation_id)
+                .await?
+        );
+
+        sqlx::query(
+            "INSERT INTO book_revision (
+               book_id, revision_number, user_id, title, isbn, read, owned,
+               priority, format, store, book_created_at, book_updated_at
+             ) VALUES ($1, 2, $2, 'Changed', '', false, true, 4, 'Printed',
+                       'Unknown', current_timestamp, current_timestamp)",
+        )
+        .bind(book_id)
+        .bind(owner.as_str())
+        .execute(&pool)
+        .await?;
+
+        assert!(
+            !repository
+                .is_operation_undoable(&owner, &operation_id)
+                .await?
+        );
         Ok(())
     }
 }

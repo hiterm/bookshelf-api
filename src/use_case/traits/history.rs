@@ -20,6 +20,11 @@ pub trait HistoryQueryUseCase: Send + Sync + 'static {
         user_id: &str,
         operation_id: &str,
     ) -> Result<Option<OperationDto>, UseCaseError>;
+    async fn is_operation_undoable(
+        &self,
+        user_id: &str,
+        operation_id: &str,
+    ) -> Result<bool, UseCaseError>;
     async fn book_revisions(
         &self,
         user_id: &str,
@@ -52,4 +57,14 @@ pub trait HistoryQueryUseCase: Send + Sync + 'static {
         user_id: &str,
         operation_ids: &[String],
     ) -> Result<HashMap<String, Vec<AuthorOperationChangeDto>>, UseCaseError>;
+}
+
+#[automock]
+#[async_trait]
+pub trait HistoryCommandUseCase: Send + Sync + 'static {
+    async fn undo_operation(
+        &self,
+        user_id: &str,
+        operation_id: &str,
+    ) -> Result<String, UseCaseError>;
 }

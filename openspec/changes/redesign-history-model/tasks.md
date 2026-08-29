@@ -16,19 +16,19 @@
 - [x] 1.14 Add `operations`, `operation`, Book Revision, and Author Revision GraphQL queries plus selection-driven batched nested changes and before/after Revision resolution
 - [x] 1.15 Remove Event/EventSet GraphQL queries, types, loaders, mutation metadata, and restore arguments; update the generated schema, API E2E contracts, fixtures, and architecture/database docs for the breaking Operation/Revision-only contract; migrate the frontend separately
 - [x] 1.16 Run PR 1 unit, database integration, migration, rollback, import, merge, restore, E2E, formatting, lint, full test, and OpenSpec validation suites
-- [ ] 1.17 Commit granular PR 1 changes, push, create the PR, fix CI to green, request `@coderabbitai review`, address and reply to findings, re-request after fixes or rate-limit expiry, obtain approval, and merge
+- [x] 1.17 Commit granular PR 1 changes, push, create the PR, fix CI to green, request `@coderabbitai review`, address and reply to findings, re-request after fixes or rate-limit expiry, obtain approval, and merge
 
 ## 2. PR 2 — Operation undo
 
-- [ ] 2.1 Update local `main` after PR 1 merge, record its SHA, and create a fresh `codex/` PR 2 branch
-- [ ] 2.2 Implement owned undo eligibility for create, update, delete, restore, import, and merge changes using only each affected entity's current after-state
-- [ ] 2.3 Add deterministic multi-entity locking and in-transaction revalidation for undo execution
-- [ ] 2.4 Implement inverse application that restores Authors before Books, deletes Books before Authors, appends new Revisions for restored content, deletes creations without deleted Revisions, and records a linked Undo Operation with all changes
-- [ ] 2.5 Validate current Book Author references during undo and roll back the complete multi-entity Operation on any failure
-- [ ] 2.6 Add `undoOperation(operationId)` and decide/document whether Operation exposes computed `undoable`, while always revalidating server-side
-- [ ] 2.7 Add unit and database tests for update, create, delete, restore, import, merge, related-entity restore/delete ordering, unrelated later Operations, conflicting later revisions, deleted-state matching, missing references, atomic rollback, and undo history
-- [ ] 2.8 Add/update GraphQL E2E coverage and schema assets for undo, including import/merge ordering and atomicity plus future undo-of-undo representability
-- [ ] 2.9 Run PR 2 formatting, lint, full tests, database integration, E2E, and OpenSpec validation
+- [x] 2.1 Update local `main` after PR 1 merge, record its SHA (`1e6ec8b`), and create a fresh `codex/` PR 2 branch (`codex/operation-undo`)
+- [x] 2.2 Implement owned undo eligibility for create, update, delete, restore, import, and merge changes using only each affected entity's current after-state
+- [x] 2.3 Add deterministic multi-entity locking and in-transaction revalidation for undo execution
+- [x] 2.4 Implement inverse application that restores Authors before Books, deletes Books before Authors, appends new Revisions for restored content, deletes creations without deleted Revisions, and records a linked Undo Operation with all changes
+- [x] 2.5 Validate current Book Author references during undo and roll back the complete multi-entity Operation on any failure
+- [x] 2.6 Add `undoOperation(operationId)` and decide/document whether Operation exposes computed `undoable`, while always revalidating server-side
+- [x] 2.7 Add unit and database tests for update, create, delete, restore, import, merge, related-entity restore/delete ordering, unrelated later Operations, conflicting later revisions, deleted-state matching, missing references, atomic rollback, and undo history
+- [x] 2.8 Add/update GraphQL E2E coverage and schema assets for undo, including import/merge ordering and atomicity plus future undo-of-undo representability
+- [x] 2.9 Run PR 2 formatting, lint, full tests, database integration, E2E, and OpenSpec validation
 - [ ] 2.10 Commit granular PR 2 changes, push, create the PR, fix CI to green, complete CodeRabbit review/replies/re-review to approval, and merge
 
 ## 3. PR 3 — Legacy Event/EventSet cleanup

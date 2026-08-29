@@ -5,7 +5,8 @@ use async_graphql::{Context, ID, Object};
 use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
     use_case::traits::{
-        author::AuthorCommandUseCase, book::BookCommandUseCase, user::UserCommandUseCase,
+        author::AuthorCommandUseCase, book::BookCommandUseCase, history::HistoryCommandUseCase,
+        user::UserCommandUseCase,
     },
 };
 
@@ -13,31 +14,39 @@ use super::object::{
     Author, AuthorMutationPayload, Book, BookMutationPayload, CreateAuthorInput, CreateBookInput,
     DeleteAuthorPayload, DeleteBookPayload, ImportBookInput, ImportBooksPayload,
     ImportBooksPreview, MergeAuthorPayload, RestoreAuthorPayload, RestoreBookPayload,
-    UpdateAuthorInput, UpdateBookInput, User,
+    UndoOperationPayload, UpdateAuthorInput, UpdateBookInput, User,
 };
 
-pub struct Mutation<UC, BC, AC> {
+pub struct Mutation<UC, BC, AC, HC> {
     user_command: UC,
     book_command: BC,
     author_command: AC,
+    history_command: HC,
 }
 
-impl<UC, BC, AC> Mutation<UC, BC, AC> {
-    pub fn new(user_command: UC, book_command: BC, author_command: AC) -> Self {
+impl<UC, BC, AC, HC> Mutation<UC, BC, AC, HC> {
+    pub fn new(
+        user_command: UC,
+        book_command: BC,
+        author_command: AC,
+        history_command: HC,
+    ) -> Self {
         Self {
             user_command,
             book_command,
             author_command,
+            history_command,
         }
     }
 }
 
 #[Object]
-impl<UC, BC, AC> Mutation<UC, BC, AC>
+impl<UC, BC, AC, HC> Mutation<UC, BC, AC, HC>
 where
     UC: UserCommandUseCase,
     BC: BookCommandUseCase,
     AC: AuthorCommandUseCase,
+    HC: HistoryCommandUseCase,
 {
     async fn register_user(&self, ctx: &Context<'_>) -> Result<User, PresentationalError> {
         let claims = get_claims(ctx)?;
@@ -236,6 +245,21 @@ where
             .preview_import(&claims.sub, books.into_iter().map(Into::into).collect())
             .await?
             .into())
+    }
+
+    async fn undo_operation(
+        &self,
+        ctx: &Context<'_>,
+        operation_id: ID,
+    ) -> Result<UndoOperationPayload, PresentationalError> {
+        let claims = get_claims(ctx)?;
+        let undo_operation_id = self
+            .history_command
+            .undo_operation(&claims.sub, operation_id.as_str())
+            .await?;
+        Ok(UndoOperationPayload {
+            operation_id: ID(undo_operation_id),
+        })
     }
 }
 

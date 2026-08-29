@@ -34,6 +34,7 @@ impl From<DomainError> for UseCaseError {
                 user_id,
             },
             DomainError::HasAssociatedBooks { .. } => UseCaseError::Conflict(err.to_string()),
+            DomainError::Conflict(message) => UseCaseError::Conflict(message),
             DomainError::InfrastructureError(_) => UseCaseError::Other(anyhow::Error::new(err)),
             DomainError::Unexpected(message) => UseCaseError::Unexpected(message),
         }

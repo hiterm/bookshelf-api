@@ -36,7 +36,7 @@ pub type AC = AuthorCommandInteractor<
 pub type HQ = HistoryQueryInteractor<PgHistoryRepository>;
 
 pub type AppQuery = Query<UQ, BQ, AQ, HQ>;
-pub type AppMutation = Mutation<UC, BC, AC>;
+pub type AppMutation = Mutation<UC, BC, AC, HQ>;
 pub type AppSchema = Schema<AppQuery, AppMutation, EmptySubscription>;
 
 pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, AppSchema) {
@@ -70,7 +70,12 @@ pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, AppSchema) {
         author_query.clone(),
         history_query.clone(),
     );
-    let mutation = Mutation::new(user_command, book_command, author_command);
+    let mutation = Mutation::new(
+        user_command,
+        book_command,
+        author_command,
+        history_query.clone(),
+    );
     let schema = build_schema(query, mutation);
 
     (author_query, book_query, history_query, schema)
