@@ -13,7 +13,7 @@ use crate::domain::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DeleteAuthorEventExtra {
+pub enum DeleteAuthorExtra {
     Merge { destination_author_id: AuthorId },
 }
 
@@ -67,7 +67,7 @@ pub trait AuthorRepository: Send + Sync + 'static {
         author_ids: &[AuthorId],
     ) -> Result<HashMap<AuthorId, Author>, DomainError>;
     // Resolves an author by name within the transaction, creating it if absent.
-    // A newly inserted author records one author_event; an existing one records none.
+    // A newly inserted author records one revision; an existing one records none.
     async fn find_or_create_by_name(
         &self,
         tx: &mut Self::Transaction,
@@ -91,15 +91,7 @@ pub trait AuthorRepository: Send + Sync + 'static {
         &self,
         tx: &mut Self::Transaction,
         author_id: &AuthorId,
-        extra: Option<DeleteAuthorEventExtra>,
-    ) -> Result<(), DomainError>;
-    // Upserts or deletes the entity and records a restore event in one transaction.
-    // author=Some means upsert; author=None means delete (only author_id is used).
-    async fn restore(
-        &self,
-        tx: &mut Self::Transaction,
-        source_event_id: i64,
-        author: Option<Author>,
+        extra: Option<DeleteAuthorExtra>,
     ) -> Result<(), DomainError>;
     async fn restore_revision(
         &self,

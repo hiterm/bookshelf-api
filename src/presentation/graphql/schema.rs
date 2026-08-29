@@ -41,7 +41,7 @@ mod tests {
             dto::{
                 author::AuthorDto,
                 history::{AuthorRevisionDto, BookRevisionDto, OperationDto},
-                mutation::SingleEventMutationResultDto,
+                mutation::SingleRevisionMutationResultDto,
             },
             traits::{
                 author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
@@ -136,7 +136,7 @@ mod tests {
             .expect_create()
             .with(predicate::eq("user1"), predicate::always())
             .returning(|_, input| {
-                Ok(SingleEventMutationResultDto::new(
+                Ok(SingleRevisionMutationResultDto::new(
                     AuthorDto {
                         id: "d065a358-4fa7-4236-ae19-f6f2f9467c35".to_string(),
                         name: input.name,

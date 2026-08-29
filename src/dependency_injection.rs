@@ -3,8 +3,7 @@ use sqlx::{Pool, Postgres};
 
 use crate::{
     infrastructure::{
-        author_event_repository::PgAuthorEventRepository, author_repository::PgAuthorRepository,
-        book_event_repository::PgBookEventRepository, book_repository::PgBookRepository,
+        author_repository::PgAuthorRepository, book_repository::PgBookRepository,
         history_repository::PgHistoryRepository, transaction::PgTransactionManager,
         user_repository::PgUserRepository,
     },
@@ -20,19 +19,9 @@ use crate::{
 pub type UQ = UserQueryInteractor<PgUserRepository>;
 pub type UC = UserCommandInteractor<PgUserRepository>;
 pub type BQ = BookQueryInteractor<PgBookRepository>;
-pub type BC = BookCommandInteractor<
-    PgBookRepository,
-    PgAuthorRepository,
-    PgBookEventRepository,
-    PgTransactionManager,
->;
+pub type BC = BookCommandInteractor<PgBookRepository, PgAuthorRepository, PgTransactionManager>;
 pub type AQ = AuthorQueryInteractor<PgAuthorRepository>;
-pub type AC = AuthorCommandInteractor<
-    PgAuthorRepository,
-    PgBookRepository,
-    PgAuthorEventRepository,
-    PgTransactionManager,
->;
+pub type AC = AuthorCommandInteractor<PgAuthorRepository, PgBookRepository, PgTransactionManager>;
 pub type HQ = HistoryQueryInteractor<PgHistoryRepository>;
 
 pub type AppQuery = Query<UQ, BQ, AQ, HQ>;
@@ -43,8 +32,6 @@ pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, AppSchema) {
     let user_repository = PgUserRepository::new(pool.clone());
     let book_repository = PgBookRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
-    let book_event_repository = PgBookEventRepository::new(pool.clone());
-    let author_event_repository = PgAuthorEventRepository::new(pool.clone());
     let history_query = HistoryQueryInteractor::new(PgHistoryRepository::new(pool.clone()));
     let transaction_manager = PgTransactionManager::new(pool);
 
@@ -54,16 +41,11 @@ pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, AppSchema) {
     let book_command = BookCommandInteractor::new(
         book_repository.clone(),
         author_repository.clone(),
-        book_event_repository.clone(),
         transaction_manager.clone(),
     );
     let author_query = AuthorQueryInteractor::new(author_repository.clone());
-    let author_command = AuthorCommandInteractor::new(
-        author_repository,
-        book_repository,
-        author_event_repository.clone(),
-        transaction_manager,
-    );
+    let author_command =
+        AuthorCommandInteractor::new(author_repository, book_repository, transaction_manager);
     let query = Query::new(
         user_query,
         book_query.clone(),

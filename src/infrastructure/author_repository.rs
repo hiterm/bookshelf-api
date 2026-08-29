@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use serde_json::json;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -14,7 +13,7 @@ use crate::domain::{
     },
     error::DomainError,
     repository::author_repository::{
-        AuthorRepository, DeleteAuthorEventExtra, FindOrCreateAuthorsResult,
+        AuthorRepository, DeleteAuthorExtra, FindOrCreateAuthorsResult,
     },
 };
 use crate::infrastructure::{
@@ -363,7 +362,7 @@ impl AuthorRepository for PgAuthorRepository {
         &self,
         tx: &mut Self::Transaction,
         author_id: &AuthorId,
-        extra: Option<DeleteAuthorEventExtra>,
+        extra: Option<DeleteAuthorExtra>,
     ) -> Result<(), DomainError> {
         let user_id = tx.user_id().clone();
         // Lock the author row to prevent concurrent inserts into book_author after the count check.
@@ -424,71 +423,6 @@ impl AuthorRepository for PgAuthorRepository {
         let _ = extra;
 
         append_author_deletion(tx, author_id.to_uuid(), before_revision_number).await?;
-
-        Ok(())
-    }
-
-    async fn restore(
-        &self,
-        tx: &mut Self::Transaction,
-        source_event_id: i64,
-        author: Option<Author>,
-    ) -> Result<(), DomainError> {
-        let user_id = tx.user_id().clone();
-        let extra = json!({"version": 1, "source_event_id": source_event_id});
-
-        match author {
-            Some(author) => {
-                let result = sqlx::query(
-                    "UPDATE author SET name=$2, yomi=$3, created_at=$4, updated_at=$5
-                         WHERE id=$1 AND user_id=$6",
-                )
-                .bind(author.id().to_uuid())
-                .bind(author.name().as_str())
-                .bind(author.yomi())
-                .bind(author.created_at())
-                .bind(author.updated_at())
-                .bind(user_id.as_str())
-                .execute(tx.as_mut())
-                .await?;
-
-                if result.rows_affected() == 0 {
-                    sqlx::query(
-                        "INSERT INTO author
-                           (id, user_id, name, yomi, created_at, updated_at)
-                         VALUES ($1, $2, $3, $4, $5, $6)",
-                    )
-                    .bind(author.id().to_uuid())
-                    .bind(user_id.as_str())
-                    .bind(author.name().as_str())
-                    .bind(author.yomi())
-                    .bind(author.created_at())
-                    .bind(author.updated_at())
-                    .execute(tx.as_mut())
-                    .await?;
-                }
-
-                let _ = extra;
-            }
-            None => {
-                let (author_id,): (Uuid,) = sqlx::query_as(
-                    "SELECT author_id FROM author_event WHERE event_id = $1 AND user_id = $2",
-                )
-                .bind(source_event_id)
-                .bind(user_id.as_str())
-                .fetch_one(tx.as_mut())
-                .await?;
-
-                // 0 rows affected is acceptable (author already absent)
-                sqlx::query("DELETE FROM author WHERE id=$1 AND user_id=$2")
-                    .bind(author_id)
-                    .bind(user_id.as_str())
-                    .execute(tx.as_mut())
-                    .await?;
-
-                let _ = extra;
-            }
-        }
 
         Ok(())
     }
@@ -661,8 +595,8 @@ mod tests {
         domain::{
             entity::{
                 book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-                event::EventSetOperation,
                 operation::NewOperation,
+                operation::OperationType,
                 user::User,
             },
             error::DomainError,
@@ -692,7 +626,7 @@ mod tests {
         book: &Book,
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::CreateBook).await?;
+        let mut tx = tm.begin(user_id, OperationType::CreateBook).await?;
         book_repository.create(&mut tx, book).await?;
         tm.commit(tx).await
     }
@@ -706,7 +640,7 @@ mod tests {
         author: &Author,
     ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::CreateAuthor).await?;
+        let mut tx = tm.begin(user_id, OperationType::CreateAuthor).await?;
         let event_id = author_repository.create(&mut tx, author).await?;
         tm.commit(tx).await?;
         Ok(i64::from(event_id))
@@ -719,7 +653,7 @@ mod tests {
         author: &Author,
     ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::UpdateAuthor).await?;
+        let mut tx = tm.begin(user_id, OperationType::UpdateAuthor).await?;
         let event_id = author_repository.update(&mut tx, author).await?;
         tm.commit(tx).await?;
         Ok(i64::from(event_id))
@@ -732,23 +666,8 @@ mod tests {
         author_id: &AuthorId,
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::DeleteAuthor).await?;
+        let mut tx = tm.begin(user_id, OperationType::DeleteAuthor).await?;
         author_repository.delete(&mut tx, author_id, None).await?;
-        tm.commit(tx).await
-    }
-
-    async fn restore_author(
-        pool: &PgPool,
-        author_repository: &PgAuthorRepository,
-        user_id: &UserId,
-        source_event_id: i64,
-        author: Author,
-    ) -> Result<(), DomainError> {
-        let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(user_id, EventSetOperation::RestoreAuthor).await?;
-        author_repository
-            .restore(&mut tx, source_event_id, Some(author))
-            .await?;
         tm.commit(tx).await
     }
 
@@ -788,7 +707,7 @@ mod tests {
         let expected = author_repository.find_by_id(&user_id, &author_id).await?;
 
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateAuthor).await?;
+        let mut tx = tm.begin(&user_id, OperationType::UpdateAuthor).await?;
         let actual = author_repository
             .find_by_id_with_tx(&mut tx, &user_id, &author_id)
             .await?;
@@ -810,7 +729,7 @@ mod tests {
         create_author(&pool, &author_repository, &user_id, &author).await?;
 
         let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user_id, EventSetOperation::UpdateAuthor).await?;
+        let mut tx = tm.begin(&user_id, OperationType::UpdateAuthor).await?;
         let actual = author_repository
             .find_by_id_with_tx(&mut tx, &other_user_id, &author_id)
             .await?;
@@ -1141,243 +1060,6 @@ mod tests {
         Ok(user_id)
     }
 
-    // ---- event recording tests ----
-
-    #[sqlx::test]
-    async fn create_records_history(pool: PgPool) -> anyhow::Result<()> {
-        let user_repository = PgUserRepository::new(pool.clone());
-        let author_repository = PgAuthorRepository::new(pool.clone());
-
-        let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new_with_yomi(
-            author_id.clone(),
-            AuthorName::new("author1".to_owned())?,
-            "おーさー1".to_owned(),
-            OffsetDateTime::UNIX_EPOCH,
-        )?;
-
-        let revision_number = create_author(&pool, &author_repository, &user_id, &author).await?;
-        assert_eq!(revision_number, 1);
-        let legacy_count: i64 = sqlx::query_scalar(
-            "SELECT (SELECT COUNT(*) FROM event_set WHERE user_id = $1)
-                  + (SELECT COUNT(*) FROM author_event WHERE user_id = $1)",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(legacy_count, 0);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn update_records_post_update_state(pool: PgPool) -> anyhow::Result<()> {
-        let user_repository = PgUserRepository::new(pool.clone());
-        let author_repository = PgAuthorRepository::new(pool.clone());
-
-        let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = Author::new_with_yomi(
-            author_id.clone(),
-            AuthorName::new("original".to_owned())?,
-            "おりじなる".to_owned(),
-            OffsetDateTime::UNIX_EPOCH,
-        )?;
-        create_author(&pool, &author_repository, &user_id, &author).await?;
-
-        let updated = Author::new_with_yomi(
-            author_id.clone(),
-            AuthorName::new("updated".to_owned())?,
-            "あっぷでーと2".to_owned(),
-            OffsetDateTime::UNIX_EPOCH,
-        )?;
-        let revision_number = update_author(&pool, &author_repository, &user_id, &updated).await?;
-        assert_eq!(revision_number, 2);
-
-        let es_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
-            .bind(user_id.as_str())
-            .fetch_one(&pool)
-            .await?;
-        assert_eq!(es_count.0, 0);
-        let revision_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM author_revision WHERE user_id = $1 AND author_id = $2",
-        )
-        .bind(user_id.as_str())
-        .bind(author_id.to_uuid())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(revision_count, 2);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    #[ignore = "legacy Event restore is outside the PR 1 mutation contract"]
-    async fn restore_persists_yomi_and_records_it(pool: PgPool) -> anyhow::Result<()> {
-        let user_repository = PgUserRepository::new(pool.clone());
-        let author_repository = PgAuthorRepository::new(pool.clone());
-
-        let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = new_author(author_id.clone(), AuthorName::new("original".to_owned())?)?;
-        create_author(&pool, &author_repository, &user_id, &author).await?;
-
-        let (source_event_id,): (i64,) = sqlx::query_as(
-            "SELECT event_id FROM author_event WHERE user_id = $1 AND operation = 'create'",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        let restored = Author::new_with_yomi(
-            author_id.clone(),
-            AuthorName::new("restored".to_owned())?,
-            "れすとあ".to_owned(),
-            OffsetDateTime::UNIX_EPOCH,
-        )?;
-
-        restore_author(
-            &pool,
-            &author_repository,
-            &user_id,
-            source_event_id,
-            restored,
-        )
-        .await?;
-
-        let live = author_repository
-            .find_by_id(&user_id, &author_id)
-            .await?
-            .expect("restored author should exist");
-        assert_eq!(live.name().as_str(), "restored");
-        assert_eq!(live.yomi(), "れすとあ");
-
-        let (event_name, event_yomi): (String, String) = sqlx::query_as(
-            "SELECT name, yomi FROM author_event
-             WHERE user_id = $1 AND operation = 'restore'",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(event_name, "restored");
-        assert_eq!(event_yomi, "れすとあ");
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn delete_records_event_with_id_only(pool: PgPool) -> anyhow::Result<()> {
-        let user_repository = PgUserRepository::new(pool.clone());
-        let author_repository = PgAuthorRepository::new(pool.clone());
-
-        let user_id = prepare_user(&user_repository, "user1").await?;
-        let author_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let author = new_author(author_id.clone(), AuthorName::new("author1".to_owned())?)?;
-        create_author(&pool, &author_repository, &user_id, &author).await?;
-
-        delete_author(&pool, &author_repository, &user_id, &author_id).await?;
-
-        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-            "SELECT operation, name FROM author_event WHERE user_id = $1
-             ORDER BY changed_at ASC",
-        )
-        .bind(user_id.as_str())
-        .fetch_all(&pool)
-        .await?;
-
-        assert!(rows.is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn find_or_create_by_name_inserts_new_author_and_records_event(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let user_repository = PgUserRepository::new(pool.clone());
-        let author_repository = PgAuthorRepository::new(pool.clone());
-
-        let user_id = prepare_user(&user_repository, "user1").await?;
-
-        let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user_id, EventSetOperation::ImportBooks).await?;
-        let name = AuthorName::new("New Author".to_owned())?;
-        let created_at = OffsetDateTime::from_unix_timestamp(1_700_000_000)?;
-        let author_id = author_repository
-            .find_or_create_by_name(&mut tx, &name, created_at)
-            .await?;
-        tm.commit(tx).await?;
-
-        // The author row exists with the returned id and name
-        let found = author_repository.find_by_id(&user_id, &author_id).await?;
-        let found = found.expect("new author exists");
-        assert_eq!(found.name().as_str(), "New Author");
-        assert_eq!(found.created_at(), &created_at);
-        assert_eq!(found.updated_at(), &created_at);
-
-        // Exactly one author_event was recorded for the newly inserted author
-        let (author_event_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM author_event WHERE user_id = $1 AND author_id = $2",
-        )
-        .bind(user_id.as_str())
-        .bind(author_id.to_uuid())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(author_event_count, 0);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn find_or_create_by_name_reuses_existing_author_without_event(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let user_repository = PgUserRepository::new(pool.clone());
-        let author_repository = PgAuthorRepository::new(pool.clone());
-
-        let user_id = prepare_user(&user_repository, "user1").await?;
-
-        // Pre-create the author through the ordinary create path
-        let existing_id = AuthorId::try_from("e324be11-5b77-4ba6-8423-9f27e2d228f1")?;
-        let existing = new_author(existing_id.clone(), AuthorName::new("Existing".to_owned())?)?;
-        create_author(&pool, &author_repository, &user_id, &existing).await?;
-
-        let (events_before,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM author_event WHERE user_id = $1")
-                .bind(user_id.as_str())
-                .fetch_one(&pool)
-                .await?;
-
-        // find_or_create_by_name on the existing name returns the same id and
-        // records no additional author_event
-        let tm = PgTransactionManager::new(pool.clone());
-        let mut tx = tm.begin(&user_id, EventSetOperation::ImportBooks).await?;
-        let name = AuthorName::new("Existing".to_owned())?;
-        let attempted_created_at = OffsetDateTime::from_unix_timestamp(1_700_000_000)?;
-        let resolved = author_repository
-            .find_or_create_by_name(&mut tx, &name, attempted_created_at)
-            .await?;
-        tm.commit(tx).await?;
-
-        assert_eq!(resolved, existing_id);
-
-        let (events_after,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM author_event WHERE user_id = $1")
-                .bind(user_id.as_str())
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(events_after, events_before);
-
-        let found = author_repository
-            .find_by_id(&user_id, &existing_id)
-            .await?
-            .expect("existing author remains");
-        assert_eq!(found.created_at(), &OffsetDateTime::UNIX_EPOCH);
-        assert_eq!(found.updated_at(), &OffsetDateTime::UNIX_EPOCH);
-
-        Ok(())
-    }
-
     #[sqlx::test]
     async fn find_or_create_by_names_reports_created_ids_and_rolls_back(
         pool: PgPool,
@@ -1393,9 +1075,7 @@ mod tests {
         create_author(&pool, &author_repository, &user_id, &existing).await?;
 
         let manager = PgTransactionManager::new(pool.clone());
-        let mut tx = manager
-            .begin(&user_id, EventSetOperation::ImportBooks)
-            .await?;
+        let mut tx = manager.begin(&user_id, OperationType::ImportBooks).await?;
         let names = vec![
             AuthorName::new("Existing".to_string())?,
             AuthorName::new("New".to_string())?,

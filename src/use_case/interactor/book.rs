@@ -10,14 +10,12 @@ use crate::{
         entity::{
             author::{AuthorId, AuthorName},
             book::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag},
-            event::EventSetOperation,
-            operation::NewOperation,
+            operation::{NewOperation, OperationType},
             user::UserId,
         },
         error::DomainError,
         repository::{
             author_repository::AuthorRepository,
-            book_event_repository::BookEventRepository,
             book_repository::BookRepository,
             transaction::{TransactionManager, TransactionOperation},
         },
@@ -31,7 +29,7 @@ use crate::{
             },
             mutation::{
                 BookMutationResultDto, DeleteBookResultDto, ImportBooksResultDto,
-                MutationResultDto, SingleEventMutationResultDto,
+                MutationResultDto, SingleRevisionMutationResultDto,
             },
         },
         error::UseCaseError,
@@ -128,30 +126,23 @@ struct ImportExecutionResult {
     previews: Vec<ImportBookPreviewDto>,
 }
 
-pub struct BookCommandInteractor<BR, AR, BER, TM> {
+pub struct BookCommandInteractor<BR, AR, TM> {
     book_repository: BR,
     author_repository: AR,
-    _book_event_repository: BER,
     transaction_manager: TM,
 }
 
-impl<BR, AR, BER, TM> BookCommandInteractor<BR, AR, BER, TM> {
-    pub fn new(
-        book_repository: BR,
-        author_repository: AR,
-        book_event_repository: BER,
-        transaction_manager: TM,
-    ) -> Self {
+impl<BR, AR, TM> BookCommandInteractor<BR, AR, TM> {
+    pub fn new(book_repository: BR, author_repository: AR, transaction_manager: TM) -> Self {
         Self {
             book_repository,
             author_repository,
-            _book_event_repository: book_event_repository,
             transaction_manager,
         }
     }
 }
 
-impl<BR, AR, BER, TM> BookCommandInteractor<BR, AR, BER, TM>
+impl<BR, AR, TM> BookCommandInteractor<BR, AR, TM>
 where
     TM: TransactionManager,
     BR: BookRepository<Transaction = TM::Transaction>,
@@ -281,12 +272,11 @@ where
 }
 
 #[async_trait]
-impl<BR, AR, BER, TM> BookCommandUseCase for BookCommandInteractor<BR, AR, BER, TM>
+impl<BR, AR, TM> BookCommandUseCase for BookCommandInteractor<BR, AR, TM>
 where
     TM: TransactionManager,
     BR: BookRepository<Transaction = TM::Transaction>,
     AR: AuthorRepository<Transaction = TM::Transaction>,
-    BER: BookEventRepository,
 {
     async fn create(
         &self,
@@ -301,7 +291,7 @@ where
 
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::CreateBook)
+            .begin_operation(&user_id, &NewOperation::simple(OperationType::CreateBook))
             .await?;
         let _event_id = self.book_repository.create(&mut tx, &book).await?;
         let operation_id = tx.operation_id().to_string();
@@ -310,7 +300,7 @@ where
         })?;
         self.transaction_manager.commit(tx).await?;
 
-        Ok(SingleEventMutationResultDto::new(
+        Ok(SingleRevisionMutationResultDto::new(
             book.into(),
             operation_id,
             revision_number,
@@ -348,7 +338,7 @@ where
 
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::UpdateBook)
+            .begin_operation(&user_id, &NewOperation::simple(OperationType::UpdateBook))
             .await?;
         let book = self
             .book_repository
@@ -384,7 +374,7 @@ where
         })?;
         self.transaction_manager.commit(tx).await?;
 
-        Ok(SingleEventMutationResultDto::new(
+        Ok(SingleRevisionMutationResultDto::new(
             book.into(),
             operation_id,
             revision_number,
@@ -401,7 +391,7 @@ where
 
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::DeleteBook)
+            .begin_operation(&user_id, &NewOperation::simple(OperationType::DeleteBook))
             .await?;
         self.book_repository.delete(&mut tx, &book_id).await?;
         let operation_id = tx.operation_id().to_string();
@@ -474,7 +464,7 @@ where
             UseCaseError::Unexpected("Book restore did not record a revision".to_string())
         })?;
         self.transaction_manager.commit(tx).await?;
-        Ok(SingleEventMutationResultDto::new(
+        Ok(SingleRevisionMutationResultDto::new(
             Some(restored.into()),
             operation_id,
             restored_revision_number,
@@ -506,7 +496,6 @@ mod tests {
             error::DomainError,
             repository::{
                 author_repository::{FindOrCreateAuthorsResult, MockAuthorRepository},
-                book_event_repository::MockBookEventRepository,
                 book_repository::MockBookRepository,
                 transaction::MockTransactionManager,
             },
@@ -528,16 +517,11 @@ mod tests {
         fn build(
             book_repository: MockBookRepository,
             transaction_manager: MockTransactionManager,
-        ) -> BookCommandInteractor<
-            MockBookRepository,
-            MockAuthorRepository,
-            MockBookEventRepository,
-            MockTransactionManager,
-        > {
+        ) -> BookCommandInteractor<MockBookRepository, MockAuthorRepository, MockTransactionManager>
+        {
             BookCommandInteractor::new(
                 book_repository,
                 MockAuthorRepository::new(),
-                MockBookEventRepository::new(),
                 transaction_manager,
             )
         }
@@ -547,12 +531,8 @@ mod tests {
         fn build(
             book_repository: MockBookRepository,
             transaction_manager: MockTransactionManager,
-        ) -> BookCommandInteractor<
-            MockBookRepository,
-            MockAuthorRepository,
-            MockBookEventRepository,
-            MockTransactionManager,
-        > {
+        ) -> BookCommandInteractor<MockBookRepository, MockAuthorRepository, MockTransactionManager>
+        {
             CreateBookTestCommand::build(book_repository, transaction_manager)
         }
     }
@@ -561,12 +541,8 @@ mod tests {
         fn build(
             book_repository: MockBookRepository,
             transaction_manager: MockTransactionManager,
-        ) -> BookCommandInteractor<
-            MockBookRepository,
-            MockAuthorRepository,
-            MockBookEventRepository,
-            MockTransactionManager,
-        > {
+        ) -> BookCommandInteractor<MockBookRepository, MockAuthorRepository, MockTransactionManager>
+        {
             CreateBookTestCommand::build(book_repository, transaction_manager)
         }
     }
@@ -576,18 +552,9 @@ mod tests {
             book_repository: MockBookRepository,
             author_repository: MockAuthorRepository,
             transaction_manager: MockTransactionManager,
-        ) -> BookCommandInteractor<
-            MockBookRepository,
-            MockAuthorRepository,
-            MockBookEventRepository,
-            MockTransactionManager,
-        > {
-            BookCommandInteractor::new(
-                book_repository,
-                author_repository,
-                MockBookEventRepository::new(),
-                transaction_manager,
-            )
+        ) -> BookCommandInteractor<MockBookRepository, MockAuthorRepository, MockTransactionManager>
+        {
+            BookCommandInteractor::new(book_repository, author_repository, transaction_manager)
         }
     }
 
@@ -595,7 +562,6 @@ mod tests {
     // whose begin/commit succeed, for interactors that reach the repository.
     fn make_transaction_manager() -> MockTransactionManager {
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
         tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().returning(|_| Ok(()));
         tm
@@ -603,7 +569,6 @@ mod tests {
 
     fn make_begin_only_transaction_manager() -> MockTransactionManager {
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
         tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
         tm
@@ -733,7 +698,7 @@ mod tests {
 
         let interactor = CreateBookTestCommand::build(book_repository, {
             let mut tm = MockTransactionManager::new();
-            tm.expect_begin().returning(|_, _| Ok(()));
+            tm.expect_begin_operation().returning(|_, _| Ok(()));
             tm.expect_commit().times(0);
             tm
         });
@@ -759,7 +724,7 @@ mod tests {
         book_repository.expect_create().returning(|_, _| Ok(101));
 
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit()
             .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
         let interactor = CreateBookTestCommand::build(book_repository, tm);
@@ -855,7 +820,7 @@ mod tests {
         book_repository.expect_update().returning(|_, _| Ok(202));
 
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit()
             .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
         let interactor = UpdateBookTestCommand::build(book_repository, tm);
@@ -889,7 +854,7 @@ mod tests {
             .returning(|_, _| Err(DomainError::Unexpected("event insert failed".to_string())));
 
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
         let interactor = UpdateBookTestCommand::build(book_repository, tm);
         let book_data = UpdateBookDto::new(
@@ -1408,7 +1373,6 @@ mod tests {
         let interactor = BookCommandInteractor::new(
             book_repository,
             MockAuthorRepository::new(),
-            MockBookEventRepository::new(),
             make_begin_only_transaction_manager(),
         );
 
@@ -1442,7 +1406,6 @@ mod tests {
         let interactor = BookCommandInteractor::new(
             book_repository,
             MockAuthorRepository::new(),
-            MockBookEventRepository::new(),
             make_transaction_manager(),
         );
 
@@ -1463,7 +1426,6 @@ mod tests {
         let interactor = BookCommandInteractor::new(
             book_repository,
             MockAuthorRepository::new(),
-            MockBookEventRepository::new(),
             MockTransactionManager::new(),
         );
 
@@ -1482,7 +1444,6 @@ mod tests {
         let interactor = BookCommandInteractor::new(
             book_repository,
             MockAuthorRepository::new(),
-            MockBookEventRepository::new(),
             make_begin_only_transaction_manager(),
         );
 
@@ -1508,9 +1469,8 @@ mod import_integration_tests {
         domain::entity::user::{User, UserId},
         domain::repository::user_repository::UserRepository,
         infrastructure::{
-            author_repository::PgAuthorRepository, book_event_repository::PgBookEventRepository,
-            book_repository::PgBookRepository, transaction::PgTransactionManager,
-            user_repository::PgUserRepository,
+            author_repository::PgAuthorRepository, book_repository::PgBookRepository,
+            transaction::PgTransactionManager, user_repository::PgUserRepository,
         },
         use_case::{
             dto::book::ImportBookEntryDto, interactor::book::BookCommandInteractor,
@@ -1527,16 +1487,10 @@ mod import_integration_tests {
 
     fn interactor(
         pool: &PgPool,
-    ) -> BookCommandInteractor<
-        PgBookRepository,
-        PgAuthorRepository,
-        PgBookEventRepository,
-        PgTransactionManager,
-    > {
+    ) -> BookCommandInteractor<PgBookRepository, PgAuthorRepository, PgTransactionManager> {
         BookCommandInteractor::new(
             PgBookRepository::new(pool.clone()),
             PgAuthorRepository::new(pool.clone()),
-            PgBookEventRepository::new(pool.clone()),
             PgTransactionManager::new(pool.clone()),
         )
     }
@@ -1588,18 +1542,6 @@ mod import_integration_tests {
         assert_eq!(author_rows[0].0, "Existing Author");
         assert_eq!(author_rows[1].0, "New Author");
 
-        // Import writes no legacy Event/EventSet history.
-        let (new_author_event_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM author_event ae
-             JOIN event_set es ON ae.event_set_id = es.id
-             WHERE ae.user_id = $1 AND es.operation = 'import_books'
-               AND ae.name = 'New Author'",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(new_author_event_count, 0);
-
         Ok(())
     }
 
@@ -1646,16 +1588,6 @@ mod import_integration_tests {
             )
             .await?;
         assert_eq!(result.value.len(), 1);
-
-        let legacy_count: i64 = sqlx::query_scalar(
-            "SELECT (SELECT COUNT(*) FROM event_set WHERE user_id = $1)
-                  + (SELECT COUNT(*) FROM book_event WHERE user_id = $1)
-                  + (SELECT COUNT(*) FROM author_event WHERE user_id = $1)",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(legacy_count, 0);
 
         let (operation_id, detail): (uuid::Uuid, serde_json::Value) = sqlx::query_as(
             "SELECT id, detail FROM operation
@@ -1760,13 +1692,6 @@ mod import_integration_tests {
                 .await?;
         assert_eq!(author_count, 0, "no author rows should be persisted");
 
-        let (event_set_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM event_set WHERE user_id = $1")
-                .bind(user_id.as_str())
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(event_set_count, 0, "no event_set rows should be persisted");
-
         Ok(())
     }
 
@@ -1798,19 +1723,6 @@ mod import_integration_tests {
             "book_author should be empty when no authors"
         );
 
-        let (book_event_author_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM book_event_author bea
-             JOIN book_event be ON bea.event_id = be.event_id
-             WHERE be.user_id = $1",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-        assert_eq!(
-            book_event_author_count, 0,
-            "book_event_author should be empty when no authors"
-        );
-
         Ok(())
     }
 
@@ -1830,17 +1742,7 @@ mod import_integration_tests {
             .bind(user_id.as_str())
             .fetch_one(&pool)
             .await?;
-        let (event_count, distinct_event_sets): (i64, i64) = sqlx::query_as(
-            "SELECT COUNT(*), COUNT(DISTINCT event_set_id)
-             FROM book_event WHERE user_id = $1",
-        )
-        .bind(user_id.as_str())
-        .fetch_one(&pool)
-        .await?;
-
         assert_eq!(book_count, super::MAX_BOOK_BATCH as i64);
-        assert_eq!(event_count, 0);
-        assert_eq!(distinct_event_sets, 0);
 
         Ok(())
     }

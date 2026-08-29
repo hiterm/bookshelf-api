@@ -9,13 +9,11 @@ use crate::{
         entity::{
             author::{Author, AuthorId, AuthorName, AuthorUpdate, validate_author_yomi},
             book::BookUpdate,
-            event::EventSetOperation,
-            operation::NewOperation,
+            operation::{NewOperation, OperationType},
             user::UserId,
         },
         repository::{
-            author_event_repository::AuthorEventRepository,
-            author_repository::{AuthorRepository, DeleteAuthorEventExtra},
+            author_repository::{AuthorRepository, DeleteAuthorExtra},
             book_repository::BookRepository,
             transaction::{TransactionManager, TransactionOperation},
         },
@@ -25,7 +23,7 @@ use crate::{
             author::{AuthorDto, CreateAuthorDto, MergeAuthorInputDto, UpdateAuthorDto},
             mutation::{
                 AuthorMutationResultDto, DeleteAuthorResultDto, MutationResultDto,
-                RestoreAuthorResultDto, SingleEventMutationResultDto,
+                RestoreAuthorResultDto, SingleRevisionMutationResultDto,
             },
         },
         error::UseCaseError,
@@ -94,36 +92,28 @@ where
     }
 }
 
-pub struct AuthorCommandInteractor<AR, BR, AER, TM> {
+pub struct AuthorCommandInteractor<AR, BR, TM> {
     author_repository: AR,
     book_repository: BR,
-    _author_event_repository: AER,
     transaction_manager: TM,
 }
 
-impl<AR, BR, AER, TM> AuthorCommandInteractor<AR, BR, AER, TM> {
-    pub fn new(
-        author_repository: AR,
-        book_repository: BR,
-        author_event_repository: AER,
-        transaction_manager: TM,
-    ) -> Self {
+impl<AR, BR, TM> AuthorCommandInteractor<AR, BR, TM> {
+    pub fn new(author_repository: AR, book_repository: BR, transaction_manager: TM) -> Self {
         Self {
             author_repository,
             book_repository,
-            _author_event_repository: author_event_repository,
             transaction_manager,
         }
     }
 }
 
 #[async_trait]
-impl<AR, BR, AER, TM> AuthorCommandUseCase for AuthorCommandInteractor<AR, BR, AER, TM>
+impl<AR, BR, TM> AuthorCommandUseCase for AuthorCommandInteractor<AR, BR, TM>
 where
     TM: TransactionManager,
     AR: AuthorRepository<Transaction = TM::Transaction>,
     BR: BookRepository<Transaction = TM::Transaction>,
-    AER: AuthorEventRepository<Transaction = TM::Transaction>,
 {
     async fn merge(
         &self,
@@ -223,7 +213,7 @@ where
             .delete(
                 &mut tx,
                 source_author.id(),
-                Some(DeleteAuthorEventExtra::Merge {
+                Some(DeleteAuthorExtra::Merge {
                     destination_author_id: destination_id.clone(),
                 }),
             )
@@ -252,7 +242,7 @@ where
 
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::CreateAuthor)
+            .begin_operation(&user_id, &NewOperation::simple(OperationType::CreateAuthor))
             .await?;
         let _event_id = self.author_repository.create(&mut tx, &author).await?;
         let operation_id = tx.operation_id().to_string();
@@ -261,7 +251,7 @@ where
         })?;
         self.transaction_manager.commit(tx).await?;
 
-        Ok(SingleEventMutationResultDto::new(
+        Ok(SingleRevisionMutationResultDto::new(
             author.into(),
             operation_id,
             revision_number,
@@ -280,7 +270,7 @@ where
 
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::UpdateAuthor)
+            .begin_operation(&user_id, &NewOperation::simple(OperationType::UpdateAuthor))
             .await?;
         let author = self
             .author_repository
@@ -312,7 +302,7 @@ where
         })?;
         self.transaction_manager.commit(tx).await?;
 
-        Ok(SingleEventMutationResultDto::new(
+        Ok(SingleRevisionMutationResultDto::new(
             author.into(),
             operation_id,
             revision_number,
@@ -330,7 +320,7 @@ where
 
         let mut tx = self
             .transaction_manager
-            .begin(&user_id, EventSetOperation::DeleteAuthor)
+            .begin_operation(&user_id, &NewOperation::simple(OperationType::DeleteAuthor))
             .await?;
         self.author_repository
             .delete(&mut tx, &author_id, None)
@@ -364,7 +354,7 @@ where
             UseCaseError::Unexpected("Author restore did not record a revision".to_string())
         })?;
         self.transaction_manager.commit(tx).await?;
-        Ok(SingleEventMutationResultDto::new(
+        Ok(SingleRevisionMutationResultDto::new(
             Some(restored.into()),
             operation_id,
             restored_revision_number,
@@ -392,8 +382,7 @@ mod tests {
             },
             error::DomainError,
             repository::{
-                author_event_repository::MockAuthorEventRepository,
-                author_repository::{DeleteAuthorEventExtra, MockAuthorRepository},
+                author_repository::{DeleteAuthorExtra, MockAuthorRepository},
                 book_repository::MockBookRepository,
                 transaction::MockTransactionManager,
             },
@@ -410,7 +399,6 @@ mod tests {
     // whose begin/commit succeed, for interactors that reach the repository.
     fn make_transaction_manager() -> MockTransactionManager {
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
         tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().returning(|_| Ok(()));
         tm
@@ -419,16 +407,11 @@ mod tests {
     fn command_interactor(
         author_repository: MockAuthorRepository,
         transaction_manager: MockTransactionManager,
-    ) -> AuthorCommandInteractor<
-        MockAuthorRepository,
-        MockBookRepository,
-        MockAuthorEventRepository,
-        MockTransactionManager,
-    > {
+    ) -> AuthorCommandInteractor<MockAuthorRepository, MockBookRepository, MockTransactionManager>
+    {
         AuthorCommandInteractor::new(
             author_repository,
             MockBookRepository::new(),
-            MockAuthorEventRepository::new(),
             transaction_manager,
         )
     }
@@ -503,7 +486,6 @@ mod tests {
         let interactor = AuthorCommandInteractor::new(
             authors,
             MockBookRepository::new(),
-            MockAuthorEventRepository::new(),
             make_transaction_manager(),
         );
 
@@ -527,12 +509,8 @@ mod tests {
             .expect_begin_operation()
             .returning(|_, _| Ok(()));
         transaction_manager.expect_commit().times(0);
-        let interactor = AuthorCommandInteractor::new(
-            authors,
-            MockBookRepository::new(),
-            MockAuthorEventRepository::new(),
-            transaction_manager,
-        );
+        let interactor =
+            AuthorCommandInteractor::new(authors, MockBookRepository::new(), transaction_manager);
 
         let result = interactor.restore("user1", &author_id.to_string(), 2).await;
 
@@ -547,7 +525,6 @@ mod tests {
         let interactor = AuthorCommandInteractor::new(
             authors,
             MockBookRepository::new(),
-            MockAuthorEventRepository::new(),
             MockTransactionManager::new(),
         );
 
@@ -594,7 +571,7 @@ mod tests {
 
         let interactor = command_interactor(author_repository, {
             let mut tm = MockTransactionManager::new();
-            tm.expect_begin().returning(|_, _| Ok(()));
+            tm.expect_begin_operation().returning(|_, _| Ok(()));
             tm.expect_commit().times(0);
             tm
         });
@@ -611,7 +588,7 @@ mod tests {
         author_repository.expect_create().returning(|_, _| Ok(303));
 
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit()
             .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
         let interactor = command_interactor(author_repository, tm);
@@ -724,7 +701,7 @@ mod tests {
         author_repository.expect_update().returning(|_, _| Ok(404));
 
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit()
             .returning(|_| Err(DomainError::Unexpected("commit failed".to_string())));
         let interactor = command_interactor(author_repository, tm);
@@ -753,7 +730,7 @@ mod tests {
             .returning(|_, _| Err(DomainError::Unexpected("event insert failed".to_string())));
 
         let mut tm = MockTransactionManager::new();
-        tm.expect_begin().returning(|_, _| Ok(()));
+        tm.expect_begin_operation().returning(|_, _| Ok(()));
         tm.expect_commit().times(0);
         let interactor = command_interactor(author_repository, tm);
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -821,7 +798,7 @@ mod tests {
 
         let interactor = command_interactor(author_repository, {
             let mut tm = MockTransactionManager::new();
-            tm.expect_begin().returning(|_, _| Ok(()));
+            tm.expect_begin_operation().returning(|_, _| Ok(()));
             tm
         });
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -981,7 +958,6 @@ mod tests {
         let interactor = AuthorCommandInteractor::new(
             MockAuthorRepository::new(),
             MockBookRepository::new(),
-            MockAuthorEventRepository::new(),
             MockTransactionManager::new(),
         );
 
@@ -1044,17 +1020,15 @@ mod tests {
                 author_id.to_string() == source_id
                     && matches!(
                         extra,
-                        Some(DeleteAuthorEventExtra::Merge {
+                        Some(DeleteAuthorExtra::Merge {
                             destination_author_id
                         }) if destination_author_id.to_string() == destination_id
                     )
             })
             .returning(|_, _, _| Ok(()));
-        let event_repository = MockAuthorEventRepository::new();
         let interactor = AuthorCommandInteractor::new(
             author_repository,
             book_repository,
-            event_repository,
             make_transaction_manager(),
         );
 
@@ -1141,7 +1115,7 @@ mod tests {
                 author_id.to_string() == source_id
                     && matches!(
                         extra,
-                        Some(DeleteAuthorEventExtra::Merge {
+                        Some(DeleteAuthorExtra::Merge {
                             destination_author_id
                         }) if destination_author_id.to_string() == destination_id
                     )
@@ -1177,11 +1151,9 @@ mod tests {
                         .any(|book| book.title().as_str() == "Already has destination")
             })
             .returning(|_, _| Ok(()));
-        let event_repository = MockAuthorEventRepository::new();
         let interactor = AuthorCommandInteractor::new(
             author_repository,
             book_repository,
-            event_repository,
             make_transaction_manager(),
         );
 
