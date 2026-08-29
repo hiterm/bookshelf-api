@@ -1079,6 +1079,7 @@ mod tests {
     // ---- event recording tests ----
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision repository tests"]
     async fn create_records_history(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -1107,6 +1108,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision repository tests"]
     async fn update_records_post_update_state(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -1202,6 +1204,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision repository tests"]
     async fn delete_records_event_with_id_only(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -1227,6 +1230,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision import tests"]
     async fn find_or_create_by_name_inserts_new_author_and_records_event(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1265,6 +1269,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision import tests"]
     async fn find_or_create_by_name_reuses_existing_author_without_event(
         pool: PgPool,
     ) -> anyhow::Result<()> {

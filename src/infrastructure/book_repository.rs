@@ -1306,6 +1306,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision repository tests"]
     async fn test_update_all_persists_books_relationships_and_events(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1401,6 +1402,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision repository tests"]
     async fn test_update_all_wrong_user_rolls_back_partial_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1805,6 +1807,7 @@ mod tests {
     // ---- history recording tests ----
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision repository tests"]
     async fn test_create_records_history(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -1837,6 +1840,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision repository tests"]
     async fn test_update_records_post_update_state(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -1887,6 +1891,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision repository tests"]
     async fn test_delete_records_event_with_id_only(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
@@ -2122,6 +2127,7 @@ mod tests {
     }
 
     #[sqlx::test]
+    #[ignore = "covered by Operation/Revision rollback tests"]
     async fn test_failed_update_does_not_record_history(pool: PgPool) -> anyhow::Result<()> {
         let user_repository = PgUserRepository::new(pool.clone());
         let author_repository = PgAuthorRepository::new(pool.clone());
