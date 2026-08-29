@@ -630,6 +630,11 @@ pub struct ImportBooksPayload {
     pub operation_id: ID,
 }
 
+#[derive(Clone, SimpleObject)]
+pub struct UndoOperationPayload {
+    pub operation_id: ID,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 pub enum ImportAuthorStatus {
     Existing,

@@ -212,6 +212,7 @@ type Mutation {
 	Executes the book import path and rolls the complete transaction back.
 	"""
 	previewBookImport(books: [ImportBookInput!]!): ImportBooksPreview!
+	undoOperation(operationId: ID!): UndoOperationPayload!
 }
 
 type Operation {
@@ -248,6 +249,10 @@ type RestoreBookPayload {
 	book: Book
 	operationId: ID!
 	revisionNumber: Int!
+}
+
+type UndoOperationPayload {
+	operationId: ID!
 }
 
 input UpdateAuthorInput {

@@ -3,7 +3,7 @@ use bookshelf_api::{
     use_case::traits::{
         author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
         book::{MockBookCommandUseCase, MockBookQueryUseCase},
-        history::MockHistoryQueryUseCase,
+        history::{MockHistoryCommandUseCase, MockHistoryQueryUseCase},
         user::{MockUserCommandUseCase, MockUserQueryUseCase},
     },
 };
@@ -22,6 +22,7 @@ async fn main() {
         MockUserCommandUseCase::new(),
         MockBookCommandUseCase::new(),
         MockAuthorCommandUseCase::new(),
+        MockHistoryCommandUseCase::new(),
     );
     let schema = build_schema(query, mutation);
     let sdl = format!("{}\n", schema.sdl());

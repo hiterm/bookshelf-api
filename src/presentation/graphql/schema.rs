@@ -1,20 +1,20 @@
 use crate::use_case::traits::{
     author::{AuthorCommandUseCase, AuthorQueryUseCase},
     book::{BookCommandUseCase, BookQueryUseCase},
-    history::HistoryQueryUseCase,
+    history::{HistoryCommandUseCase, HistoryQueryUseCase},
     user::{UserCommandUseCase, UserQueryUseCase},
 };
 
 use super::{mutation::Mutation, query::Query};
 use async_graphql::{EmptySubscription, Schema};
 
-pub type GraphqlSchema<UQ, BQ, AQ, HQ, UC, BC, AC> =
-    Schema<Query<UQ, BQ, AQ, HQ>, Mutation<UC, BC, AC>, EmptySubscription>;
+pub type GraphqlSchema<UQ, BQ, AQ, HQ, UC, BC, AC, HC> =
+    Schema<Query<UQ, BQ, AQ, HQ>, Mutation<UC, BC, AC, HC>, EmptySubscription>;
 
-pub fn build_schema<UQ, BQ, AQ, HQ, UC, BC, AC>(
+pub fn build_schema<UQ, BQ, AQ, HQ, UC, BC, AC, HC>(
     query: Query<UQ, BQ, AQ, HQ>,
-    mutation: Mutation<UC, BC, AC>,
-) -> GraphqlSchema<UQ, BQ, AQ, HQ, UC, BC, AC>
+    mutation: Mutation<UC, BC, AC, HC>,
+) -> GraphqlSchema<UQ, BQ, AQ, HQ, UC, BC, AC, HC>
 where
     UQ: UserQueryUseCase,
     BQ: BookQueryUseCase,
@@ -23,6 +23,7 @@ where
     UC: UserCommandUseCase,
     BC: BookCommandUseCase,
     AC: AuthorCommandUseCase,
+    HC: HistoryCommandUseCase,
 {
     Schema::build(query, mutation, EmptySubscription).finish()
 }
@@ -45,7 +46,7 @@ mod tests {
             traits::{
                 author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
                 book::{MockBookCommandUseCase, MockBookQueryUseCase},
-                history::MockHistoryQueryUseCase,
+                history::{MockHistoryCommandUseCase, MockHistoryQueryUseCase},
                 user::{MockUserCommandUseCase, MockUserQueryUseCase},
             },
         },
@@ -67,12 +68,17 @@ mod tests {
         )
     }
 
-    fn mutation()
-    -> Mutation<MockUserCommandUseCase, MockBookCommandUseCase, MockAuthorCommandUseCase> {
+    fn mutation() -> Mutation<
+        MockUserCommandUseCase,
+        MockBookCommandUseCase,
+        MockAuthorCommandUseCase,
+        MockHistoryCommandUseCase,
+    > {
         Mutation::new(
             MockUserCommandUseCase::new(),
             MockBookCommandUseCase::new(),
             MockAuthorCommandUseCase::new(),
+            MockHistoryCommandUseCase::new(),
         )
     }
 
@@ -148,6 +154,7 @@ mod tests {
                 MockUserCommandUseCase::new(),
                 MockBookCommandUseCase::new(),
                 author_command,
+                MockHistoryCommandUseCase::new(),
             ),
         );
         let claims = Claims {
@@ -171,6 +178,40 @@ mod tests {
             "e77df9d5-b7bf-47f2-8753-03f285d440e3"
         );
         assert_eq!(json["data"]["createAuthor"]["author"]["name"], "Author");
+    }
+
+    #[tokio::test]
+    async fn undo_operation_returns_the_new_operation_id() {
+        let target_id = "e77df9d5-b7bf-47f2-8753-03f285d440e3";
+        let undo_id = "79455a41-bb67-44a7-966f-2f6fdd04e8ca";
+        let mut history_command = MockHistoryCommandUseCase::new();
+        history_command
+            .expect_undo_operation()
+            .with(predicate::eq("user1"), predicate::eq(target_id))
+            .returning(move |_, _| Ok(undo_id.to_owned()));
+        let schema = build_schema(
+            query(),
+            Mutation::new(
+                MockUserCommandUseCase::new(),
+                MockBookCommandUseCase::new(),
+                MockAuthorCommandUseCase::new(),
+                history_command,
+            ),
+        );
+        let response = schema
+            .execute(
+                async_graphql::Request::from(format!(
+                    "mutation {{ undoOperation(operationId: \"{target_id}\") {{ operationId }} }}"
+                ))
+                .data(Claims {
+                    sub: "user1".to_owned(),
+                    _permissions: None,
+                }),
+            )
+            .await;
+        let json = serde_json::to_value(response).unwrap();
+
+        assert_eq!(json["data"]["undoOperation"]["operationId"], undo_id);
     }
 
     #[tokio::test]

@@ -1470,7 +1470,7 @@ mod tests {
             "SELECT COUNT(*) FROM book_revision WHERE user_id = $1 AND book_id = ANY($2)",
         )
         .bind(user_id.as_str())
-        .bind(&[book1.id().to_uuid(), book2.id().to_uuid()])
+        .bind([book1.id().to_uuid(), book2.id().to_uuid()])
         .fetch_one(&pool)
         .await?;
         assert_eq!(revision_count, 4);
