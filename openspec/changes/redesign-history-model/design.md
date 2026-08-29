@@ -75,6 +75,11 @@ An Operation is undoable only when it is owned, is not baseline, and every chang
 
 `undoOperation` begins a new `undo` Operation linked through `undo_of_operation_id`, locks every affected entity/history key in deterministic order, and repeats eligibility and reference validation. It then applies each target before-state. For related multi-entity Operations, restorations run Author before Book so restored Books can resolve their Authors, while deletions run Book before Author so no live Book retains a deleted Author reference. Restoring content appends a fresh revision; undoing a create deletes the entity and records `current -> none`. PR 2 import and merge E2E tests will verify this ordering and that all changes commit or roll back together. Undoing an undo is not specially exposed but the model does not prohibit it.
 
+PR 2 does not expose a computed GraphQL `undoable` field. Clients attempt
+`undoOperation` and handle a conflict when the target after-state is stale. This
+keeps the transaction-time server revalidation authoritative and avoids a
+time-of-check/time-of-use promise in the query contract.
+
 ### Replace the GraphQL history contract directly
 
 Queries expose `operations`, `operation(id)`, `bookRevisions(bookId)`, `bookRevision(bookId, revisionNumber)`, and Author equivalents. Operation nested Book/Author changes batch by Operation IDs and load only when selected. Changes expose before/after Revision objects. All paths are tenant-scoped.
@@ -109,4 +114,3 @@ Rollback before PR 3 can return application traffic to the legacy release while 
 
 - Whether normal `operations` queries expose an explicit `includeBaseline` argument or always hide baseline while direct lookup remains available; choose the smallest API consistent with frontend needs during PR 1.
 - Exact pagination shape for Operation and Revision lists; reuse the repository's prevailing list conventions unless scale testing requires cursors.
-- Whether `undoable` is exposed as a computed GraphQL field in PR 2 or clients attempt undo and handle a conflict; server-side execution validation is mandatory either way.
