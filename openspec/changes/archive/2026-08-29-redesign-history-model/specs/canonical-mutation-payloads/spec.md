@@ -33,6 +33,8 @@ The system SHALL expose the deleted entity through `bookId` or `authorId`, SHALL
 - **WHEN** an authenticated client successfully executes `deleteAuthor`
 - **THEN** the client can select `authorId` and `operationId`
 
+## ADDED Requirements
+
 ### Requirement: New mutation contract is authoritative from PR 1
 All mutations SHALL expose only Operation and Revision metadata from PR 1. Legacy Event/EventSet tables and internal code MAY remain until PR 3, but their GraphQL APIs SHALL be absent from PR 1. Mutations SHALL NOT expose `eventId` or `eventSetId` aliases and SHALL NOT write legacy history.
 
@@ -43,3 +45,15 @@ All mutations SHALL expose only Operation and Revision metadata from PR 1. Legac
 #### Scenario: Mutation records history while legacy tables remain
 - **WHEN** a client creates, updates, deletes, restores, imports, or merges entities before PR 3 cleanup
 - **THEN** only Operation, Revision, and OperationChange rows are written
+
+## REMOVED Requirements
+
+### Requirement: Known client migrates before alias removal
+**Reason**: The Operation/Revision contract is authoritative and compatibility aliases have been removed.
+
+**Migration**: Clients select canonical entity fields together with `operationId` and, for single-entity mutations, `revisionNumber`.
+
+### Requirement: Test doubles match the canonical schema
+**Reason**: Frontend test-double behavior is maintained in the frontend project rather than this API specification.
+
+**Migration**: Frontend tests follow the generated Operation/Revision GraphQL schema.

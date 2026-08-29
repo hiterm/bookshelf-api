@@ -4,61 +4,45 @@
 TBD - created by archiving change unify-mutation-payloads. Update Purpose after archive.
 ## Requirements
 ### Requirement: Book mutation payloads expose one entity representation
-The system SHALL expose the affected book from create and update mutations through the `book` field of `BookMutationPayload`, SHALL expose the associated event set through `eventSetId`, and SHALL NOT expose direct aliases of fields belonging to that book on the payload.
+The system SHALL expose the affected Book from create and update mutations through the `book` field of `BookMutationPayload`, SHALL expose the logical Operation through `operationId`, SHALL expose the newly recorded Book revision through `revisionNumber`, and SHALL NOT expose Event identifiers or direct aliases of fields belonging to that Book.
 
-#### Scenario: Create book returns canonical payload
+#### Scenario: Create Book returns canonical payload
 - **WHEN** an authenticated client successfully executes `createBook`
-- **THEN** the client can select the created identifier through `createBook.book.id`
-- **AND** the client can select the mutation event set through `createBook.eventSetId`
+- **THEN** the client can select the created identifier through `createBook.book.id`, the Operation through `createBook.operationId`, and revision 1 through `createBook.revisionNumber`
 
-#### Scenario: Update book returns canonical payload
+#### Scenario: Update Book returns canonical payload
 - **WHEN** an authenticated client successfully executes `updateBook`
-- **THEN** the client can select updated entity fields through `updateBook.book`
-- **AND** the payload does not define direct fields such as `id`, `title`, or `updatedAt`
+- **THEN** the client can select updated entity fields through `updateBook.book` and its new revision metadata without direct entity-field or Event-ID aliases
 
 ### Requirement: Author mutation payloads expose one entity representation
-The system SHALL expose the affected author from create and update mutations through the `author` field of `AuthorMutationPayload`, SHALL expose the associated event set through `eventSetId`, and SHALL NOT expose direct aliases of fields belonging to that author on the payload.
+The system SHALL expose the affected Author from create and update mutations through the `author` field of `AuthorMutationPayload`, SHALL expose `operationId` and `revisionNumber`, and SHALL NOT expose Event identifiers or direct aliases of fields belonging to that Author.
 
-#### Scenario: Create author returns canonical payload
+#### Scenario: Create Author returns canonical payload
 - **WHEN** an authenticated client successfully executes `createAuthor`
-- **THEN** the client can select the created identifier through `createAuthor.author.id`
-- **AND** the client can select the mutation event set through `createAuthor.eventSetId`
+- **THEN** the client can select the created Author, Operation ID, and revision 1 from canonical fields
 
-#### Scenario: Update author returns canonical payload
+#### Scenario: Update Author returns canonical payload
 - **WHEN** an authenticated client successfully executes `updateAuthor`
-- **THEN** the client can select updated entity fields through `updateAuthor.author`
-- **AND** the payload does not define direct `id` or `name` fields
+- **THEN** the client can select the updated Author and new revision metadata without direct entity-field aliases
 
 ### Requirement: Delete payloads use descriptive entity identifiers
-The system SHALL expose a deleted book identifier as `bookId`, SHALL expose a deleted author identifier as `authorId`, SHALL preserve `eventSetId` on both payloads, and SHALL NOT define a generic `id` alias on either delete payload.
+The system SHALL expose the deleted entity through `bookId` or `authorId`, SHALL expose `operationId`, and SHALL NOT define a generic `id`, `eventId`, or `eventSetId` alias.
 
-#### Scenario: Delete book returns its identifier
+#### Scenario: Delete Book returns its identifier
 - **WHEN** an authenticated client successfully executes `deleteBook`
-- **THEN** the client can select the deleted identifier through `deleteBook.bookId`
-- **AND** the client can select the mutation event set through `deleteBook.eventSetId`
+- **THEN** the client can select `bookId` and `operationId`
 
-#### Scenario: Delete author returns its identifier
+#### Scenario: Delete Author returns its identifier
 - **WHEN** an authenticated client successfully executes `deleteAuthor`
-- **THEN** the client can select the deleted identifier through `deleteAuthor.authorId`
-- **AND** the client can select the mutation event set through `deleteAuthor.eventSetId`
+- **THEN** the client can select `authorId` and `operationId`
 
-### Requirement: Known client migrates before alias removal
-The `bookshelf` client SHALL use only canonical mutation payload fields before `bookshelf-api` removes the compatibility aliases.
+### Requirement: New mutation contract is authoritative from PR 1
+All mutations SHALL expose only Operation and Revision metadata from PR 1. Legacy Event/EventSet tables and internal code MAY remain until PR 3, but their GraphQL APIs SHALL be absent from PR 1. Mutations SHALL NOT expose `eventId` or `eventSetId` aliases and SHALL NOT write legacy history.
 
-#### Scenario: Frontend creates a book and pending authors
-- **WHEN** a user creates a book and the form creates one or more new authors
-- **THEN** the frontend reads author identifiers through `createAuthor.author.id`
-- **AND** it reads the created book identifier through `createBook.book.id`
+#### Scenario: Existing frontend selects removed metadata
+- **WHEN** an older frontend selects `eventSetId` from any mutation after PR 1
+- **THEN** GraphQL validation fails because no compatibility alias exists
 
-#### Scenario: Frontend updates and deletes entities
-- **WHEN** the frontend executes book or author update and delete mutations
-- **THEN** its GraphQL documents select updated entities through `book` or `author`
-- **AND** its delete documents select `bookId` or `authorId`
-
-### Requirement: Test doubles match the canonical schema
-Frontend test doubles SHALL return the same mutation payload nesting and identifier names as the production GraphQL schema.
-
-#### Scenario: Mocked mutation responses
-- **WHEN** unit, demo-mode, or mock-API tests execute a book or author mutation
-- **THEN** create and update responses wrap entities under `book` or `author`
-- **AND** delete responses expose `bookId` or `authorId`
+#### Scenario: Mutation records history while legacy tables remain
+- **WHEN** a client creates, updates, deletes, restores, imports, or merges entities before PR 3 cleanup
+- **THEN** only Operation, Revision, and OperationChange rows are written
