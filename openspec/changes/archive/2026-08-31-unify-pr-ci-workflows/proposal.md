@@ -4,7 +4,7 @@ Release pull requests currently bypass the repository's normal pull request vali
 
 ## What Changes
 
-- Run CI and E2E on every `pull_request` event and on pushes to `main`, while no longer running them directly for feature-branch pushes.
+- Run CI and E2E on the default `pull_request` activity types (`opened`, `synchronize`, and `reopened`) and on pushes to `main`, while no longer running them directly for feature-branch pushes.
 - Remove release-PR-only workflow dispatch inputs, checkout overrides, aggregate status jobs, and status-write permissions from CI and E2E.
 - Remove release PR validation dispatching, retries, and manual commit-status reporting from the release workflow.
 - Keep tagpr on `GITHUB_TOKEN` and intentionally require a human to approve the resulting release PR workflows before CI and E2E begin.
