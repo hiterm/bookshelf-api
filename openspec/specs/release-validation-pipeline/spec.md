@@ -6,26 +6,26 @@ Define the unified pull request, release validation, and deployment pipeline.
 ## Requirements
 
 ### Requirement: Unified pull request validation
-The repository SHALL run the same CI and E2E workflows for ordinary pull requests and tagpr release pull requests through the `pull_request` event, without release-specific workflow dispatches or hand-written commit statuses.
+The repository SHALL run CI, E2E, actionlint, and zizmor for ordinary pull requests and tagpr release pull requests through the `pull_request` event, without release-specific workflow dispatches or hand-written commit statuses.
 
 #### Scenario: Ordinary pull request is opened or updated
 - **WHEN** an ordinary pull request emits a supported `pull_request` event
-- **THEN** the CI and E2E workflows run using the native pull request event context
+- **THEN** the CI, E2E, actionlint, and zizmor workflows run using the native pull request event context
 
 #### Scenario: Release pull request is approved for workflow execution
 - **WHEN** a human approves workflow execution for a tagpr-generated release pull request
-- **THEN** the same `pull_request` CI and E2E workflows used by ordinary pull requests begin
+- **THEN** the same `pull_request` CI, E2E, actionlint, and zizmor workflows used by ordinary pull requests begin
 
 ### Requirement: Main-only push validation
-The repository SHALL run CI and E2E for pushes to `main` and SHALL NOT directly run those workflows for a standalone push to another branch.
+The repository SHALL run CI, E2E, actionlint, and zizmor for pushes to `main` and SHALL NOT directly run those workflows for a standalone push to another branch.
 
 #### Scenario: Main receives a push
 - **WHEN** a commit is pushed to `main`
-- **THEN** both CI and E2E workflows run
+- **THEN** the CI, E2E, actionlint, and zizmor workflows run
 
 #### Scenario: Feature branch receives a push
 - **WHEN** a commit is pushed to a branch other than `main` without a pull request event
-- **THEN** neither CI nor E2E runs directly for that push
+- **THEN** CI, E2E, actionlint, and zizmor do not run directly for that push
 
 ### Requirement: Human-approved tagpr validation
 Tagpr SHALL continue to use `GITHUB_TOKEN`, and the release process SHALL accept GitHub's approval requirement for pull request workflows generated or updated by that token. The repository MUST NOT use a PAT, GitHub App token, automatic workflow dispatch, or manual commit-status bypass for release pull request validation.
