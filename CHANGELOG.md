@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.15.3](https://github.com/hiterm/bookshelf-api/compare/2.15.2...2.15.3) - 2026-09-01
+
+### Other Changes
+- Archive history model redesign by @hiterm in https://github.com/hiterm/bookshelf-api/pull/329
+- Unify pull request CI workflows by @hiterm in https://github.com/hiterm/bookshelf-api/pull/331
+
 ## [2.15.2](https://github.com/hiterm/bookshelf-api/compare/2.15.1...2.15.2) - 2026-08-29
 
 ### Other Changes
