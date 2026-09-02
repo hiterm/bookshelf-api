@@ -51,6 +51,31 @@ struct BulkAuthorRow {
     updated_at: OffsetDateTime,
 }
 
+const AUTHOR_NAME_UNIQUE_CONSTRAINT: &str = "author_user_id_name_unique";
+
+fn classify_author_name_write_error(error: sqlx::Error, name: &str) -> DomainError {
+    if let sqlx::Error::Database(database_error) = &error
+        && database_error.code().as_deref() == Some("23505")
+        && database_error.constraint() == Some(AUTHOR_NAME_UNIQUE_CONSTRAINT)
+    {
+        return DomainError::Conflict(format!("author name '{name}' is already in use"));
+    }
+
+    error.into()
+}
+
+#[cfg(test)]
+mod error_classification_tests {
+    use super::classify_author_name_write_error;
+    use crate::domain::error::DomainError;
+
+    #[test]
+    fn unknown_sqlx_error_remains_infrastructure_error() {
+        let error = classify_author_name_write_error(sqlx::Error::RowNotFound, "author");
+        assert!(matches!(error, DomainError::InfrastructureError(_)));
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PgAuthorRepository {
     pool: PgPool,
@@ -83,7 +108,8 @@ impl AuthorRepository for PgAuthorRepository {
         .bind(author.created_at())
         .bind(author.updated_at())
         .execute(tx.as_mut())
-        .await?;
+        .await
+        .map_err(|error| classify_author_name_write_error(error, author.name().as_str()))?;
 
         let revision_number = append_author_revision(tx, author, None).await?;
         Ok(revision_number)
@@ -321,7 +347,8 @@ impl AuthorRepository for PgAuthorRepository {
         .bind(author.id().to_uuid())
         .bind(user_id.as_str())
         .execute(tx.as_mut())
-        .await?;
+        .await
+        .map_err(|error| classify_author_name_write_error(error, author.name().as_str()))?;
 
         match result.rows_affected() {
             0 => {
@@ -873,6 +900,50 @@ mod tests {
             Some("updated".to_string())
         );
 
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn create_returns_conflict_for_duplicate_author_name(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let user_id = prepare_user(&user_repository, "duplicate-create-user").await?;
+        let name = AuthorName::new("duplicate name".to_owned())?;
+        let first = new_author(AuthorId::new(Uuid::new_v4()), name.clone())?;
+        let duplicate = new_author(AuthorId::new(Uuid::new_v4()), name)?;
+        create_author(&pool, &author_repository, &user_id, &first).await?;
+
+        let result = create_author(&pool, &author_repository, &user_id, &duplicate).await;
+
+        assert!(
+            matches!(result, Err(DomainError::Conflict(message)) if message.contains("duplicate name"))
+        );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_returns_conflict_for_duplicate_author_name(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let user_id = prepare_user(&user_repository, "duplicate-update-user").await?;
+        let first = new_author(
+            AuthorId::new(Uuid::new_v4()),
+            AuthorName::new("existing name".to_owned())?,
+        )?;
+        let second_id = AuthorId::new(Uuid::new_v4());
+        let second = new_author(
+            second_id.clone(),
+            AuthorName::new("second name".to_owned())?,
+        )?;
+        create_author(&pool, &author_repository, &user_id, &first).await?;
+        create_author(&pool, &author_repository, &user_id, &second).await?;
+        let conflicting = new_author(second_id, AuthorName::new("existing name".to_owned())?)?;
+
+        let result = update_author(&pool, &author_repository, &user_id, &conflicting).await;
+
+        assert!(
+            matches!(result, Err(DomainError::Conflict(message)) if message.contains("existing name"))
+        );
         Ok(())
     }
 
