@@ -1,7 +1,7 @@
 # api-error-contract Specification
 
 ## Purpose
-TBD - created by archiving change improve-api-error-handling. Update Purpose after archive.
+Define context-aware API error classification, stable public GraphQL error codes, and the boundary that keeps internal diagnostic details private.
 ## Requirements
 ### Requirement: Expected database conflicts are classified in operation context
 The system SHALL translate a database constraint violation into a domain error only when the repository operation and exact named constraint establish a client-actionable meaning, and SHALL retain infrastructure classification for unexpected database errors.
@@ -58,4 +58,3 @@ The system SHALL retain internal error causes and record internal GraphQL failur
 #### Scenario: An internal error is sanitized
 - **WHEN** an InfrastructureError or Unexpected error is converted to its safe GraphQL representation
 - **THEN** the original diagnostic detail is emitted to server tracing while only the fixed public message is returned
-

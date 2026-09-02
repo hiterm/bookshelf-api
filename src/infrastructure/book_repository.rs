@@ -619,6 +619,16 @@ impl BookRepository for PgBookRepository {
 
         let user_id = tx.user_id().clone();
         let ids: Vec<Uuid> = books.iter().map(|book| book.id().to_uuid()).collect();
+        let mut unique_ids = HashSet::with_capacity(ids.len());
+        if let Some(duplicate_book) = books
+            .iter()
+            .find(|book| !unique_ids.insert(book.id().to_uuid()))
+        {
+            return Err(DomainError::Validation(format!(
+                "book id '{}' appears more than once in a bulk update",
+                duplicate_book.id()
+            )));
+        }
         let titles: Vec<&str> = books.iter().map(|book| book.title().as_str()).collect();
         let isbns: Vec<&str> = books.iter().map(|book| book.isbn().as_str()).collect();
         let reads: Vec<bool> = books.iter().map(|book| book.read().to_bool()).collect();
@@ -1493,6 +1503,48 @@ mod tests {
             .find_by_id(&user_id, existing_book.id())
             .await?
             .expect("existing book should remain");
+        assert_eq!(persisted.title().as_str(), "title1");
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_all_rejects_duplicate_book_ids(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+        let user_id = prepare_user(&user_repository, "duplicate-book-id-user").await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        let mut book = book_entity1(&author_ids)?;
+        create_book(&pool, &book_repository, &user_id, &book).await?;
+        book.update(
+            BookUpdate {
+                title: BookTitle::new("must not be persisted".to_owned())?,
+                author_ids: book.author_ids().to_vec(),
+                isbn: book.isbn().clone(),
+                read: book.read().clone(),
+                owned: book.owned().clone(),
+                priority: book.priority().clone(),
+                format: book.format().clone(),
+                store: book.store().clone(),
+            },
+            OffsetDateTime::now_utc(),
+        );
+
+        {
+            let tm = PgTransactionManager::new(pool.clone());
+            let mut tx = tm.begin(&user_id, OperationType::MergeAuthor).await?;
+            let result = book_repository
+                .update_all(&mut tx, &[book.clone(), book.clone()])
+                .await;
+            assert!(
+                matches!(result, Err(DomainError::Validation(message)) if message.contains(&book.id().to_string()))
+            );
+        }
+
+        let persisted = book_repository
+            .find_by_id(&user_id, book.id())
+            .await?
+            .expect("book should remain");
         assert_eq!(persisted.title().as_str(), "title1");
         Ok(())
     }
