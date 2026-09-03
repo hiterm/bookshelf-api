@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
@@ -619,6 +619,16 @@ impl BookRepository for PgBookRepository {
 
         let user_id = tx.user_id().clone();
         let ids: Vec<Uuid> = books.iter().map(|book| book.id().to_uuid()).collect();
+        let mut unique_ids = HashSet::with_capacity(ids.len());
+        if let Some(duplicate_book) = books
+            .iter()
+            .find(|book| !unique_ids.insert(book.id().to_uuid()))
+        {
+            return Err(DomainError::Validation(format!(
+                "book id '{}' appears more than once in a bulk update",
+                duplicate_book.id()
+            )));
+        }
         let titles: Vec<&str> = books.iter().map(|book| book.title().as_str()).collect();
         let isbns: Vec<&str> = books.iter().map(|book| book.isbn().as_str()).collect();
         let reads: Vec<bool> = books.iter().map(|book| book.read().to_bool()).collect();
@@ -662,12 +672,32 @@ impl BookRepository for PgBookRepository {
         .await?;
 
         if result.rows_affected() != books.len() as u64 {
-            let book = &books[0];
-            return Err(DomainError::NotFound {
-                entity_type: "book",
-                entity_id: book.id().to_string(),
-                user_id: user_id.into_string(),
-            });
+            let existing_ids: HashSet<Uuid> = sqlx::query_scalar(
+                "SELECT id FROM book WHERE user_id = $1 AND id = ANY($2::uuid[])",
+            )
+            .bind(user_id.as_str())
+            .bind(&ids)
+            .fetch_all(tx.as_mut())
+            .await?
+            .into_iter()
+            .collect();
+
+            if let Some(missing_book) = books
+                .iter()
+                .find(|book| !existing_ids.contains(&book.id().to_uuid()))
+            {
+                return Err(DomainError::NotFound {
+                    entity_type: "book",
+                    entity_id: missing_book.id().to_string(),
+                    user_id: user_id.into_string(),
+                });
+            }
+
+            return Err(DomainError::Unexpected(format!(
+                "updated {} rows for {} unique existing books",
+                result.rows_affected(),
+                existing_ids.len()
+            )));
         }
 
         let relationships: Vec<(Uuid, Uuid)> = books
@@ -1405,7 +1435,11 @@ mod tests {
             let result = book_repository
                 .update_all(&mut tx, &[user1_book, user2_book.clone()])
                 .await;
-            assert!(matches!(result, Err(DomainError::NotFound { .. })));
+            assert!(matches!(
+                result,
+                Err(DomainError::NotFound { entity_id, .. })
+                    if entity_id == user2_book.id().to_string()
+            ));
         }
 
         let persisted = book_repository
@@ -1422,6 +1456,96 @@ mod tests {
                 .await?,
             Some(user2_book)
         );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_all_reports_missing_later_book_and_rolls_back(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+        let user_id = prepare_user(&user_repository, "missing-later-book-user").await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        let mut existing_book = book_entity1(&author_ids)?;
+        let missing_book = book_entity2(&author_ids)?;
+        create_book(&pool, &book_repository, &user_id, &existing_book).await?;
+
+        existing_book.update(
+            BookUpdate {
+                title: BookTitle::new("must roll back".to_owned())?,
+                author_ids: existing_book.author_ids().to_vec(),
+                isbn: existing_book.isbn().clone(),
+                read: existing_book.read().clone(),
+                owned: existing_book.owned().clone(),
+                priority: existing_book.priority().clone(),
+                format: existing_book.format().clone(),
+                store: existing_book.store().clone(),
+            },
+            OffsetDateTime::now_utc(),
+        );
+
+        {
+            let tm = PgTransactionManager::new(pool.clone());
+            let mut tx = tm.begin(&user_id, OperationType::MergeAuthor).await?;
+            let result = book_repository
+                .update_all(&mut tx, &[existing_book.clone(), missing_book.clone()])
+                .await;
+            assert!(matches!(
+                result,
+                Err(DomainError::NotFound { entity_id, .. })
+                    if entity_id == missing_book.id().to_string()
+            ));
+        }
+
+        let persisted = book_repository
+            .find_by_id(&user_id, existing_book.id())
+            .await?
+            .expect("existing book should remain");
+        assert_eq!(persisted.title().as_str(), "title1");
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_update_all_rejects_duplicate_book_ids(pool: PgPool) -> anyhow::Result<()> {
+        let user_repository = PgUserRepository::new(pool.clone());
+        let author_repository = PgAuthorRepository::new(pool.clone());
+        let book_repository = PgBookRepository::new(pool.clone());
+        let user_id = prepare_user(&user_repository, "duplicate-book-id-user").await?;
+        let author_ids = prepare_authors1(&pool, &user_id, &author_repository).await?;
+        let mut book = book_entity1(&author_ids)?;
+        create_book(&pool, &book_repository, &user_id, &book).await?;
+        book.update(
+            BookUpdate {
+                title: BookTitle::new("must not be persisted".to_owned())?,
+                author_ids: book.author_ids().to_vec(),
+                isbn: book.isbn().clone(),
+                read: book.read().clone(),
+                owned: book.owned().clone(),
+                priority: book.priority().clone(),
+                format: book.format().clone(),
+                store: book.store().clone(),
+            },
+            OffsetDateTime::now_utc(),
+        );
+
+        {
+            let tm = PgTransactionManager::new(pool.clone());
+            let mut tx = tm.begin(&user_id, OperationType::MergeAuthor).await?;
+            let result = book_repository
+                .update_all(&mut tx, &[book.clone(), book.clone()])
+                .await;
+            assert!(
+                matches!(result, Err(DomainError::Validation(message)) if message.contains(&book.id().to_string()))
+            );
+        }
+
+        let persisted = book_repository
+            .find_by_id(&user_id, book.id())
+            .await?
+            .expect("book should remain");
+        assert_eq!(persisted.title().as_str(), "title1");
         Ok(())
     }
 

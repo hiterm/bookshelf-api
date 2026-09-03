@@ -76,6 +76,13 @@ mod tests {
     }
 
     #[test]
+    fn domain_conflict_error_becomes_use_case_conflict_error() {
+        let domain_err = DomainError::Conflict("duplicate author name".to_string());
+        let use_case_err = UseCaseError::from(domain_err);
+        assert!(matches!(use_case_err, UseCaseError::Conflict(_)));
+    }
+
+    #[test]
     fn domain_infrastructure_error_becomes_use_case_other_error() {
         let domain_err = DomainError::InfrastructureError(anyhow::anyhow!("db error"));
         let use_case_err = UseCaseError::from(domain_err);
