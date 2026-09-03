@@ -36,14 +36,27 @@ impl JwtConfig {
         let config = envy::prefixed("JWT_")
             .from_env::<EnvironmentConfig>()
             .context("missing JWT environment variables (JWT_AUDIENCE, JWT_DOMAIN)")?;
-        let jwks_url = std::env::var("JWKS_URL")
-            .unwrap_or_else(|_| format!("https://{}/.well-known/jwks.json", config.domain));
+        let jwks_url = resolve_jwks_url(&config.domain, std::env::var("JWKS_URL"))?;
         Ok(Self {
             audience: config.audience,
             domain: config.domain,
             jwks_url,
         })
     }
+}
+
+fn resolve_jwks_url(
+    domain: &str,
+    configured_url: Result<String, std::env::VarError>,
+) -> Result<String, anyhow::Error> {
+    let url = match configured_url {
+        Ok(url) => url,
+        Err(std::env::VarError::NotPresent) => {
+            format!("https://{domain}/.well-known/jwks.json")
+        }
+        Err(error) => return Err(error).context("JWKS_URL is not valid Unicode"),
+    };
+    Ok(url)
 }
 
 #[derive(Debug)]
@@ -383,6 +396,26 @@ mod tests {
     #[test]
     fn invalid_url_is_rejected() {
         assert!(validate_jwks_url("not a url").is_err());
+    }
+
+    #[test]
+    fn missing_jwks_url_uses_domain_default() {
+        let url = resolve_jwks_url(TEST_DOMAIN, Err(std::env::VarError::NotPresent)).unwrap();
+
+        assert_eq!(url, "https://test-issuer.local/.well-known/jwks.json");
+    }
+
+    #[test]
+    fn non_unicode_jwks_url_is_a_configuration_error() {
+        let error = resolve_jwks_url(
+            TEST_DOMAIN,
+            Err(std::env::VarError::NotUnicode(
+                "configured-invalid-value".into(),
+            )),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("not valid Unicode"));
     }
 
     #[tokio::test]
