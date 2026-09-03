@@ -64,18 +64,6 @@ fn classify_author_name_write_error(error: sqlx::Error, name: &str) -> DomainErr
     error.into()
 }
 
-#[cfg(test)]
-mod error_classification_tests {
-    use super::classify_author_name_write_error;
-    use crate::domain::error::DomainError;
-
-    #[test]
-    fn unknown_sqlx_error_remains_infrastructure_error() {
-        let error = classify_author_name_write_error(sqlx::Error::RowNotFound, "author");
-        assert!(matches!(error, DomainError::InfrastructureError(_)));
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct PgAuthorRepository {
     pool: PgPool,
@@ -1249,5 +1237,17 @@ mod tests {
         assert!(matches!(result, Err(DomainError::Validation(_))));
         manager.rollback(tx).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod error_classification_tests {
+    use super::classify_author_name_write_error;
+    use crate::domain::error::DomainError;
+
+    #[test]
+    fn unknown_sqlx_error_remains_infrastructure_error() {
+        let error = classify_author_name_write_error(sqlx::Error::RowNotFound, "author");
+        assert!(matches!(error, DomainError::InfrastructureError(_)));
     }
 }
