@@ -603,7 +603,7 @@ fn author_from_optional_row(row: Option<AuthorRow>) -> Result<Option<Author>, Do
 
 #[cfg(feature = "test-with-database")]
 #[cfg(test)]
-mod tests {
+mod database_tests {
 
     use crate::{
         common::types::{BookFormat, BookStore},
@@ -1241,7 +1241,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod error_classification_tests {
+mod tests {
     use super::classify_author_name_write_error;
     use crate::domain::error::DomainError;
 
