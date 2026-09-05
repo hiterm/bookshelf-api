@@ -243,6 +243,7 @@ mod tests {
                             priority: 50,
                             format: BookFormat::Unknown,
                             store: BookStore::Unknown,
+                            purchase_date: None,
                             created_at: OffsetDateTime::UNIX_EPOCH,
                             updated_at: OffsetDateTime::UNIX_EPOCH,
                         }],

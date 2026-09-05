@@ -1,7 +1,7 @@
 use getset::Getters;
 use regex::Regex;
 use std::sync::LazyLock;
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -141,6 +141,8 @@ pub struct Book {
     #[getset(get = "pub")]
     store: BookStore,
     #[getset(get = "pub")]
+    purchase_date: Option<Date>,
+    #[getset(get = "pub")]
     created_at: OffsetDateTime,
     #[getset(get = "pub")]
     updated_at: OffsetDateTime,
@@ -156,6 +158,7 @@ pub struct BookUpdate {
     pub priority: Priority,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -169,6 +172,7 @@ pub struct DestructureBook {
     pub priority: Priority,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -188,6 +192,27 @@ impl Book {
         created_at: OffsetDateTime,
         updated_at: OffsetDateTime,
     ) -> Result<Self, DomainError> {
+        Self::new_with_purchase_date(
+            id, title, author_ids, isbn, read, owned, priority, format, store, None, created_at,
+            updated_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_purchase_date(
+        id: BookId,
+        title: BookTitle,
+        author_ids: Vec<AuthorId>,
+        isbn: Isbn,
+        read: ReadFlag,
+        owned: OwnedFlag,
+        priority: Priority,
+        format: BookFormat,
+        store: BookStore,
+        purchase_date: Option<Date>,
+        created_at: OffsetDateTime,
+        updated_at: OffsetDateTime,
+    ) -> Result<Self, DomainError> {
         Ok(Self {
             id,
             title,
@@ -198,6 +223,7 @@ impl Book {
             priority,
             format,
             store,
+            purchase_date,
             created_at: normalize_timestamp_for_persistence(created_at),
             updated_at: normalize_timestamp_for_persistence(updated_at),
         })
@@ -212,6 +238,7 @@ impl Book {
         self.priority = update.priority;
         self.format = update.format;
         self.store = update.store;
+        self.purchase_date = update.purchase_date;
         self.updated_at = normalize_timestamp_for_persistence(updated_at);
     }
 
@@ -226,6 +253,7 @@ impl Book {
             priority: self.priority,
             format: self.format,
             store: self.store,
+            purchase_date: self.purchase_date,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -234,7 +262,7 @@ impl Book {
 
 #[cfg(test)]
 mod test {
-    use time::OffsetDateTime;
+    use time::{Date, Month, OffsetDateTime};
     use uuid::Uuid;
 
     use crate::common::types::{BookFormat, BookStore};
@@ -276,6 +304,7 @@ mod test {
             priority: Priority::new(99).expect("valid priority"),
             format: BookFormat::EBook,
             store: BookStore::Kindle,
+            purchase_date: Some(Date::from_calendar_date(2021, Month::June, 1).unwrap()),
         };
 
         book.update(update, updated_at);
@@ -288,8 +317,29 @@ mod test {
         assert_eq!(book.priority().to_i32(), 99);
         assert_eq!(book.format(), &BookFormat::EBook);
         assert_eq!(book.store(), &BookStore::Kindle);
+        assert_eq!(
+            *book.purchase_date(),
+            Some(Date::from_calendar_date(2021, Month::June, 1).unwrap())
+        );
         assert_eq!(book.updated_at(), &updated_at);
         assert_eq!(book.id(), &id);
+        assert_eq!(book.created_at(), &created_at);
+
+        book.update(
+            BookUpdate {
+                title: book.title().clone(),
+                author_ids: book.author_ids().clone(),
+                isbn: book.isbn().clone(),
+                read: book.read().clone(),
+                owned: book.owned().clone(),
+                priority: book.priority().clone(),
+                format: book.format().clone(),
+                store: book.store().clone(),
+                purchase_date: None,
+            },
+            updated_at,
+        );
+        assert_eq!(*book.purchase_date(), None);
         assert_eq!(book.created_at(), &created_at);
     }
 

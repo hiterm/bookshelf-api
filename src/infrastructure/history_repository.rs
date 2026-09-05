@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use sqlx::PgPool;
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
@@ -66,6 +66,7 @@ struct BookRevisionRow {
     priority: i32,
     format: String,
     store: String,
+    purchase_date: Option<Date>,
     book_created_at: OffsetDateTime,
     book_updated_at: OffsetDateTime,
     created_at: OffsetDateTime,
@@ -94,6 +95,7 @@ impl TryFrom<BookRevisionRow> for BookRevision {
                 .map_err(|error| DomainError::Unexpected(error.to_string()))?,
             store: BookStore::try_from(row.store.as_str())
                 .map_err(|error| DomainError::Unexpected(error.to_string()))?,
+            purchase_date: row.purchase_date,
             book_created_at: row.book_created_at,
             book_updated_at: row.book_updated_at,
             created_at: row.created_at,
@@ -293,7 +295,7 @@ impl HistoryRepository for PgHistoryRepository {
                        AND link.book_id = revision.book_id
                        AND link.revision_number = revision.revision_number) AS author_ids,
                     revision.isbn, revision.read, revision.owned, revision.priority,
-                    revision.format, revision.store, revision.book_created_at,
+                    revision.format, revision.store, revision.purchase_date, revision.book_created_at,
                     revision.book_updated_at, revision.created_at
              FROM book_revision revision
              WHERE revision.user_id = $1 AND revision.book_id = $2
@@ -321,7 +323,7 @@ impl HistoryRepository for PgHistoryRepository {
                        AND link.book_id = revision.book_id
                        AND link.revision_number = revision.revision_number) AS author_ids,
                     revision.isbn, revision.read, revision.owned, revision.priority,
-                    revision.format, revision.store, revision.book_created_at,
+                    revision.format, revision.store, revision.purchase_date, revision.book_created_at,
                     revision.book_updated_at, revision.created_at
              FROM book_revision revision
              WHERE revision.user_id = $1 AND revision.book_id = $2

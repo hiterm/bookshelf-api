@@ -27,6 +27,7 @@ async fn e2e_import_books() -> Result<()> {
                     priority: 50
                     format: E_BOOK
                     store: KINDLE
+                    purchaseDate: "2020-05-01"
                 },
                 {
                     title: "Book Two"
@@ -671,6 +672,7 @@ async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> 
                     priority
                     format
                     store
+                    purchaseDate
                 }
             }
         }
@@ -682,6 +684,8 @@ async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> 
         .context("preview books should be an array")?;
     assert_eq!(books.len(), 2);
     assert_eq!(books[0]["title"], "Preview One");
+    assert_eq!(books[0]["purchaseDate"], "2020-05-01");
+    assert!(books[1]["purchaseDate"].is_null());
     let authors = books[0]["authors"]
         .as_array()
         .context("preview authors should be an array")?;
@@ -708,6 +712,7 @@ async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> 
                     priority: 42
                     format: E_BOOK
                     store: KINDLE
+                    purchaseDate: "2020-05-01"
                 },
                 {
                     title: "Preview Two"
@@ -730,6 +735,7 @@ async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> 
                     priority
                     format
                     store
+                    purchaseDate
                 }
             }
         }
@@ -740,6 +746,8 @@ async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> 
         .as_array()
         .context("imported books should be an array")?;
     assert_eq!(imported_books.len(), 2);
+    assert_eq!(imported_books[0]["purchaseDate"], "2020-05-01");
+    assert!(imported_books[1]["purchaseDate"].is_null());
     for book in imported_books {
         delete_test_book(
             book["id"]

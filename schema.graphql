@@ -38,6 +38,7 @@ type Book {
 	priority: Int!
 	format: BookFormat!
 	store: BookStore!
+	purchaseDate: Date
 	createdAt: Int!
 	updatedAt: Int!
 	authors: [Author!]!
@@ -72,6 +73,7 @@ type BookRevision {
 	priority: Int!
 	format: BookFormat!
 	store: BookStore!
+	purchaseDate: Date
 	bookCreatedAt: DateTime!
 	bookUpdatedAt: DateTime!
 	createdAt: DateTime!
@@ -96,7 +98,19 @@ input CreateBookInput {
 	priority: Int!
 	format: BookFormat!
 	store: BookStore!
+	purchaseDate: Date
 }
+
+"""
+ISO 8601 calendar date without timezone.
+Format: %Y-%m-%d
+
+# Examples
+
+* `1994-11-13`
+* `2000-02-24`
+"""
+scalar Date
 
 """
 A datetime with timezone offset.
@@ -161,6 +175,10 @@ input ImportBookInput {
 	Store where the book was purchased or obtained.
 	"""
 	store: BookStore!
+	"""
+	Calendar date on which the book was purchased.
+	"""
+	purchaseDate: Date
 }
 
 type ImportBookPreview {
@@ -172,6 +190,7 @@ type ImportBookPreview {
 	priority: Int!
 	format: BookFormat!
 	store: BookStore!
+	purchaseDate: Date
 }
 
 type ImportBooksPayload {
@@ -271,6 +290,7 @@ input UpdateBookInput {
 	priority: Int!
 	format: BookFormat!
 	store: BookStore!
+	purchaseDate: Date
 }
 
 type User {

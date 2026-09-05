@@ -1,4 +1,4 @@
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 
 use crate::{
     common::types::{BookFormat, BookStore},
@@ -41,6 +41,7 @@ pub struct BookRevisionDto {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
     pub book_created_at: OffsetDateTime,
     pub book_updated_at: OffsetDateTime,
     pub created_at: OffsetDateTime,
@@ -63,6 +64,7 @@ impl From<BookRevision> for BookRevisionDto {
             priority: value.priority.to_i32(),
             format: value.format,
             store: value.store,
+            purchase_date: value.purchase_date,
             book_created_at: value.book_created_at,
             book_updated_at: value.book_updated_at,
             created_at: value.created_at,
