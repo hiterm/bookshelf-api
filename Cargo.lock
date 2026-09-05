@@ -352,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "bookshelf-api"
-version = "2.15.3"
+version = "2.15.4"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -390,7 +390,7 @@ dependencies = [
 
 [[package]]
 name = "bookshelf-e2e"
-version = "2.15.3"
+version = "2.15.4"
 dependencies = [
  "anyhow",
  "axum",
