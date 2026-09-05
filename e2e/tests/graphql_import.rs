@@ -651,6 +651,7 @@ async fn e2e_preview_book_import_rolls_back_and_can_then_import() -> Result<()> 
                     priority: 42
                     format: E_BOOK
                     store: KINDLE
+                    purchaseDate: "2020-05-01"
                 },
                 {
                     title: "Preview Two"
