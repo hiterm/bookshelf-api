@@ -42,3 +42,11 @@ The system MUST record a restore Operation, the new Revision, and an OperationCh
 #### Scenario: Restore recording fails
 - **WHEN** any current-state or history write for restore fails
 - **THEN** neither the restored entity nor partial restore history is committed
+
+### Requirement: Book restore restores purchase date
+The system SHALL restore a book's purchase date from the selected revision.
+
+#### Scenario: Restore an earlier purchase date
+- **WHEN** a client restores a revision containing an earlier purchase date
+- **THEN** the current book has that earlier purchase date
+
