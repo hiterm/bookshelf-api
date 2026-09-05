@@ -31,8 +31,8 @@ pub async fn append_book_revision(
     sqlx::query(
         "INSERT INTO book_revision (
            book_id, revision_number, user_id, title, isbn, read, owned,
-           priority, format, store, book_created_at, book_updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+           priority, format, store, purchase_date, book_created_at, book_updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
     )
     .bind(book.id().to_uuid())
     .bind(revision_number)
@@ -44,6 +44,7 @@ pub async fn append_book_revision(
     .bind(book.priority().to_i32())
     .bind(book.format().to_string())
     .bind(book.store().to_string())
+    .bind(book.purchase_date())
     .bind(book.created_at())
     .bind(book.updated_at())
     .execute(tx.as_mut())

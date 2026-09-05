@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use sqlx::{Executor, PgPool, Postgres};
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
@@ -36,6 +36,7 @@ struct BookRow {
     priority: i32,
     format: String,
     store: String,
+    purchase_date: Option<Date>,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
 }
@@ -61,7 +62,7 @@ fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
     let format = BookFormat::try_from(row.format.as_str())?;
     let store = BookStore::try_from(row.store.as_str())?;
 
-    Book::new(
+    Book::new_with_purchase_date(
         book_id,
         title,
         author_ids,
@@ -71,6 +72,7 @@ fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
         priority,
         format,
         store,
+        row.purchase_date,
         row.created_at,
         row.updated_at,
     )
@@ -149,10 +151,11 @@ impl BookRepository for PgBookRepository {
                priority,
                format,
                store,
+               purchase_date,
                created_at,
                updated_at
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);",
         )
         .bind(book.id().to_uuid())
         .bind(user_id.as_str())
@@ -163,6 +166,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.priority().to_i32())
         .bind(book.format().to_string())
         .bind(book.store().to_string())
+        .bind(book.purchase_date())
         .bind(book.created_at())
         .bind(book.updated_at())
         .execute(tx.as_mut())
@@ -207,6 +211,8 @@ impl BookRepository for PgBookRepository {
         let priorities: Vec<i32> = books.iter().map(|book| book.priority().to_i32()).collect();
         let formats: Vec<String> = books.iter().map(|book| book.format().to_string()).collect();
         let stores: Vec<String> = books.iter().map(|book| book.store().to_string()).collect();
+        let purchase_dates: Vec<Option<Date>> =
+            books.iter().map(|book| *book.purchase_date()).collect();
         let created_ats: Vec<OffsetDateTime> =
             books.iter().map(|book| *book.created_at()).collect();
         let updated_ats: Vec<OffsetDateTime> =
@@ -214,16 +220,16 @@ impl BookRepository for PgBookRepository {
 
         sqlx::query(
             "INSERT INTO book
-               (id, user_id, title, isbn, read, owned, priority, format, store,
+               (id, user_id, title, isbn, read, owned, priority, format, store, purchase_date,
                 created_at, updated_at)
-             SELECT id, $1, title, isbn, read, owned, priority, format, store,
+             SELECT id, $1, title, isbn, read, owned, priority, format, store, purchase_date,
                     created_at, updated_at
              FROM UNNEST(
                $2::uuid[], $3::text[], $4::text[], $5::bool[], $6::bool[],
-               $7::int4[], $8::text[], $9::text[], $10::timestamptz[],
-               $11::timestamptz[]
+               $7::int4[], $8::text[], $9::text[], $10::date[],
+               $11::timestamptz[], $12::timestamptz[]
              ) AS input(id, title, isbn, read, owned, priority, format, store,
-                        created_at, updated_at)",
+                        purchase_date, created_at, updated_at)",
         )
         .bind(user_id.as_str())
         .bind(&ids)
@@ -234,6 +240,7 @@ impl BookRepository for PgBookRepository {
         .bind(&priorities)
         .bind(&formats)
         .bind(&stores)
+        .bind(&purchase_dates)
         .bind(&created_ats)
         .bind(&updated_ats)
         .execute(tx.as_mut())
@@ -269,22 +276,22 @@ impl BookRepository for PgBookRepository {
             "WITH inserted_revisions AS (
                INSERT INTO book_revision (
                  book_id, revision_number, user_id, title, isbn, read, owned,
-                 priority, format, store, book_created_at, book_updated_at
+                 priority, format, store, purchase_date, book_created_at, book_updated_at
                )
                SELECT id, 1, $1, title, isbn, read, owned, priority, format,
-                      store, created_at, updated_at
+                      store, purchase_date, created_at, updated_at
                FROM UNNEST(
                  $2::uuid[], $3::text[], $4::text[], $5::bool[], $6::bool[],
-                 $7::int4[], $8::text[], $9::text[], $10::timestamptz[],
-                 $11::timestamptz[]
+                 $7::int4[], $8::text[], $9::text[], $10::date[],
+                 $11::timestamptz[], $12::timestamptz[]
                ) AS input(id, title, isbn, read, owned, priority, format, store,
-                          created_at, updated_at)
+                          purchase_date, created_at, updated_at)
                RETURNING book_id, revision_number
              )
              INSERT INTO book_operation_change (
                operation_id, user_id, book_id, before_revision_number, after_revision_number
              )
-             SELECT $12, $1, book_id, NULL, revision_number FROM inserted_revisions",
+             SELECT $13, $1, book_id, NULL, revision_number FROM inserted_revisions",
         )
         .bind(user_id.as_str())
         .bind(&ids)
@@ -295,6 +302,7 @@ impl BookRepository for PgBookRepository {
         .bind(&priorities)
         .bind(&formats)
         .bind(&stores)
+        .bind(&purchase_dates)
         .bind(&created_ats)
         .bind(&updated_ats)
         .bind(tx.operation_id().to_uuid())
@@ -354,7 +362,7 @@ impl BookRepository for PgBookRepository {
                      WHERE book_author.user_id = book.user_id
                        AND book_author.book_id = book.id) AS author_ids,
                     book.isbn, book.read, book.owned, book.priority, book.format,
-                    book.store, book.created_at, book.updated_at
+                    book.store, book.purchase_date, book.created_at, book.updated_at
              FROM book
              WHERE book.user_id = $1 AND book.id = $2
              FOR UPDATE OF book",
@@ -442,6 +450,7 @@ impl BookRepository for PgBookRepository {
                 book.priority,
                 book.format,
                 book.store,
+                book.purchase_date,
                 book.created_at,
                 book.updated_at
             FROM book_author AS requested
@@ -506,7 +515,7 @@ impl BookRepository for PgBookRepository {
                      WHERE book_author.user_id = book.user_id
                        AND book_author.book_id = book.id) AS author_ids,
                    book.isbn, book.read, book.owned, book.priority, book.format,
-                   book.store, book.created_at, book.updated_at
+                   book.store, book.purchase_date, book.created_at, book.updated_at
             FROM book
             WHERE book.user_id = $1
               AND book.id = ANY($3)
@@ -539,9 +548,10 @@ impl BookRepository for PgBookRepository {
                priority = $6,
                format = $7,
                store = $8,
-               created_at = $9,
-               updated_at = $10
-            WHERE id = $11 AND user_id = $1",
+               purchase_date = $9,
+               created_at = $10,
+               updated_at = $11
+            WHERE id = $12 AND user_id = $1",
         )
         .bind(user_id.as_str())
         .bind(book.title().as_str())
@@ -551,6 +561,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.priority().to_i32())
         .bind(book.format().to_string())
         .bind(book.store().to_string())
+        .bind(book.purchase_date())
         .bind(book.created_at())
         .bind(book.updated_at())
         .bind(book.id().to_uuid())
@@ -636,6 +647,8 @@ impl BookRepository for PgBookRepository {
         let priorities: Vec<i32> = books.iter().map(|book| book.priority().to_i32()).collect();
         let formats: Vec<String> = books.iter().map(|book| book.format().to_string()).collect();
         let stores: Vec<String> = books.iter().map(|book| book.store().to_string()).collect();
+        let purchase_dates: Vec<Option<Date>> =
+            books.iter().map(|book| *book.purchase_date()).collect();
         let created_ats: Vec<OffsetDateTime> =
             books.iter().map(|book| *book.created_at()).collect();
         let updated_ats: Vec<OffsetDateTime> =
@@ -650,12 +663,13 @@ impl BookRepository for PgBookRepository {
                  priority = input.priority,
                  format = input.format,
                  store = input.store,
+                 purchase_date = input.purchase_date,
                  updated_at = input.updated_at
              FROM UNNEST(
                $2::uuid[], $3::text[], $4::text[], $5::bool[], $6::bool[],
-               $7::int4[], $8::text[], $9::text[], $10::timestamptz[]
+               $7::int4[], $8::text[], $9::text[], $10::date[], $11::timestamptz[]
              ) AS input(id, title, isbn, read, owned, priority, format, store,
-                        updated_at)
+                        purchase_date, updated_at)
              WHERE book.user_id = $1 AND book.id = input.id",
         )
         .bind(user_id.as_str())
@@ -667,6 +681,7 @@ impl BookRepository for PgBookRepository {
         .bind(&priorities)
         .bind(&formats)
         .bind(&stores)
+        .bind(&purchase_dates)
         .bind(&updated_ats)
         .execute(tx.as_mut())
         .await?;
@@ -754,10 +769,10 @@ impl BookRepository for PgBookRepository {
                       latest.revision_number + 1 AS revision_number
                FROM UNNEST(
                  $2::uuid[], $3::text[], $4::text[], $5::bool[], $6::bool[],
-                 $7::int4[], $8::text[], $9::text[], $10::timestamptz[],
-                 $11::timestamptz[]
+                 $7::int4[], $8::text[], $9::text[], $10::date[],
+                 $11::timestamptz[], $12::timestamptz[]
                ) AS input(id, title, isbn, read, owned, priority, format, store,
-                          created_at, updated_at)
+                          purchase_date, created_at, updated_at)
                CROSS JOIN LATERAL (
                  SELECT MAX(revision_number) AS revision_number
                  FROM book_revision
@@ -766,17 +781,17 @@ impl BookRepository for PgBookRepository {
              ), inserted_revisions AS (
                INSERT INTO book_revision (
                  book_id, revision_number, user_id, title, isbn, read, owned,
-                 priority, format, store, book_created_at, book_updated_at
+                 priority, format, store, purchase_date, book_created_at, book_updated_at
                )
                SELECT id, revision_number, $1, title, isbn, read, owned, priority,
-                      format, store, created_at, updated_at
+                      format, store, purchase_date, created_at, updated_at
                FROM next_revisions
                RETURNING book_id, revision_number
              )
              INSERT INTO book_operation_change (
                operation_id, user_id, book_id, before_revision_number, after_revision_number
              )
-             SELECT $12, $1, inserted.book_id, next.before_revision_number,
+             SELECT $13, $1, inserted.book_id, next.before_revision_number,
                     inserted.revision_number
              FROM inserted_revisions inserted
              JOIN next_revisions next ON next.id = inserted.book_id",
@@ -790,6 +805,7 @@ impl BookRepository for PgBookRepository {
         .bind(&priorities)
         .bind(&formats)
         .bind(&stores)
+        .bind(&purchase_dates)
         .bind(&created_ats)
         .bind(&updated_ats)
         .bind(tx.operation_id().to_uuid())
@@ -874,7 +890,7 @@ impl BookRepository for PgBookRepository {
                        AND link.book_id = revision.book_id
                        AND link.revision_number = revision.revision_number) AS author_ids,
                     revision.isbn, revision.read, revision.owned, revision.priority,
-                    revision.format, revision.store,
+                    revision.format, revision.store, revision.purchase_date,
                     revision.book_created_at AS created_at,
                     revision.book_updated_at AS updated_at
              FROM book_revision revision
@@ -923,7 +939,7 @@ impl BookRepository for PgBookRepository {
         .bind(book_id.to_uuid())
         .fetch_one(tx.as_mut())
         .await?;
-        let book = Book::new(
+        let book = Book::new_with_purchase_date(
             book_id.clone(),
             BookTitle::new(source.title)?,
             source
@@ -938,18 +954,20 @@ impl BookRepository for PgBookRepository {
             Priority::new(source.priority)?,
             BookFormat::try_from(source.format.as_str())?,
             BookStore::try_from(source.store.as_str())?,
+            source.purchase_date,
             source.created_at,
             OffsetDateTime::now_utc(),
         )?;
         let author_ids: Vec<_> = book.author_ids().iter().map(AuthorId::to_uuid).collect();
         sqlx::query(
             "INSERT INTO book (id, user_id, title, isbn, read, owned, priority,
-                               format, store, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                               format, store, purchase_date, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              ON CONFLICT (id, user_id) DO UPDATE SET
                title = EXCLUDED.title, isbn = EXCLUDED.isbn, read = EXCLUDED.read,
                owned = EXCLUDED.owned, priority = EXCLUDED.priority,
                format = EXCLUDED.format, store = EXCLUDED.store,
+               purchase_date = EXCLUDED.purchase_date,
                created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at",
         )
         .bind(book.id().to_uuid())
@@ -961,6 +979,7 @@ impl BookRepository for PgBookRepository {
         .bind(book.priority().to_i32())
         .bind(book.format().to_string())
         .bind(book.store().to_string())
+        .bind(book.purchase_date())
         .bind(book.created_at())
         .bind(book.updated_at())
         .execute(tx.as_mut())
@@ -1081,7 +1100,22 @@ mod tests {
         let all_books = book_repository.find_all(&user_id).await?;
         assert_eq!(all_books.len(), 0);
 
-        let book = book_entity1(&author_ids)?;
+        let base = book_entity1(&author_ids)?;
+        let destructured = base.destructure();
+        let book = Book::new_with_purchase_date(
+            destructured.id,
+            destructured.title,
+            destructured.author_ids,
+            destructured.isbn,
+            destructured.read,
+            destructured.owned,
+            destructured.priority,
+            destructured.format,
+            destructured.store,
+            Some(date!(2020 - 05 - 01)),
+            destructured.created_at,
+            destructured.updated_at,
+        )?;
         create_book(&pool, &book_repository, &user_id, &book).await?;
 
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
@@ -1308,6 +1342,7 @@ mod tests {
             priority: book.priority().clone(),
             format: book.format().clone(),
             store: book.store().clone(),
+            purchase_date: None,
         };
         let updated_at = *book.updated_at();
         book.update(update, updated_at);
@@ -1315,6 +1350,7 @@ mod tests {
 
         let actual = book_repository.find_by_id(&user_id, book.id()).await?;
         assert_eq!(actual, Some(book.clone()));
+        assert_eq!(*book.purchase_date(), None);
 
         Ok(())
     }
@@ -1348,6 +1384,7 @@ mod tests {
                 priority: Priority::new(10)?,
                 format: BookFormat::Printed,
                 store: BookStore::Unknown,
+                purchase_date: None,
             },
             updated_at,
         );
@@ -1361,6 +1398,7 @@ mod tests {
                 priority: book2.priority().clone(),
                 format: book2.format().clone(),
                 store: book2.store().clone(),
+                purchase_date: *book2.purchase_date(),
             },
             updated_at,
         );
@@ -1425,6 +1463,7 @@ mod tests {
                 priority: user1_book.priority().clone(),
                 format: user1_book.format().clone(),
                 store: user1_book.store().clone(),
+                purchase_date: *user1_book.purchase_date(),
             },
             OffsetDateTime::now_utc(),
         );
@@ -1482,6 +1521,7 @@ mod tests {
                 priority: existing_book.priority().clone(),
                 format: existing_book.format().clone(),
                 store: existing_book.store().clone(),
+                purchase_date: *existing_book.purchase_date(),
             },
             OffsetDateTime::now_utc(),
         );
@@ -1526,6 +1566,7 @@ mod tests {
                 priority: book.priority().clone(),
                 format: book.format().clone(),
                 store: book.store().clone(),
+                purchase_date: *book.purchase_date(),
             },
             OffsetDateTime::now_utc(),
         );
@@ -1898,7 +1939,22 @@ mod tests {
         let repository = PgBookRepository::new(pool.clone());
         let user_id = prepare_user(&users, "restore-user").await?;
         let author_ids = prepare_authors1(&pool, &user_id, &authors).await?;
-        let original = book_entity1(&author_ids)?;
+        let base = book_entity1(&author_ids)?;
+        let state = base.destructure();
+        let original = Book::new_with_purchase_date(
+            state.id,
+            state.title,
+            state.author_ids,
+            state.isbn,
+            state.read,
+            state.owned,
+            state.priority,
+            state.format,
+            state.store,
+            Some(date!(2020 - 05 - 01)),
+            state.created_at,
+            state.updated_at,
+        )?;
         create_book(&pool, &repository, &user_id, &original).await?;
         let mut changed = original.clone();
         changed.update(
@@ -1911,6 +1967,7 @@ mod tests {
                 priority: changed.priority().clone(),
                 format: changed.format().clone(),
                 store: changed.store().clone(),
+                purchase_date: Some(date!(2021 - 06 - 01)),
             },
             OffsetDateTime::now_utc(),
         );
@@ -1927,6 +1984,7 @@ mod tests {
         manager.commit(tx).await?;
 
         assert_eq!(restored.title(), original.title());
+        assert_eq!(restored.purchase_date(), original.purchase_date());
         let change: (Option<i32>, Option<i32>) = sqlx::query_as(
             "SELECT before_revision_number, after_revision_number
              FROM book_operation_change WHERE operation_id = $1 AND user_id = $2",

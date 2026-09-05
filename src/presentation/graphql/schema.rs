@@ -239,6 +239,7 @@ mod tests {
             priority: 50,
             format: BookFormat::Printed,
             store: BookStore::Unknown,
+            purchase_date: None,
             book_created_at: time::OffsetDateTime::UNIX_EPOCH,
             book_updated_at: time::OffsetDateTime::UNIX_EPOCH,
             created_at: time::OffsetDateTime::UNIX_EPOCH,
@@ -350,6 +351,7 @@ mod tests {
         let schema = build_schema(query(), mutation());
 
         assert!(schema.sdl().contains("\tbooks: [Book!]!"));
+        assert!(schema.sdl().matches("purchaseDate: Date").count() >= 6);
     }
 
     #[test]

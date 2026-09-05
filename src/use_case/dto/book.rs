@@ -1,4 +1,4 @@
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
@@ -24,6 +24,7 @@ pub struct BookDto {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -40,6 +41,7 @@ impl From<Book> for BookDto {
             priority,
             format,
             store,
+            purchase_date,
             created_at,
             updated_at,
         } = book.destructure();
@@ -57,6 +59,7 @@ impl From<Book> for BookDto {
             priority: priority.to_i32(),
             format,
             store,
+            purchase_date,
             created_at,
             updated_at,
         }
@@ -87,6 +90,7 @@ pub struct CreateBookDto {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
 }
 
 impl CreateBookDto {
@@ -110,6 +114,7 @@ impl CreateBookDto {
             priority,
             format,
             store,
+            purchase_date: None,
         }
     }
 }
@@ -127,7 +132,7 @@ impl TryFrom<(Uuid, CreateBookDto, TimeInfo)> for Book {
             .collect();
         let author_ids = author_ids?;
 
-        let book = Book::new(
+        let book = Book::new_with_purchase_date(
             BookId::new(uuid)?,
             BookTitle::new(book_data.title)?,
             author_ids,
@@ -137,6 +142,7 @@ impl TryFrom<(Uuid, CreateBookDto, TimeInfo)> for Book {
             Priority::new(book_data.priority)?,
             book_data.format,
             book_data.store,
+            book_data.purchase_date,
             time_info.created_at,
             time_info.updated_at,
         )?;
@@ -156,6 +162,7 @@ pub struct UpdateBookDto {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +175,7 @@ pub struct ImportBookEntryDto {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,6 +200,7 @@ pub struct ImportBookPreviewDto {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,6 +231,7 @@ impl UpdateBookDto {
             priority,
             format,
             store,
+            purchase_date: None,
         }
     }
 }
