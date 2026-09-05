@@ -44,6 +44,7 @@ mod tests {
             jwt_config: JwtConfig {
                 audience: "test".to_string(),
                 domain: "test-issuer.local".to_string(),
+                jwks_url: "https://test-issuer.local/.well-known/jwks.json".to_string(),
             },
             jwks_cache,
         }))
