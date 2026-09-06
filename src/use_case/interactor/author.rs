@@ -1079,6 +1079,7 @@ mod tests {
                 Priority::new(50).unwrap(),
                 BookFormat::Unknown,
                 BookStore::Unknown,
+                None,
                 timestamp,
                 timestamp,
             )

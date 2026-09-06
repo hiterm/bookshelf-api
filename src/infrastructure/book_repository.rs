@@ -62,7 +62,7 @@ fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
     let format = BookFormat::try_from(row.format.as_str())?;
     let store = BookStore::try_from(row.store.as_str())?;
 
-    Book::new_with_purchase_date(
+    Book::new(
         book_id,
         title,
         author_ids,
@@ -939,7 +939,7 @@ impl BookRepository for PgBookRepository {
         .bind(book_id.to_uuid())
         .fetch_one(tx.as_mut())
         .await?;
-        let book = Book::new_with_purchase_date(
+        let book = Book::new(
             book_id.clone(),
             BookTitle::new(source.title)?,
             source
@@ -1102,7 +1102,7 @@ mod tests {
 
         let base = book_entity1(&author_ids)?;
         let destructured = base.destructure();
-        let book = Book::new_with_purchase_date(
+        let book = Book::new(
             destructured.id,
             destructured.title,
             destructured.author_ids,
@@ -1276,6 +1276,7 @@ mod tests {
             user2_book_template.priority,
             user2_book_template.format,
             user2_book_template.store,
+            None,
             user2_book_template.created_at,
             user2_book_template.updated_at,
         )?;
@@ -1894,6 +1895,7 @@ mod tests {
             priority,
             format,
             store,
+            None,
             created_at,
             updated_at,
         )?;
@@ -1923,6 +1925,7 @@ mod tests {
             priority,
             format,
             store,
+            None,
             created_at,
             updated_at,
         )?;
@@ -1941,7 +1944,7 @@ mod tests {
         let author_ids = prepare_authors1(&pool, &user_id, &authors).await?;
         let base = book_entity1(&author_ids)?;
         let state = base.destructure();
-        let original = Book::new_with_purchase_date(
+        let original = Book::new(
             state.id,
             state.title,
             state.author_ids,

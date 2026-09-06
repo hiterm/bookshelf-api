@@ -189,26 +189,6 @@ impl Book {
         priority: Priority,
         format: BookFormat,
         store: BookStore,
-        created_at: OffsetDateTime,
-        updated_at: OffsetDateTime,
-    ) -> Result<Self, DomainError> {
-        Self::new_with_purchase_date(
-            id, title, author_ids, isbn, read, owned, priority, format, store, None, created_at,
-            updated_at,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_with_purchase_date(
-        id: BookId,
-        title: BookTitle,
-        author_ids: Vec<AuthorId>,
-        isbn: Isbn,
-        read: ReadFlag,
-        owned: OwnedFlag,
-        priority: Priority,
-        format: BookFormat,
-        store: BookStore,
         purchase_date: Option<Date>,
         created_at: OffsetDateTime,
         updated_at: OffsetDateTime,
@@ -290,6 +270,7 @@ mod test {
             Priority::new(10).expect("valid priority"),
             BookFormat::Printed,
             BookStore::Unknown,
+            None,
             created_at,
             original_updated_at,
         )

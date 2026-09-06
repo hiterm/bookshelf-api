@@ -132,7 +132,7 @@ impl TryFrom<(Uuid, CreateBookDto, TimeInfo)> for Book {
             .collect();
         let author_ids = author_ids?;
 
-        let book = Book::new_with_purchase_date(
+        let book = Book::new(
             BookId::new(uuid)?,
             BookTitle::new(book_data.title)?,
             author_ids,
@@ -269,6 +269,7 @@ mod tests {
             Priority::new(80).unwrap(),
             BookFormat::EBook,
             BookStore::Kindle,
+            None,
             now,
             now,
         )

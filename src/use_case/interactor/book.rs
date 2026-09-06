@@ -254,7 +254,7 @@ where
                 store: input.store.clone(),
                 purchase_date: input.purchase_date,
             });
-            books.push(Book::new_with_purchase_date(
+            books.push(Book::new(
                 input.book_id,
                 input.title,
                 author_ids,
@@ -591,6 +591,7 @@ mod tests {
             Priority::new(50).unwrap(),
             BookFormat::Unknown,
             BookStore::Unknown,
+            None,
             OffsetDateTime::now_utc(),
             OffsetDateTime::now_utc(),
         )

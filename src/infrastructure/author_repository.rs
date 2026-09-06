@@ -1106,6 +1106,7 @@ mod database_tests {
             priority,
             format,
             store,
+            None,
             created_at,
             updated_at,
         )
