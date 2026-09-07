@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.0](https://github.com/hiterm/bookshelf-api/compare/2.15.3...2.16.0) - 2026-09-07
+
+### Other Changes
+- Improve API error handling by @hiterm in https://github.com/hiterm/bookshelf-api/pull/332
+- Improve claims extractor error handling by @hiterm in https://github.com/hiterm/bookshelf-api/pull/334
+- Add book purchase date by @hiterm in https://github.com/hiterm/bookshelf-api/pull/335
+
 ## [2.15.3](https://github.com/hiterm/bookshelf-api/compare/2.15.2...2.15.3) - 2026-09-01
 
 ### Other Changes
