@@ -480,6 +480,25 @@ test('Operation and Revision history survives Event cleanup', () => {
   assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM author_operation_change'), 4, 'Author change count');
 });
 
+// ---- Book purchase date migration ----
+
+console.log('\nApplying Book purchase date migration...');
+applyMigration(EMPTY_URL, '20260905000000_add_book_purchase_date.sql');
+applyMigration(DATA_URL, '20260905000000_add_book_purchase_date.sql');
+
+test('existing Books retain a null purchase date', () => {
+  assertEqual(queryOne(DATA_URL, 'SELECT COUNT(*) FROM book WHERE purchase_date IS NOT NULL'), 0, 'Books with purchase dates');
+});
+
+test('book_revision has a nullable date purchase_date column', () => {
+  assertEqual(queryOne(DATA_URL, `
+    SELECT is_nullable || '|' || data_type
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'book_revision'
+      AND column_name = 'purchase_date'
+  `), 'YES|date', 'book_revision.purchase_date definition');
+});
+
 // ---- Summary ----
 
 console.log(`\n${passed} passed, ${failed} failed`);

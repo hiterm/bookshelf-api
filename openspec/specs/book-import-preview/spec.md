@@ -74,3 +74,10 @@ writes, external event publication, or irreversible audit writes.
 - **WHEN** preview execution completes and its database transaction is rolled back
 - **THEN** no side effect from that execution survives outside the transaction
 
+### Requirement: Preview returns purchase dates
+The system SHALL return each requested purchase date in book import previews.
+
+#### Scenario: Preview a purchase date
+- **WHEN** a client previews a book with a purchase date
+- **THEN** the preview returns that date without persisting the book
+

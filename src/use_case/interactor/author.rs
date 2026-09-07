@@ -199,6 +199,7 @@ where
                     priority: book.priority().clone(),
                     format: book.format().clone(),
                     store: book.store().clone(),
+                    purchase_date: *book.purchase_date(),
                 },
                 OffsetDateTime::now_utc(),
             );
@@ -1078,6 +1079,7 @@ mod tests {
                 Priority::new(50).unwrap(),
                 BookFormat::Unknown,
                 BookStore::Unknown,
+                None,
                 timestamp,
                 timestamp,
             )

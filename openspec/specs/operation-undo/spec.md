@@ -57,3 +57,11 @@ The system SHALL record undo using the same Operation, Revision, and OperationCh
 #### Scenario: Inspect an undo Operation
 - **WHEN** an undo succeeds
 - **THEN** its changes have ordinary before and after states and its `undo_of_operation_id` identifies the target
+
+### Requirement: Book undo restores purchase date
+The system SHALL include purchase date when undo reconstructs prior book state.
+
+#### Scenario: Undo a purchase date update
+- **WHEN** a client undoes an operation that changed a book's purchase date
+- **THEN** the current book has the pre-operation purchase date
+

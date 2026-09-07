@@ -279,16 +279,17 @@ async fn restore_book(
     let next = next_book_revision(tx, user_id, change.book_id).await?;
     sqlx::query(
         "INSERT INTO book (
-           id, user_id, title, isbn, read, owned, priority, format, store,
+           id, user_id, title, isbn, read, owned, priority, format, store, purchase_date,
            created_at, updated_at
          ) SELECT book_id, user_id, title, isbn, read, owned, priority, format,
-                  store, book_created_at, current_timestamp
+                  store, purchase_date, book_created_at, current_timestamp
            FROM book_revision
            WHERE user_id = $1 AND book_id = $2 AND revision_number = $3
          ON CONFLICT (id, user_id) DO UPDATE
          SET title = EXCLUDED.title, isbn = EXCLUDED.isbn, read = EXCLUDED.read,
              owned = EXCLUDED.owned, priority = EXCLUDED.priority,
              format = EXCLUDED.format, store = EXCLUDED.store,
+             purchase_date = EXCLUDED.purchase_date,
              created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at",
     )
     .bind(user_id.as_str())
@@ -314,9 +315,9 @@ async fn restore_book(
     sqlx::query(
         "INSERT INTO book_revision (
            book_id, revision_number, user_id, title, isbn, read, owned,
-           priority, format, store, book_created_at, book_updated_at
+           priority, format, store, purchase_date, book_created_at, book_updated_at
          ) SELECT book_id, $4, user_id, title, isbn, read, owned, priority,
-                  format, store, book_created_at, current_timestamp
+                  format, store, purchase_date, book_created_at, current_timestamp
            FROM book_revision
            WHERE user_id = $1 AND book_id = $2 AND revision_number = $3",
     )

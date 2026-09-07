@@ -78,6 +78,7 @@ async fn e2e_graphql_crud_book() -> Result<()> {
                 priority: 1
                 format: E_BOOK
                 store: KINDLE
+                purchaseDate: "2020-05-01"
             }}) {{
                 book {{
                     id
@@ -85,6 +86,7 @@ async fn e2e_graphql_crud_book() -> Result<()> {
                     read
                     owned
                     priority
+                    purchaseDate
                     createdAt
                     updatedAt
                 }}
@@ -106,6 +108,7 @@ async fn e2e_graphql_crud_book() -> Result<()> {
         .context("id field must exist")?
         .as_str()
         .context("id must be string")?;
+    assert_eq!(create_result["purchaseDate"], "2020-05-01");
 
     // Update book
     let update_query = format!(
@@ -121,12 +124,14 @@ async fn e2e_graphql_crud_book() -> Result<()> {
                 priority: 2
                 format: PRINTED
                 store: KINDLE
+                purchaseDate: null
             }}) {{
                 book {{
                     id
                     title
                     read
                     priority
+                    purchaseDate
                 }}
                 operationId
             }}
@@ -155,10 +160,11 @@ async fn e2e_graphql_crud_book() -> Result<()> {
             .as_bool(),
         Some(true)
     );
+    assert!(update_result["purchaseDate"].is_null());
 
     // Verify update by reading the book
     let query = format!(
-        r#"{{ book(id: "{}") {{ id title read priority createdAt updatedAt authors {{ id name }} }} }}"#,
+        r#"{{ book(id: "{}") {{ id title read priority purchaseDate createdAt updatedAt authors {{ id name }} }} }}"#,
         book_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;

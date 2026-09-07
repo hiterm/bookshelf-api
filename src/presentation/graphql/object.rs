@@ -2,7 +2,7 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::{ComplexObject, Context, Enum, Json, Result};
 use async_graphql::{ID, InputObject, SimpleObject};
 use serde_json::Value;
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::{AQ, BQ, HQ};
@@ -78,6 +78,7 @@ pub struct BookRevision {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
     pub book_created_at: OffsetDateTime,
     pub book_updated_at: OffsetDateTime,
     pub created_at: OffsetDateTime,
@@ -96,6 +97,7 @@ impl From<BookRevisionDto> for BookRevision {
             priority: dto.priority,
             format: dto.format.into(),
             store: dto.store.into(),
+            purchase_date: dto.purchase_date,
             book_created_at: dto.book_created_at,
             book_updated_at: dto.book_updated_at,
             created_at: dto.created_at,
@@ -301,6 +303,7 @@ pub struct Book {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -317,6 +320,7 @@ impl Book {
         priority: i32,
         format: BookFormat,
         store: BookStore,
+        purchase_date: Option<Date>,
         created_at: i64,
         updated_at: i64,
     ) -> Self {
@@ -330,6 +334,7 @@ impl Book {
             priority,
             format,
             store,
+            purchase_date,
             created_at,
             updated_at,
         }
@@ -362,6 +367,7 @@ impl From<BookDto> for Book {
             priority: book_dto.priority,
             format: book_dto.format.into(),
             store: book_dto.store.into(),
+            purchase_date: book_dto.purchase_date,
             created_at: book_dto.created_at.unix_timestamp(),
             updated_at: book_dto.updated_at.unix_timestamp(),
         }
@@ -378,6 +384,7 @@ pub struct CreateBookInput {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
 }
 
 impl From<CreateBookInput> for CreateBookDto {
@@ -391,18 +398,20 @@ impl From<CreateBookInput> for CreateBookDto {
             priority,
             format,
             store,
+            purchase_date,
         } = book_input;
 
-        CreateBookDto::new(
+        CreateBookDto {
             title,
             author_ids,
             isbn,
             read,
             owned,
             priority,
-            format.into(),
-            store.into(),
-        )
+            format: format.into(),
+            store: store.into(),
+            purchase_date,
+        }
     }
 }
 
@@ -417,6 +426,7 @@ pub struct UpdateBookInput {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
 }
 
 impl From<UpdateBookInput> for UpdateBookDto {
@@ -431,9 +441,10 @@ impl From<UpdateBookInput> for UpdateBookDto {
             priority,
             format,
             store,
+            purchase_date,
         } = book_input;
 
-        UpdateBookDto::new(
+        UpdateBookDto {
             id,
             title,
             author_ids,
@@ -441,9 +452,10 @@ impl From<UpdateBookInput> for UpdateBookDto {
             read,
             owned,
             priority,
-            format.into(),
-            store.into(),
-        )
+            format: format.into(),
+            store: store.into(),
+            purchase_date,
+        }
     }
 }
 
@@ -555,6 +567,8 @@ pub struct ImportBookInput {
     pub format: BookFormat,
     /// Store where the book was purchased or obtained.
     pub store: BookStore,
+    /// Calendar date on which the book was purchased.
+    pub purchase_date: Option<Date>,
 }
 
 impl From<ImportBookInput> for ImportBookEntryDto {
@@ -568,6 +582,7 @@ impl From<ImportBookInput> for ImportBookEntryDto {
             priority: input.priority,
             format: input.format.into(),
             store: input.store.into(),
+            purchase_date: input.purchase_date,
         }
     }
 }
@@ -675,6 +690,7 @@ pub struct ImportBookPreview {
     pub priority: i32,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
 }
 
 impl From<ImportBookPreviewDto> for ImportBookPreview {
@@ -692,6 +708,7 @@ impl From<ImportBookPreviewDto> for ImportBookPreview {
             priority: dto.priority,
             format: dto.format.into(),
             store: dto.store.into(),
+            purchase_date: dto.purchase_date,
         }
     }
 }

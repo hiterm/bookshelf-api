@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
@@ -117,6 +117,7 @@ struct ImportBookInput {
     priority: Priority,
     format: BookFormat,
     store: BookStore,
+    purchase_date: Option<Date>,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
 }
@@ -180,6 +181,7 @@ where
                     priority: Priority::new(dto.priority)?,
                     format: dto.format,
                     store: dto.store,
+                    purchase_date: dto.purchase_date,
                     created_at: now,
                     updated_at: now,
                 })
@@ -250,6 +252,7 @@ where
                 priority: input.priority.to_i32(),
                 format: input.format.clone(),
                 store: input.store.clone(),
+                purchase_date: input.purchase_date,
             });
             books.push(Book::new(
                 input.book_id,
@@ -261,6 +264,7 @@ where
                 input.priority,
                 input.format,
                 input.store,
+                input.purchase_date,
                 input.created_at,
                 input.updated_at,
             )?);
@@ -322,6 +326,7 @@ where
             priority,
             format,
             store,
+            purchase_date,
         } = book_data;
 
         let book_id = BookId::try_from(id.as_str())?;
@@ -364,6 +369,7 @@ where
             priority,
             format,
             store,
+            purchase_date,
         };
         book.update(update, OffsetDateTime::now_utc());
 
@@ -585,6 +591,7 @@ mod tests {
             Priority::new(50).unwrap(),
             BookFormat::Unknown,
             BookStore::Unknown,
+            None,
             OffsetDateTime::now_utc(),
             OffsetDateTime::now_utc(),
         )
@@ -980,6 +987,7 @@ mod tests {
             priority: 50,
             format: BookFormat::Unknown,
             store: BookStore::Unknown,
+            purchase_date: None,
         }
     }
 
@@ -1395,6 +1403,7 @@ mod tests {
                 priority: restored_book.priority().clone(),
                 format: restored_book.format().clone(),
                 store: restored_book.store().clone(),
+                purchase_date: *restored_book.purchase_date(),
             },
             OffsetDateTime::now_utc(),
         );
@@ -1505,6 +1514,7 @@ mod import_integration_tests {
             priority: 50,
             format: BookFormat::EBook,
             store: BookStore::Kindle,
+            purchase_date: None,
         }
     }
 

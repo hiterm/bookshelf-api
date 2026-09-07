@@ -1,4 +1,4 @@
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 
 use crate::{
     common::types::{BookFormat, BookStore},
@@ -58,6 +58,7 @@ pub struct BookRevision {
     pub priority: Priority,
     pub format: BookFormat,
     pub store: BookStore,
+    pub purchase_date: Option<Date>,
     pub book_created_at: OffsetDateTime,
     pub book_updated_at: OffsetDateTime,
     pub created_at: OffsetDateTime,

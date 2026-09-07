@@ -58,3 +58,12 @@ The system SHALL expose list and exact lookup queries for Book and Author Revisi
 #### Scenario: Revision belongs to another user
 - **WHEN** a client requests another user's entity revision
 - **THEN** the system does not return it
+
+### Requirement: Book revisions snapshot purchase dates
+The system SHALL include the optional purchase date in every book revision and
+expose it in revision history.
+
+#### Scenario: Query historical purchase dates
+- **WHEN** a book's purchase date changes across revisions
+- **THEN** each history entry returns the value captured by that revision
+
