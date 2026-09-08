@@ -6,20 +6,19 @@ use time::{Date, OffsetDateTime};
 
 use crate::common::types::{BookFormat as CommonBookFormat, BookStore as CommonBookStore};
 use crate::dependency_injection::{AQ, BQ, HQ};
-use crate::presentation::extractor::claims::Claims;
 use crate::use_case::dto::author::{AuthorDto, CreateAuthorDto, UpdateAuthorDto};
 use crate::use_case::dto::book::{
     BookDto, CreateBookDto, ImportAuthorPreviewDto, ImportAuthorStatus as ImportAuthorStatusDto,
     ImportBookEntryDto, ImportBookPreviewDto, ImportBooksPreviewDto, UpdateBookDto,
 };
 use crate::use_case::dto::history::{
-    AuthorOperationChangeDto, AuthorRevisionDto, BookOperationChangeDto, BookRevisionDto,
-    OperationDto,
+    AuthorOperationChangeDto, AuthorRevisionDto, AuthorRevisionKeyDto, BookOperationChangeDto,
+    BookRevisionDto, BookRevisionKeyDto, OperationDto,
 };
-use crate::use_case::traits::history::HistoryQueryUseCase;
 
 use super::loader::{
-    AuthorChangesByOperationLoader, AuthorLoader, BookChangesByOperationLoader, BooksByAuthorLoader,
+    AuthorChangesByOperationLoader, AuthorLoader, AuthorRevisionLoader,
+    BookChangesByOperationLoader, BookRevisionLoader, BooksByAuthorLoader,
 };
 
 #[derive(Clone, SimpleObject)]
@@ -171,12 +170,13 @@ async fn revision_book(
     let Some(number) = number else {
         return Ok(None);
     };
-    let claims = ctx.data_unchecked::<Claims>();
-    let history = ctx.data_unchecked::<HQ>();
-    Ok(history
-        .book_revision(&claims.sub, change.book_id.as_str(), number)
-        .await?
-        .map(Into::into))
+    let loader = ctx.data_unchecked::<DataLoader<BookRevisionLoader<HQ>>>();
+    Ok(loader
+        .load_one(BookRevisionKeyDto {
+            book_id: change.book_id.to_string(),
+            revision_number: number,
+        })
+        .await?)
 }
 
 #[derive(Clone, SimpleObject)]
@@ -220,12 +220,13 @@ async fn revision_author(
     let Some(number) = number else {
         return Ok(None);
     };
-    let claims = ctx.data_unchecked::<Claims>();
-    let history = ctx.data_unchecked::<HQ>();
-    Ok(history
-        .author_revision(&claims.sub, change.author_id.as_str(), number)
-        .await?
-        .map(Into::into))
+    let loader = ctx.data_unchecked::<DataLoader<AuthorRevisionLoader<HQ>>>();
+    Ok(loader
+        .load_one(AuthorRevisionKeyDto {
+            author_id: change.author_id.to_string(),
+            revision_number: number,
+        })
+        .await?)
 }
 
 #[derive(SimpleObject)]

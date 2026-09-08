@@ -47,6 +47,12 @@ pub struct BookRevisionDto {
     pub created_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BookRevisionKeyDto {
+    pub book_id: String,
+    pub revision_number: i32,
+}
+
 impl From<BookRevision> for BookRevisionDto {
     fn from(value: BookRevision) -> Self {
         Self {
@@ -81,6 +87,12 @@ pub struct AuthorRevisionDto {
     pub author_created_at: OffsetDateTime,
     pub author_updated_at: OffsetDateTime,
     pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AuthorRevisionKeyDto {
+    pub author_id: String,
+    pub revision_number: i32,
 }
 
 impl From<AuthorRevision> for AuthorRevisionDto {

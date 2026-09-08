@@ -108,7 +108,7 @@ async fn e2e_import_books() -> Result<()> {
     let operation_query = format!(
         r#"{{ operation(id: "{}") {{
             type
-            bookChanges {{ bookId }}
+            bookChanges {{ bookId afterRevision {{ revisionNumber title authorIds }} }}
             authorChanges {{ authorId afterRevision {{ name }} }}
         }} }}"#,
         import_operation_id
@@ -293,12 +293,13 @@ async fn e2e_import_books_many_entries() -> Result<()> {
     let event_set_query = format!(
         r#"{{ operation(id: "{}") {{
             type
-            bookChanges {{ bookId }}
+            bookChanges {{ bookId afterRevision {{ revisionNumber title authorIds }} }}
             authorChanges {{ afterRevision {{ name }} }}
         }} }}"#,
         import_set_id
     );
     let (_, response) = graphql_request(&event_set_query, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "bulk import Operation detail");
     let operation = &response["data"]["operation"];
     assert_eq!(operation["type"].as_str(), Some("import_books"));
     let grouped_book_changes = operation["bookChanges"]
@@ -310,11 +311,21 @@ async fn e2e_import_books_many_entries() -> Result<()> {
         "bulk import operation should group every Book change"
     );
     for book_id in &imported_book_ids {
+        let change = grouped_book_changes
+            .iter()
+            .find(|event| event["bookId"].as_str() == Some(book_id.as_str()))
+            .with_context(|| format!("bulk import operation should contain Book id {book_id}"))?;
+        assert_eq!(change["afterRevision"]["revisionNumber"], 1);
         assert!(
-            grouped_book_changes
-                .iter()
-                .any(|event| event["bookId"].as_str() == Some(book_id.as_str())),
-            "bulk import operation should contain Book id {book_id}"
+            change["afterRevision"]["title"]
+                .as_str()
+                .is_some_and(|title| title.starts_with("Bulk Import Book"))
+        );
+        assert_eq!(
+            change["afterRevision"]["authorIds"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
         );
     }
 

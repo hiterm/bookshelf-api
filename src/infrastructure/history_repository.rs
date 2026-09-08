@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use sqlx::PgPool;
@@ -13,8 +13,8 @@ use crate::{
             book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
             operation::{Operation, OperationDetail, OperationId, OperationType},
             revision::{
-                AuthorOperationChange, AuthorRevision, BookOperationChange, BookRevision,
-                RevisionNumber,
+                AuthorOperationChange, AuthorRevision, AuthorRevisionKey, BookOperationChange,
+                BookRevision, BookRevisionKey, RevisionNumber,
             },
             user::UserId,
         },
@@ -338,6 +338,56 @@ impl HistoryRepository for PgHistoryRepository {
         .transpose()
     }
 
+    async fn find_book_revisions_by_keys(
+        &self,
+        user_id: &UserId,
+        keys: &[BookRevisionKey],
+    ) -> Result<HashMap<BookRevisionKey, BookRevision>, DomainError> {
+        let keys = keys.iter().cloned().collect::<HashSet<_>>();
+        if keys.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let mut book_ids = Vec::with_capacity(keys.len());
+        let mut revision_numbers = Vec::with_capacity(keys.len());
+        for key in keys {
+            book_ids.push(key.book_id.to_uuid());
+            revision_numbers.push(key.revision_number.value());
+        }
+        let rows: Vec<BookRevisionRow> = sqlx::query_as(
+            "SELECT revision.book_id, revision.revision_number, revision.user_id,
+                    revision.title,
+                    (SELECT array_agg(link.author_id ORDER BY link.author_id)
+                     FROM book_revision_author link
+                     WHERE link.user_id = revision.user_id
+                       AND link.book_id = revision.book_id
+                       AND link.revision_number = revision.revision_number) AS author_ids,
+                    revision.isbn, revision.read, revision.owned, revision.priority,
+                    revision.format, revision.store, revision.purchase_date, revision.book_created_at,
+                    revision.book_updated_at, revision.created_at
+             FROM UNNEST($2::uuid[], $3::integer[])
+                  AS requested(book_id, revision_number)
+             JOIN book_revision revision
+               ON revision.user_id = $1
+              AND revision.book_id = requested.book_id
+              AND revision.revision_number = requested.revision_number",
+        )
+        .bind(user_id.as_str())
+        .bind(&book_ids)
+        .bind(&revision_numbers)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter()
+            .map(|row| {
+                let revision = BookRevision::try_from(row)?;
+                let key = BookRevisionKey {
+                    book_id: revision.book_id.clone(),
+                    revision_number: revision.revision_number,
+                };
+                Ok((key, revision))
+            })
+            .collect()
+    }
+
     async fn find_author_revisions(
         &self,
         user_id: &UserId,
@@ -376,6 +426,49 @@ impl HistoryRepository for PgHistoryRepository {
         .await?
         .map(AuthorRevision::try_from)
         .transpose()
+    }
+
+    async fn find_author_revisions_by_keys(
+        &self,
+        user_id: &UserId,
+        keys: &[AuthorRevisionKey],
+    ) -> Result<HashMap<AuthorRevisionKey, AuthorRevision>, DomainError> {
+        let keys = keys.iter().cloned().collect::<HashSet<_>>();
+        if keys.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let mut author_ids = Vec::with_capacity(keys.len());
+        let mut revision_numbers = Vec::with_capacity(keys.len());
+        for key in keys {
+            author_ids.push(key.author_id.to_uuid());
+            revision_numbers.push(key.revision_number.value());
+        }
+        let rows: Vec<AuthorRevisionRow> = sqlx::query_as(
+            "SELECT revision.author_id, revision.revision_number, revision.user_id,
+                    revision.name, revision.yomi, revision.author_created_at,
+                    revision.author_updated_at, revision.created_at
+             FROM UNNEST($2::uuid[], $3::integer[])
+                  AS requested(author_id, revision_number)
+             JOIN author_revision revision
+               ON revision.user_id = $1
+              AND revision.author_id = requested.author_id
+              AND revision.revision_number = requested.revision_number",
+        )
+        .bind(user_id.as_str())
+        .bind(&author_ids)
+        .bind(&revision_numbers)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter()
+            .map(|row| {
+                let revision = AuthorRevision::try_from(row)?;
+                let key = AuthorRevisionKey {
+                    author_id: revision.author_id.clone(),
+                    revision_number: revision.revision_number,
+                };
+                Ok((key, revision))
+            })
+            .collect()
     }
 
     async fn find_book_changes_by_operation_ids(
@@ -481,7 +574,7 @@ mod tests {
             author::AuthorId,
             book::BookId,
             operation::{OperationDetail, OperationId, OperationType},
-            revision::RevisionNumber,
+            revision::{AuthorRevisionKey, BookRevisionKey, RevisionNumber},
             user::{User, UserId},
         },
         repository::{history_repository::HistoryRepository, user_repository::UserRepository},
@@ -673,6 +766,80 @@ mod tests {
                 .find_author_revision(&owner, &author_id, RevisionNumber::try_from(7)?)
                 .await?
                 .is_none()
+        );
+
+        let book_key_one = BookRevisionKey {
+            book_id: book_id.clone(),
+            revision_number: RevisionNumber::FIRST,
+        };
+        let book_key_two = BookRevisionKey {
+            book_id: book_id.clone(),
+            revision_number: RevisionNumber::try_from(2)?,
+        };
+        let missing_book_key = BookRevisionKey {
+            book_id: book_id.clone(),
+            revision_number: RevisionNumber::try_from(7)?,
+        };
+        let book_revision_map = repository
+            .find_book_revisions_by_keys(
+                &owner,
+                &[
+                    book_key_one.clone(),
+                    book_key_two.clone(),
+                    book_key_one.clone(),
+                    missing_book_key.clone(),
+                ],
+            )
+            .await?;
+        assert_eq!(book_revision_map.len(), 2);
+        assert_eq!(
+            book_revision_map[&book_key_one].author_ids,
+            vec![author_id.clone()]
+        );
+        assert_eq!(book_revision_map[&book_key_two].title.as_str(), "Book Two");
+        assert!(!book_revision_map.contains_key(&missing_book_key));
+        assert!(
+            repository
+                .find_book_revisions_by_keys(&owner, &[])
+                .await?
+                .is_empty()
+        );
+
+        let author_key_one = AuthorRevisionKey {
+            author_id: author_id.clone(),
+            revision_number: RevisionNumber::FIRST,
+        };
+        let author_key_two = AuthorRevisionKey {
+            author_id: author_id.clone(),
+            revision_number: RevisionNumber::try_from(2)?,
+        };
+        let missing_author_key = AuthorRevisionKey {
+            author_id: author_id.clone(),
+            revision_number: RevisionNumber::try_from(7)?,
+        };
+        let author_revision_map = repository
+            .find_author_revisions_by_keys(
+                &owner,
+                &[
+                    author_key_one.clone(),
+                    author_key_two.clone(),
+                    author_key_one.clone(),
+                    missing_author_key.clone(),
+                ],
+            )
+            .await?;
+        assert_eq!(author_revision_map.len(), 2);
+        assert_eq!(author_revision_map[&author_key_one].name.as_str(), "Author");
+        assert_eq!(
+            author_revision_map[&author_key_two].name.as_str(),
+            "Author Two"
+        );
+        assert!(!author_revision_map.contains_key(&missing_author_key));
+        assert!(
+            repository
+                .find_author_revisions_by_keys(&owner, &[])
+                .await?
+                .is_empty()
         );
 
         let book_changes = repository

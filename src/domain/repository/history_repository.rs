@@ -9,8 +9,8 @@ use crate::domain::{
         book::BookId,
         operation::{Operation, OperationId},
         revision::{
-            AuthorOperationChange, AuthorRevision, BookOperationChange, BookRevision,
-            RevisionNumber,
+            AuthorOperationChange, AuthorRevision, AuthorRevisionKey, BookOperationChange,
+            BookRevision, BookRevisionKey, RevisionNumber,
         },
         user::UserId,
     },
@@ -47,6 +47,11 @@ pub trait HistoryRepository: Send + Sync + 'static {
         book_id: &BookId,
         revision_number: RevisionNumber,
     ) -> Result<Option<BookRevision>, DomainError>;
+    async fn find_book_revisions_by_keys(
+        &self,
+        user_id: &UserId,
+        keys: &[BookRevisionKey],
+    ) -> Result<HashMap<BookRevisionKey, BookRevision>, DomainError>;
     async fn find_author_revisions(
         &self,
         user_id: &UserId,
@@ -58,6 +63,11 @@ pub trait HistoryRepository: Send + Sync + 'static {
         author_id: &AuthorId,
         revision_number: RevisionNumber,
     ) -> Result<Option<AuthorRevision>, DomainError>;
+    async fn find_author_revisions_by_keys(
+        &self,
+        user_id: &UserId,
+        keys: &[AuthorRevisionKey],
+    ) -> Result<HashMap<AuthorRevisionKey, AuthorRevision>, DomainError>;
     async fn find_book_changes_by_operation_ids(
         &self,
         user_id: &UserId,

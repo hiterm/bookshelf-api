@@ -76,6 +76,18 @@ pub struct AuthorRevision {
     pub created_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BookRevisionKey {
+    pub book_id: BookId,
+    pub revision_number: RevisionNumber,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AuthorRevisionKey {
+    pub author_id: AuthorId,
+    pub revision_number: RevisionNumber,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BookOperationChange {
     pub operation_id: OperationId,
