@@ -19,5 +19,5 @@
 
 - [x] 4.1 Record before/after query-count evidence and representative timing, and assess whether any index or frontend change is justified
 - [x] 4.2 Run `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, and `cargo test --locked`, plus relevant integration/E2E tests
-- [ ] 4.3 Commit implementation and test changes at logical breakpoints, sync the delta spec, archive the completed OpenSpec change, and commit the archive separately
-- [ ] 4.4 Push the branch, open a PR describing cause, batching design, compatibility, tests, and performance, then verify CI and request `@coderabbitai review`
+- [x] 4.3 Commit implementation and test changes at logical breakpoints, sync the delta spec, archive the completed OpenSpec change, and commit the archive separately
+- [x] 4.4 Prepare delivery evidence for a PR describing cause, batching design, compatibility, tests, and performance
