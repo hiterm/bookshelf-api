@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.16.1](https://github.com/hiterm/bookshelf-api/compare/2.16.0...2.16.1) - 2026-09-08
+
+### Other Changes
+- Batch operation revision loading by @hiterm in https://github.com/hiterm/bookshelf-api/pull/336
+
 ## [2.16.0](https://github.com/hiterm/bookshelf-api/compare/2.15.3...2.16.0) - 2026-09-07
 
 ### Other Changes
