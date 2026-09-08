@@ -5,15 +5,18 @@ use async_trait::async_trait;
 use crate::{
     domain::{
         entity::{
-            author::AuthorId, book::BookId, operation::OperationId, revision::RevisionNumber,
+            author::AuthorId,
+            book::BookId,
+            operation::OperationId,
+            revision::{AuthorRevisionKey, BookRevisionKey, RevisionNumber},
             user::UserId,
         },
         repository::history_repository::HistoryRepository,
     },
     use_case::{
         dto::history::{
-            AuthorOperationChangeDto, AuthorRevisionDto, BookOperationChangeDto, BookRevisionDto,
-            OperationDto,
+            AuthorOperationChangeDto, AuthorRevisionDto, AuthorRevisionKeyDto,
+            BookOperationChangeDto, BookRevisionDto, BookRevisionKeyDto, OperationDto,
         },
         error::UseCaseError,
         traits::history::{HistoryCommandUseCase, HistoryQueryUseCase},
@@ -120,6 +123,38 @@ impl<HR: HistoryRepository> HistoryQueryUseCase for HistoryQueryInteractor<HR> {
             .map(Into::into))
     }
 
+    async fn book_revisions_by_keys(
+        &self,
+        user_id: &str,
+        keys: &[BookRevisionKeyDto],
+    ) -> Result<HashMap<BookRevisionKeyDto, BookRevisionDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_owned())?;
+        let keys = keys
+            .iter()
+            .map(|key| {
+                Ok(BookRevisionKey {
+                    book_id: BookId::try_from(key.book_id.as_str())?,
+                    revision_number: RevisionNumber::try_from(key.revision_number)?,
+                })
+            })
+            .collect::<Result<Vec<_>, UseCaseError>>()?;
+        Ok(self
+            .repository
+            .find_book_revisions_by_keys(&user_id, &keys)
+            .await?
+            .into_iter()
+            .map(|(key, revision)| {
+                (
+                    BookRevisionKeyDto {
+                        book_id: key.book_id.to_string(),
+                        revision_number: key.revision_number.value(),
+                    },
+                    revision.into(),
+                )
+            })
+            .collect())
+    }
+
     async fn author_revisions(
         &self,
         user_id: &str,
@@ -150,6 +185,38 @@ impl<HR: HistoryRepository> HistoryQueryUseCase for HistoryQueryInteractor<HR> {
             .find_author_revision(&user_id, &author_id, revision_number)
             .await?
             .map(Into::into))
+    }
+
+    async fn author_revisions_by_keys(
+        &self,
+        user_id: &str,
+        keys: &[AuthorRevisionKeyDto],
+    ) -> Result<HashMap<AuthorRevisionKeyDto, AuthorRevisionDto>, UseCaseError> {
+        let user_id = UserId::new(user_id.to_owned())?;
+        let keys = keys
+            .iter()
+            .map(|key| {
+                Ok(AuthorRevisionKey {
+                    author_id: AuthorId::try_from(key.author_id.as_str())?,
+                    revision_number: RevisionNumber::try_from(key.revision_number)?,
+                })
+            })
+            .collect::<Result<Vec<_>, UseCaseError>>()?;
+        Ok(self
+            .repository
+            .find_author_revisions_by_keys(&user_id, &keys)
+            .await?
+            .into_iter()
+            .map(|(key, revision)| {
+                (
+                    AuthorRevisionKeyDto {
+                        author_id: key.author_id.to_string(),
+                        revision_number: key.revision_number.value(),
+                    },
+                    revision.into(),
+                )
+            })
+            .collect())
     }
 
     async fn book_changes(
@@ -210,9 +277,15 @@ mod tests {
 
     use crate::{
         domain::{
-            entity::operation::OperationId, repository::history_repository::MockHistoryRepository,
+            entity::{
+                book::BookId,
+                operation::OperationId,
+                revision::{BookRevisionKey, RevisionNumber},
+            },
+            repository::history_repository::MockHistoryRepository,
         },
         use_case::{
+            dto::history::BookRevisionKeyDto,
             interactor::history::HistoryQueryInteractor,
             traits::history::{HistoryCommandUseCase, HistoryQueryUseCase},
         },
@@ -314,5 +387,61 @@ mod tests {
             .unwrap();
 
         assert_eq!(result[&id], vec![]);
+    }
+
+    #[tokio::test]
+    async fn book_revision_keys_are_validated_and_sent_in_one_batch() {
+        let first_id = Uuid::new_v4();
+        let second_id = Uuid::new_v4();
+        let expected_keys = vec![
+            BookRevisionKey {
+                book_id: BookId::new(first_id).unwrap(),
+                revision_number: RevisionNumber::FIRST,
+            },
+            BookRevisionKey {
+                book_id: BookId::new(second_id).unwrap(),
+                revision_number: RevisionNumber::try_from(2).unwrap(),
+            },
+        ];
+        let expected_for_match = expected_keys.clone();
+        let mut repository = MockHistoryRepository::new();
+        repository
+            .expect_find_book_revisions_by_keys()
+            .withf(move |user_id, keys| user_id.as_str() == "user1" && keys == expected_for_match)
+            .times(1)
+            .return_once(|_, _| Ok(HashMap::new()));
+        let keys = vec![
+            BookRevisionKeyDto {
+                book_id: first_id.to_string(),
+                revision_number: 1,
+            },
+            BookRevisionKeyDto {
+                book_id: second_id.to_string(),
+                revision_number: 2,
+            },
+        ];
+
+        let result = HistoryQueryInteractor::new(repository)
+            .book_revisions_by_keys("user1", &keys)
+            .await
+            .unwrap();
+
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn revision_batch_rejects_invalid_key_before_repository_call() {
+        let repository = MockHistoryRepository::new();
+        let result = HistoryQueryInteractor::new(repository)
+            .book_revisions_by_keys(
+                "user1",
+                &[BookRevisionKeyDto {
+                    book_id: Uuid::new_v4().to_string(),
+                    revision_number: 0,
+                }],
+            )
+            .await;
+
+        assert!(result.is_err());
     }
 }

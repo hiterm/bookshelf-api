@@ -4,12 +4,15 @@ use async_graphql::dataloader::Loader;
 
 use crate::{
     presentation::{error::PresentationalError, extractor::claims::Claims},
+    use_case::dto::history::{AuthorRevisionKeyDto, BookRevisionKeyDto},
     use_case::traits::{
         author::AuthorQueryUseCase, book::BookQueryUseCase, history::HistoryQueryUseCase,
     },
 };
 
-use super::object::{Author, AuthorOperationChange, Book, BookOperationChange};
+use super::object::{
+    Author, AuthorOperationChange, AuthorRevision, Book, BookOperationChange, BookRevision,
+};
 
 pub struct BookChangesByOperationLoader<HQ> {
     claims: Claims,
@@ -17,6 +20,16 @@ pub struct BookChangesByOperationLoader<HQ> {
 }
 
 pub struct AuthorChangesByOperationLoader<HQ> {
+    claims: Claims,
+    history_query: HQ,
+}
+
+pub struct BookRevisionLoader<HQ> {
+    claims: Claims,
+    history_query: HQ,
+}
+
+pub struct AuthorRevisionLoader<HQ> {
     claims: Claims,
     history_query: HQ,
 }
@@ -31,6 +44,24 @@ impl<HQ> BookChangesByOperationLoader<HQ> {
 }
 
 impl<HQ> AuthorChangesByOperationLoader<HQ> {
+    pub fn new(claims: Claims, history_query: HQ) -> Self {
+        Self {
+            claims,
+            history_query,
+        }
+    }
+}
+
+impl<HQ> BookRevisionLoader<HQ> {
+    pub fn new(claims: Claims, history_query: HQ) -> Self {
+        Self {
+            claims,
+            history_query,
+        }
+    }
+}
+
+impl<HQ> AuthorRevisionLoader<HQ> {
     pub fn new(claims: Claims, history_query: HQ) -> Self {
         Self {
             claims,
@@ -65,6 +96,42 @@ impl<HQ: HistoryQueryUseCase> Loader<String> for AuthorChangesByOperationLoader<
             .await?
             .into_iter()
             .map(|(id, changes)| (id, changes.into_iter().map(Into::into).collect()))
+            .collect())
+    }
+}
+
+impl<HQ: HistoryQueryUseCase> Loader<BookRevisionKeyDto> for BookRevisionLoader<HQ> {
+    type Value = BookRevision;
+    type Error = PresentationalError;
+
+    async fn load(
+        &self,
+        keys: &[BookRevisionKeyDto],
+    ) -> Result<HashMap<BookRevisionKeyDto, Self::Value>, Self::Error> {
+        Ok(self
+            .history_query
+            .book_revisions_by_keys(&self.claims.sub, keys)
+            .await?
+            .into_iter()
+            .map(|(key, revision)| (key, revision.into()))
+            .collect())
+    }
+}
+
+impl<HQ: HistoryQueryUseCase> Loader<AuthorRevisionKeyDto> for AuthorRevisionLoader<HQ> {
+    type Value = AuthorRevision;
+    type Error = PresentationalError;
+
+    async fn load(
+        &self,
+        keys: &[AuthorRevisionKeyDto],
+    ) -> Result<HashMap<AuthorRevisionKeyDto, Self::Value>, Self::Error> {
+        Ok(self
+            .history_query
+            .author_revisions_by_keys(&self.claims.sub, keys)
+            .await?
+            .into_iter()
+            .map(|(key, revision)| (key, revision.into()))
             .collect())
     }
 }
@@ -152,12 +219,123 @@ mod tests {
         common::types::{BookFormat, BookStore},
         presentation::extractor::claims::Claims,
         use_case::{
-            dto::{author::AuthorDto, book::BookDto},
-            traits::{author::MockAuthorQueryUseCase, book::MockBookQueryUseCase},
+            dto::{
+                author::AuthorDto,
+                book::BookDto,
+                history::{
+                    AuthorRevisionDto, AuthorRevisionKeyDto, BookRevisionDto, BookRevisionKeyDto,
+                },
+            },
+            traits::{
+                author::MockAuthorQueryUseCase, book::MockBookQueryUseCase,
+                history::MockHistoryQueryUseCase,
+            },
         },
     };
 
-    use super::{AuthorLoader, BooksByAuthorLoader};
+    use super::{AuthorLoader, AuthorRevisionLoader, BookRevisionLoader, BooksByAuthorLoader};
+
+    fn claims() -> Claims {
+        Claims {
+            sub: "user1".to_string(),
+            _permissions: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn book_revision_loader_batches_composite_keys() {
+        let keys = vec![
+            BookRevisionKeyDto {
+                book_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                revision_number: 1,
+            },
+            BookRevisionKeyDto {
+                book_id: "93090e87-b7a1-403c-974c-d74d881e83b9".to_string(),
+                revision_number: 2,
+            },
+        ];
+        let expected_keys = keys.clone();
+        let returned_key = keys[0].clone();
+        let mut history = MockHistoryQueryUseCase::new();
+        history
+            .expect_book_revisions_by_keys()
+            .with(predicate::eq("user1"), predicate::eq(expected_keys))
+            .times(1)
+            .return_once(move |_, _| {
+                Ok(HashMap::from([(
+                    returned_key.clone(),
+                    BookRevisionDto {
+                        book_id: returned_key.book_id.clone(),
+                        revision_number: returned_key.revision_number,
+                        title: "Book".to_string(),
+                        author_ids: Vec::new(),
+                        isbn: String::new(),
+                        read: false,
+                        owned: true,
+                        priority: 1,
+                        format: BookFormat::Printed,
+                        store: BookStore::Unknown,
+                        purchase_date: None,
+                        book_created_at: OffsetDateTime::UNIX_EPOCH,
+                        book_updated_at: OffsetDateTime::UNIX_EPOCH,
+                        created_at: OffsetDateTime::UNIX_EPOCH,
+                    },
+                )]))
+            });
+
+        let result = BookRevisionLoader::new(claims(), history)
+            .load(&keys)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[&keys[0]].title, "Book");
+        assert!(!result.contains_key(&keys[1]));
+    }
+
+    #[tokio::test]
+    async fn author_revision_loader_batches_composite_keys() {
+        let keys = vec![
+            AuthorRevisionKeyDto {
+                author_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
+                revision_number: 1,
+            },
+            AuthorRevisionKeyDto {
+                author_id: "93090e87-b7a1-403c-974c-d74d881e83b9".to_string(),
+                revision_number: 2,
+            },
+        ];
+        let expected_keys = keys.clone();
+        let returned_key = keys[1].clone();
+        let mut history = MockHistoryQueryUseCase::new();
+        history
+            .expect_author_revisions_by_keys()
+            .with(predicate::eq("user1"), predicate::eq(expected_keys))
+            .times(1)
+            .return_once(move |_, _| {
+                Ok(HashMap::from([(
+                    returned_key.clone(),
+                    AuthorRevisionDto {
+                        author_id: returned_key.author_id.clone(),
+                        revision_number: returned_key.revision_number,
+                        name: "Author".to_string(),
+                        yomi: String::new(),
+                        author_created_at: OffsetDateTime::UNIX_EPOCH,
+                        author_updated_at: OffsetDateTime::UNIX_EPOCH,
+                        created_at: OffsetDateTime::UNIX_EPOCH,
+                    },
+                )]))
+            });
+
+        let result = AuthorRevisionLoader::new(claims(), history)
+            .load(&keys)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[&keys[1]].name, "Author");
+        assert!(!result.contains_key(&keys[0]));
+    }
 
     #[tokio::test]
     async fn author_loader_batches_keys_and_maps_authors() {

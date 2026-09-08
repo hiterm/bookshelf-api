@@ -13,8 +13,8 @@ use crate::{
     presentation::{
         extractor::claims::Claims,
         graphql::loader::{
-            AuthorChangesByOperationLoader, AuthorLoader, BookChangesByOperationLoader,
-            BooksByAuthorLoader,
+            AuthorChangesByOperationLoader, AuthorLoader, AuthorRevisionLoader,
+            BookChangesByOperationLoader, BookRevisionLoader, BooksByAuthorLoader,
         },
     },
 };
@@ -43,6 +43,14 @@ pub async fn graphql_handler(
         AuthorChangesByOperationLoader::new(claims.clone(), history_query.clone()),
         tokio::spawn,
     );
+    let book_revision_loader = DataLoader::new(
+        BookRevisionLoader::new(claims.clone(), history_query.clone()),
+        tokio::spawn,
+    );
+    let author_revision_loader = DataLoader::new(
+        AuthorRevisionLoader::new(claims.clone(), history_query.clone()),
+        tokio::spawn,
+    );
 
     schema
         .execute(
@@ -52,6 +60,8 @@ pub async fn graphql_handler(
                 .data(books_by_author_loader)
                 .data(book_changes_loader)
                 .data(author_changes_loader)
+                .data(book_revision_loader)
+                .data(author_revision_loader)
                 .data(history_query),
         )
         .await

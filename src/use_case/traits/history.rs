@@ -5,8 +5,8 @@ use mockall::automock;
 
 use crate::use_case::{
     dto::history::{
-        AuthorOperationChangeDto, AuthorRevisionDto, BookOperationChangeDto, BookRevisionDto,
-        OperationDto,
+        AuthorOperationChangeDto, AuthorRevisionDto, AuthorRevisionKeyDto, BookOperationChangeDto,
+        BookRevisionDto, BookRevisionKeyDto, OperationDto,
     },
     error::UseCaseError,
 };
@@ -36,6 +36,11 @@ pub trait HistoryQueryUseCase: Send + Sync + 'static {
         book_id: &str,
         revision_number: i32,
     ) -> Result<Option<BookRevisionDto>, UseCaseError>;
+    async fn book_revisions_by_keys(
+        &self,
+        user_id: &str,
+        keys: &[BookRevisionKeyDto],
+    ) -> Result<HashMap<BookRevisionKeyDto, BookRevisionDto>, UseCaseError>;
     async fn author_revisions(
         &self,
         user_id: &str,
@@ -47,6 +52,11 @@ pub trait HistoryQueryUseCase: Send + Sync + 'static {
         author_id: &str,
         revision_number: i32,
     ) -> Result<Option<AuthorRevisionDto>, UseCaseError>;
+    async fn author_revisions_by_keys(
+        &self,
+        user_id: &str,
+        keys: &[AuthorRevisionKeyDto],
+    ) -> Result<HashMap<AuthorRevisionKeyDto, AuthorRevisionDto>, UseCaseError>;
     async fn book_changes(
         &self,
         user_id: &str,

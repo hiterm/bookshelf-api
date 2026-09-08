@@ -16,7 +16,7 @@ use crate::{
 
 use super::author::AuthorId;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BookId {
     id: Uuid,
 }
