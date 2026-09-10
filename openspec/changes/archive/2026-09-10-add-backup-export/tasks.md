@@ -17,5 +17,5 @@
 ## 4. Delivery
 
 - [x] 4.1 Run all repository checks and tests
-- [ ] 4.2 Sync specs, archive, and commit archive separately
+- [x] 4.2 Sync specs, archive, and commit archive separately
 - [ ] 4.3 Create PR, verify CI, and obtain CodeRabbit approval
