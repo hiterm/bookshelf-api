@@ -1,4 +1,5 @@
 pub mod author_repository;
+pub mod backup_repository;
 pub mod book_repository;
 pub mod error;
 mod history_recording;
