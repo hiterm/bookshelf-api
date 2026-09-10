@@ -73,6 +73,9 @@ async fn export(claims: Claims, query: BackupQuery, scope: BackupScope) -> Respo
         }
     };
     let mut response = Response::new(Body::from(body));
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),

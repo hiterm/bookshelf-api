@@ -28,6 +28,13 @@ async fn snapshot_and_full_are_authenticated_json_attachments() -> Result<()> {
                 .and_then(|value| value.to_str().ok()),
             Some("application/json")
         );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
         let disposition = response
             .headers()
             .get(header::CONTENT_DISPOSITION)
