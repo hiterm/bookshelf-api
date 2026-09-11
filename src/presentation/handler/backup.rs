@@ -93,29 +93,3 @@ fn internal_error() -> Response {
     )
         .into_response()
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::use_case::dto::backup::{BackupData, BackupEnvelope, BackupScope};
-
-    #[test]
-    fn envelope_uses_versioned_camel_case_contract() {
-        let value = serde_json::to_value(BackupEnvelope::new(
-            BackupScope::Snapshot,
-            "2026-09-11T02:00:00Z".to_owned(),
-            BackupData {
-                authors: vec![],
-                books: vec![],
-                history: None,
-            },
-        ))
-        .expect("serializable backup");
-
-        assert_eq!(value["format"], "bookshelf-backup");
-        assert_eq!(value["version"], 1);
-        assert_eq!(value["scope"], "snapshot");
-        assert_eq!(value["exportedAt"], "2026-09-11T02:00:00Z");
-        assert!(value["data"].get("history").is_none());
-        assert!(!value.to_string().contains("user_id"));
-    }
-}

@@ -275,3 +275,199 @@ impl From<BackupProjection> for BackupData {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{
+        BackupAuthor, BackupAuthorRevision, BackupAuthorSnapshot, BackupBook, BackupBookRevision,
+        BackupBookSnapshot, BackupChanges, BackupData, BackupEntityChange, BackupEnvelope,
+        BackupHistory, BackupOperation, BackupScope,
+    };
+
+    fn book_snapshot(title: &str) -> BackupBookSnapshot {
+        BackupBookSnapshot {
+            title: title.to_owned(),
+            author_ids: vec!["author-1".to_owned()],
+            isbn: "9780000000000".to_owned(),
+            read: true,
+            owned: false,
+            priority: 42,
+            format: "E_BOOK".to_owned(),
+            store: "KINDLE".to_owned(),
+            purchase_date: Some("2026-09-10".to_owned()),
+            created_at: "2026-09-10T01:00:00Z".to_owned(),
+            updated_at: "2026-09-10T02:00:00Z".to_owned(),
+        }
+    }
+
+    #[test]
+    fn full_envelope_matches_the_complete_v1_json_contract() {
+        let actual = serde_json::to_value(BackupEnvelope::new(
+            BackupScope::Full,
+            "2026-09-11T03:00:00Z".to_owned(),
+            BackupData {
+                authors: vec![BackupAuthor {
+                    id: "author-1".to_owned(),
+                    name: "Author".to_owned(),
+                    yomi: "オーサー".to_owned(),
+                    created_at: "2026-09-10T00:00:00Z".to_owned(),
+                    updated_at: "2026-09-10T00:30:00Z".to_owned(),
+                }],
+                books: vec![BackupBook {
+                    id: "book-1".to_owned(),
+                    snapshot: book_snapshot("Current Book"),
+                }],
+                history: Some(BackupHistory {
+                    operations: vec![BackupOperation {
+                        id: "operation-2".to_owned(),
+                        operation_type: "undo".to_owned(),
+                        detail: Some(json!({"reason": "fixture"})),
+                        undo_of_operation_id: Some("operation-1".to_owned()),
+                        created_at: "2026-09-10T02:00:00Z".to_owned(),
+                        changes: BackupChanges {
+                            books: vec![BackupEntityChange {
+                                book_id: Some("book-1".to_owned()),
+                                author_id: None,
+                                before_revision_number: None,
+                                after_revision_number: Some(2),
+                            }],
+                            authors: vec![BackupEntityChange {
+                                book_id: None,
+                                author_id: Some("author-1".to_owned()),
+                                before_revision_number: Some(1),
+                                after_revision_number: None,
+                            }],
+                        },
+                    }],
+                    book_revisions: vec![BackupBookRevision {
+                        book_id: "book-1".to_owned(),
+                        revision_number: 2,
+                        snapshot: book_snapshot("Revision Book"),
+                        recorded_at: "2026-09-10T02:00:01Z".to_owned(),
+                    }],
+                    author_revisions: vec![BackupAuthorRevision {
+                        author_id: "author-1".to_owned(),
+                        revision_number: 1,
+                        snapshot: BackupAuthorSnapshot {
+                            name: "Author".to_owned(),
+                            yomi: "オーサー".to_owned(),
+                            created_at: "2026-09-10T00:00:00Z".to_owned(),
+                            updated_at: "2026-09-10T00:30:00Z".to_owned(),
+                        },
+                        recorded_at: "2026-09-10T00:30:01Z".to_owned(),
+                    }],
+                }),
+            },
+        ))
+        .expect("backup envelope is serializable");
+
+        let expected = json!({
+            "format": "bookshelf-backup",
+            "version": 1,
+            "scope": "full",
+            "exportedAt": "2026-09-11T03:00:00Z",
+            "data": {
+                "authors": [{
+                    "id": "author-1",
+                    "name": "Author",
+                    "yomi": "オーサー",
+                    "createdAt": "2026-09-10T00:00:00Z",
+                    "updatedAt": "2026-09-10T00:30:00Z"
+                }],
+                "books": [{
+                    "id": "book-1",
+                    "title": "Current Book",
+                    "authorIds": ["author-1"],
+                    "isbn": "9780000000000",
+                    "read": true,
+                    "owned": false,
+                    "priority": 42,
+                    "format": "E_BOOK",
+                    "store": "KINDLE",
+                    "purchaseDate": "2026-09-10",
+                    "createdAt": "2026-09-10T01:00:00Z",
+                    "updatedAt": "2026-09-10T02:00:00Z"
+                }],
+                "history": {
+                    "operations": [{
+                        "id": "operation-2",
+                        "type": "undo",
+                        "detail": {"reason": "fixture"},
+                        "undoOfOperationId": "operation-1",
+                        "createdAt": "2026-09-10T02:00:00Z",
+                        "changes": {
+                            "books": [{
+                                "bookId": "book-1",
+                                "beforeRevisionNumber": null,
+                                "afterRevisionNumber": 2
+                            }],
+                            "authors": [{
+                                "authorId": "author-1",
+                                "beforeRevisionNumber": 1,
+                                "afterRevisionNumber": null
+                            }]
+                        }
+                    }],
+                    "bookRevisions": [{
+                        "bookId": "book-1",
+                        "revisionNumber": 2,
+                        "snapshot": {
+                            "title": "Revision Book",
+                            "authorIds": ["author-1"],
+                            "isbn": "9780000000000",
+                            "read": true,
+                            "owned": false,
+                            "priority": 42,
+                            "format": "E_BOOK",
+                            "store": "KINDLE",
+                            "purchaseDate": "2026-09-10",
+                            "createdAt": "2026-09-10T01:00:00Z",
+                            "updatedAt": "2026-09-10T02:00:00Z"
+                        },
+                        "recordedAt": "2026-09-10T02:00:01Z"
+                    }],
+                    "authorRevisions": [{
+                        "authorId": "author-1",
+                        "revisionNumber": 1,
+                        "snapshot": {
+                            "name": "Author",
+                            "yomi": "オーサー",
+                            "createdAt": "2026-09-10T00:00:00Z",
+                            "updatedAt": "2026-09-10T00:30:00Z"
+                        },
+                        "recordedAt": "2026-09-10T00:30:01Z"
+                    }]
+                }
+            }
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn snapshot_omits_the_history_key() {
+        let actual = serde_json::to_value(BackupEnvelope::new(
+            BackupScope::Snapshot,
+            "2026-09-11T03:00:00Z".to_owned(),
+            BackupData {
+                authors: vec![],
+                books: vec![],
+                history: None,
+            },
+        ))
+        .expect("backup envelope is serializable");
+
+        assert_eq!(
+            actual,
+            json!({
+                "format": "bookshelf-backup",
+                "version": 1,
+                "scope": "snapshot",
+                "exportedAt": "2026-09-11T03:00:00Z",
+                "data": {"authors": [], "books": []}
+            })
+        );
+    }
+}
