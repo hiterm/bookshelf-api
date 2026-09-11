@@ -10,8 +10,9 @@ use crate::{
     use_case::port::backup::{
         BackupAuthorProjection, BackupAuthorRevisionProjection, BackupAuthorSnapshotProjection,
         BackupBookProjection, BackupBookRevisionProjection, BackupBookSnapshotProjection,
-        BackupChangesProjection, BackupEntityChangeProjection, BackupHistoryProjection,
-        BackupOperationProjection, BackupProjection, BackupQueryPort, BackupQueryScope,
+        BackupChangesProjection, BackupEntityChangeProjection, BackupFullProjection,
+        BackupHistoryProjection, BackupOperationProjection, BackupQueryPort,
+        BackupSnapshotProjection,
     },
 };
 
@@ -326,22 +327,25 @@ async fn history(
 
 #[async_trait]
 impl BackupQueryPort for PgBackupQuery {
-    async fn query(
-        &self,
-        user_id: &UserId,
-        scope: BackupQueryScope,
-    ) -> Result<BackupProjection, DomainError> {
+    async fn snapshot(&self, user_id: &UserId) -> Result<BackupSnapshotProjection, DomainError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             .execute(&mut *tx)
             .await?;
         let (authors, books) = current_data(&mut tx, user_id).await?;
-        let history = match scope {
-            BackupQueryScope::Snapshot => None,
-            BackupQueryScope::Full => Some(history(&mut tx, user_id).await?),
-        };
         tx.commit().await?;
-        Ok(BackupProjection {
+        Ok(BackupSnapshotProjection { authors, books })
+    }
+
+    async fn full(&self, user_id: &UserId) -> Result<BackupFullProjection, DomainError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .execute(&mut *tx)
+            .await?;
+        let (authors, books) = current_data(&mut tx, user_id).await?;
+        let history = history(&mut tx, user_id).await?;
+        tx.commit().await?;
+        Ok(BackupFullProjection {
             authors,
             books,
             history,
@@ -355,9 +359,8 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        domain::entity::user::UserId,
-        infrastructure::backup::PgBackupQuery,
-        use_case::port::backup::{BackupQueryPort, BackupQueryScope},
+        domain::entity::user::UserId, infrastructure::backup::PgBackupQuery,
+        use_case::port::backup::BackupQueryPort,
     };
 
     async fn insert_user(pool: &PgPool, id: &str) -> anyhow::Result<()> {
@@ -403,10 +406,7 @@ mod tests {
             .await?;
 
         let data = PgBackupQuery::new(pool)
-            .query(
-                &UserId::new("owner".to_owned())?,
-                BackupQueryScope::Snapshot,
-            )
+            .snapshot(&UserId::new("owner".to_owned())?)
             .await?;
 
         assert_eq!(data.authors.len(), 2);
@@ -421,7 +421,6 @@ mod tests {
             Some("2026-09-01")
         );
         assert_eq!(data.books[0].snapshot.format, "E_BOOK");
-        assert!(data.history.is_none());
         assert!(
             data.books
                 .iter()
@@ -481,9 +480,9 @@ mod tests {
             .await?;
 
         let data = PgBackupQuery::new(pool)
-            .query(&UserId::new("owner".to_owned())?, BackupQueryScope::Full)
+            .full(&UserId::new("owner".to_owned())?)
             .await?;
-        let history = data.history.expect("full history");
+        let history = data.history;
         assert_eq!(history.operations.len(), 2);
         assert_eq!(history.operations[0].operation_type, "baseline");
         assert_eq!(

@@ -3,8 +3,8 @@ use serde::Serialize;
 use crate::use_case::port::backup::{
     BackupAuthorProjection, BackupAuthorRevisionProjection, BackupAuthorSnapshotProjection,
     BackupBookProjection, BackupBookRevisionProjection, BackupBookSnapshotProjection,
-    BackupChangesProjection, BackupEntityChangeProjection, BackupHistoryProjection,
-    BackupOperationProjection, BackupProjection,
+    BackupChangesProjection, BackupEntityChangeProjection, BackupFullProjection,
+    BackupHistoryProjection, BackupOperationProjection, BackupSnapshotProjection,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -266,12 +266,22 @@ impl From<BackupHistoryProjection> for BackupHistory {
     }
 }
 
-impl From<BackupProjection> for BackupData {
-    fn from(value: BackupProjection) -> Self {
+impl From<BackupSnapshotProjection> for BackupData {
+    fn from(value: BackupSnapshotProjection) -> Self {
         Self {
             authors: value.authors.into_iter().map(Into::into).collect(),
             books: value.books.into_iter().map(Into::into).collect(),
-            history: value.history.map(Into::into),
+            history: None,
+        }
+    }
+}
+
+impl From<BackupFullProjection> for BackupData {
+    fn from(value: BackupFullProjection) -> Self {
+        Self {
+            authors: value.authors.into_iter().map(Into::into).collect(),
+            books: value.books.into_iter().map(Into::into).collect(),
+            history: Some(value.history.into()),
         }
     }
 }

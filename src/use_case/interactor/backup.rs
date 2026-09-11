@@ -2,7 +2,7 @@ use crate::{
     domain::{entity::user::UserId, error::DomainError},
     use_case::{
         dto::backup::{BackupData, BackupScope},
-        port::backup::{BackupQueryPort, BackupQueryScope},
+        port::backup::BackupQueryPort,
     },
 };
 
@@ -21,11 +21,10 @@ impl<Q: BackupQueryPort> BackupInteractor<Q> {
         user_id: &UserId,
         scope: BackupScope,
     ) -> Result<BackupData, DomainError> {
-        let query_scope = match scope {
-            BackupScope::Snapshot => BackupQueryScope::Snapshot,
-            BackupScope::Full => BackupQueryScope::Full,
-        };
-        Ok(self.query.query(user_id, query_scope).await?.into())
+        match scope {
+            BackupScope::Snapshot => Ok(self.query.snapshot(user_id).await?.into()),
+            BackupScope::Full => Ok(self.query.full(user_id).await?.into()),
+        }
     }
 }
 
@@ -43,8 +42,8 @@ mod tests {
                 BackupAuthorProjection, BackupAuthorRevisionProjection,
                 BackupAuthorSnapshotProjection, BackupBookProjection, BackupBookRevisionProjection,
                 BackupBookSnapshotProjection, BackupChangesProjection,
-                BackupEntityChangeProjection, BackupHistoryProjection, BackupOperationProjection,
-                BackupProjection, BackupQueryScope, MockBackupQueryPort,
+                BackupEntityChangeProjection, BackupFullProjection, BackupHistoryProjection,
+                BackupOperationProjection, BackupSnapshotProjection, MockBackupQueryPort,
             },
         },
     };
@@ -54,11 +53,11 @@ mod tests {
         let user_id = UserId::new("owner".to_owned()).expect("valid user id");
         let mut query = MockBackupQueryPort::new();
         query
-            .expect_query()
-            .with(eq(user_id.clone()), eq(BackupQueryScope::Snapshot))
+            .expect_snapshot()
+            .with(eq(user_id.clone()))
             .once()
-            .returning(|_, _| {
-                Ok(BackupProjection {
+            .returning(|_| {
+                Ok(BackupSnapshotProjection {
                     authors: vec![BackupAuthorProjection {
                         id: "author-id".to_owned(),
                         name: "Author".to_owned(),
@@ -67,7 +66,6 @@ mod tests {
                         updated_at: "2026-09-11T00:00:00Z".to_owned(),
                     }],
                     books: vec![],
-                    history: None,
                 })
             });
 
@@ -81,25 +79,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_forwards_the_full_query_scope() {
+    async fn full_calls_the_full_query_and_returns_history() {
         let user_id = UserId::new("owner".to_owned()).expect("valid user id");
         let mut query = MockBackupQueryPort::new();
         query
-            .expect_query()
-            .with(eq(user_id.clone()), eq(BackupQueryScope::Full))
+            .expect_full()
+            .with(eq(user_id.clone()))
             .once()
-            .returning(|_, _| {
-                Ok(BackupProjection {
+            .returning(|_| {
+                Ok(BackupFullProjection {
                     authors: vec![],
                     books: vec![],
-                    history: None,
+                    history: BackupHistoryProjection {
+                        operations: vec![],
+                        book_revisions: vec![],
+                        author_revisions: vec![],
+                    },
                 })
             });
 
-        BackupInteractor::new(query)
+        let data = BackupInteractor::new(query)
             .export(&user_id, BackupScope::Full)
             .await
             .expect("backup query succeeds");
+
+        assert!(data.history.is_some());
     }
 
     #[tokio::test]
@@ -120,17 +124,17 @@ mod tests {
         };
         let mut query = MockBackupQueryPort::new();
         query
-            .expect_query()
-            .with(eq(user_id.clone()), eq(BackupQueryScope::Full))
+            .expect_full()
+            .with(eq(user_id.clone()))
             .once()
-            .return_once(move |_, _| {
-                Ok(BackupProjection {
+            .return_once(move |_| {
+                Ok(BackupFullProjection {
                     authors: vec![],
                     books: vec![BackupBookProjection {
                         id: "book-id".to_owned(),
                         snapshot: book_snapshot(),
                     }],
-                    history: Some(BackupHistoryProjection {
+                    history: BackupHistoryProjection {
                         operations: vec![BackupOperationProjection {
                             id: "operation-id".to_owned(),
                             operation_type: "update_book".to_owned(),
@@ -169,7 +173,7 @@ mod tests {
                             },
                             recorded_at: "2026-09-10T00:00:01Z".to_owned(),
                         }],
-                    }),
+                    },
                 })
             });
 

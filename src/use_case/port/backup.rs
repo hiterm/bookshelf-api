@@ -89,24 +89,22 @@ pub struct BackupHistoryProjection {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BackupProjection {
+pub struct BackupSnapshotProjection {
     pub authors: Vec<BackupAuthorProjection>,
     pub books: Vec<BackupBookProjection>,
-    pub history: Option<BackupHistoryProjection>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BackupQueryScope {
-    Snapshot,
-    Full,
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackupFullProjection {
+    pub authors: Vec<BackupAuthorProjection>,
+    pub books: Vec<BackupBookProjection>,
+    pub history: BackupHistoryProjection,
 }
 
 #[automock]
 #[async_trait]
 pub trait BackupQueryPort: Send + Sync + 'static {
-    async fn query(
-        &self,
-        user_id: &UserId,
-        scope: BackupQueryScope,
-    ) -> Result<BackupProjection, DomainError>;
+    async fn snapshot(&self, user_id: &UserId) -> Result<BackupSnapshotProjection, DomainError>;
+
+    async fn full(&self, user_id: &UserId) -> Result<BackupFullProjection, DomainError>;
 }
