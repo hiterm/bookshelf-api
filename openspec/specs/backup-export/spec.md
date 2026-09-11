@@ -1,7 +1,11 @@
 # backup-export Specification
 
 ## Purpose
-TBD - created by archiving change add-backup-export. Update Purpose after archive.
+Provide authenticated users with a portable, versioned JSON export of their
+current Books and Authors and, for full backups, all retained Operation and
+Revision history. This capability covers export only; importing, restoring,
+server-side storage, encryption, compression, and scheduling are outside its
+scope.
 ## Requirements
 ### Requirement: Authenticated users can download versioned backups
 The system SHALL expose authenticated `GET /backup/snapshot` and
@@ -74,4 +78,3 @@ Revisions by entity ID then revision number, and changes by entity ID.
 #### Scenario: Export unchanged data repeatedly
 - **WHEN** unchanged data is exported again
 - **THEN** all arrays retain the same ordering
-
