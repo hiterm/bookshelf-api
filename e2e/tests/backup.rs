@@ -102,9 +102,7 @@ async fn backup_without_authentication_is_rejected() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-#[serial]
-async fn full_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
+async fn assert_backup_is_tenant_isolated(endpoint: &str) -> Result<()> {
     let (_, token_a) = create_test_user().await?;
     let author_a = create_test_author("tenant A backup author", &token_a).await?;
     let book_a = create_test_book("tenant A backup book", &author_a, &token_a).await?;
@@ -113,7 +111,7 @@ async fn full_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
     let book_b = create_test_book("tenant B backup book", &author_b, &token_b).await?;
 
     let response = Client::new()
-        .get(format!("{}/backup/full", get_server_url()?))
+        .get(format!("{}{endpoint}", get_server_url()?))
         .bearer_auth(&token_a)
         .send()
         .await?;
@@ -133,6 +131,18 @@ async fn full_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
     delete_test_book(&book_b, &token_b).await?;
     delete_test_author(&author_b, &token_b).await?;
     Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn snapshot_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
+    assert_backup_is_tenant_isolated("/backup/snapshot").await
+}
+
+#[tokio::test]
+#[serial]
+async fn full_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
+    assert_backup_is_tenant_isolated("/backup/full").await
 }
 
 #[tokio::test]
