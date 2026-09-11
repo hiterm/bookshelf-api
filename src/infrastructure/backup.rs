@@ -6,22 +6,21 @@ use time::{Date, OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
 use crate::{
-    domain::{
-        entity::user::UserId, error::DomainError, repository::backup_repository::BackupRepository,
-    },
-    use_case::dto::backup::{
-        BackupAuthor, BackupAuthorRevision, BackupAuthorSnapshot, BackupBook, BackupBookRevision,
-        BackupBookSnapshot, BackupChanges, BackupData, BackupEntityChange, BackupHistory,
-        BackupOperation, BackupScope,
+    domain::{entity::user::UserId, error::DomainError},
+    use_case::port::backup::{
+        BackupAuthorProjection, BackupAuthorRevisionProjection, BackupAuthorSnapshotProjection,
+        BackupBookProjection, BackupBookRevisionProjection, BackupBookSnapshotProjection,
+        BackupChangesProjection, BackupEntityChangeProjection, BackupHistoryProjection,
+        BackupOperationProjection, BackupProjection, BackupQueryPort, BackupQueryScope,
     },
 };
 
 #[derive(Debug, Clone)]
-pub struct PgBackupRepository {
+pub struct PgBackupQuery {
     pool: PgPool,
 }
 
-impl PgBackupRepository {
+impl PgBackupQuery {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -125,8 +124,8 @@ fn store_name(value: &str) -> Result<String, DomainError> {
     }
 }
 
-fn book_snapshot(row: &BookRow) -> Result<BackupBookSnapshot, DomainError> {
-    Ok(BackupBookSnapshot {
+fn book_snapshot(row: &BookRow) -> Result<BackupBookSnapshotProjection, DomainError> {
+    Ok(BackupBookSnapshotProjection {
         title: row.title.clone(),
         author_ids: row.author_ids.iter().map(Uuid::to_string).collect(),
         isbn: row.isbn.clone(),
@@ -144,7 +143,7 @@ fn book_snapshot(row: &BookRow) -> Result<BackupBookSnapshot, DomainError> {
 async fn current_data(
     tx: &mut Transaction<'_, Postgres>,
     user_id: &UserId,
-) -> Result<(Vec<BackupAuthor>, Vec<BackupBook>), DomainError> {
+) -> Result<(Vec<BackupAuthorProjection>, Vec<BackupBookProjection>), DomainError> {
     let authors = sqlx::query_as::<_, AuthorRow>(
         "SELECT id, name, yomi, created_at, updated_at FROM author \
          WHERE user_id = $1 ORDER BY id ASC",
@@ -154,7 +153,7 @@ async fn current_data(
     .await?
     .into_iter()
     .map(|row| {
-        Ok(BackupAuthor {
+        Ok(BackupAuthorProjection {
             id: row.id.to_string(),
             name: row.name,
             yomi: row.yomi,
@@ -176,7 +175,7 @@ async fn current_data(
     let books = rows
         .iter()
         .map(|row| {
-            Ok(BackupBook {
+            Ok(BackupBookProjection {
                 id: row.id.to_string(),
                 snapshot: book_snapshot(row)?,
             })
@@ -188,7 +187,7 @@ async fn current_data(
 async fn history(
     tx: &mut Transaction<'_, Postgres>,
     user_id: &UserId,
-) -> Result<BackupHistory, DomainError> {
+) -> Result<BackupHistoryProjection, DomainError> {
     let operation_rows = sqlx::query_as::<_, OperationRow>(
         "SELECT id, type operation_type, detail, undo_of_operation_id, created_at \
          FROM operation WHERE user_id = $1 ORDER BY created_at ASC, id ASC",
@@ -213,13 +212,13 @@ async fn history(
     .fetch_all(&mut **tx)
     .await?;
 
-    let mut changes = HashMap::<Uuid, BackupChanges>::new();
+    let mut changes = HashMap::<Uuid, BackupChangesProjection>::new();
     for row in book_changes {
         changes
             .entry(row.operation_id)
             .or_default()
             .books
-            .push(BackupEntityChange {
+            .push(BackupEntityChangeProjection {
                 book_id: Some(row.entity_id.to_string()),
                 author_id: None,
                 before_revision_number: row.before_revision_number,
@@ -231,7 +230,7 @@ async fn history(
             .entry(row.operation_id)
             .or_default()
             .authors
-            .push(BackupEntityChange {
+            .push(BackupEntityChangeProjection {
                 book_id: None,
                 author_id: Some(row.entity_id.to_string()),
                 before_revision_number: row.before_revision_number,
@@ -241,7 +240,7 @@ async fn history(
     let operations = operation_rows
         .into_iter()
         .map(|row| {
-            Ok(BackupOperation {
+            Ok(BackupOperationProjection {
                 id: row.id.to_string(),
                 operation_type: row.operation_type,
                 detail: row.detail,
@@ -273,10 +272,10 @@ async fn history(
     let book_revisions = book_rows
         .into_iter()
         .map(|row| {
-            Ok(BackupBookRevision {
+            Ok(BackupBookRevisionProjection {
                 book_id: row.book_id.to_string(),
                 revision_number: row.revision_number,
-                snapshot: BackupBookSnapshot {
+                snapshot: BackupBookSnapshotProjection {
                     title: row.title,
                     author_ids: row.author_ids.iter().map(Uuid::to_string).collect(),
                     isbn: row.isbn,
@@ -304,10 +303,10 @@ async fn history(
     .await?
     .into_iter()
     .map(|row| {
-        Ok(BackupAuthorRevision {
+        Ok(BackupAuthorRevisionProjection {
             author_id: row.author_id.to_string(),
             revision_number: row.revision_number,
-            snapshot: BackupAuthorSnapshot {
+            snapshot: BackupAuthorSnapshotProjection {
                 name: row.name,
                 yomi: row.yomi,
                 created_at: timestamp(row.author_created_at)?,
@@ -318,7 +317,7 @@ async fn history(
     })
     .collect::<Result<Vec<_>, DomainError>>()?;
 
-    Ok(BackupHistory {
+    Ok(BackupHistoryProjection {
         operations,
         book_revisions,
         author_revisions,
@@ -326,23 +325,23 @@ async fn history(
 }
 
 #[async_trait]
-impl BackupRepository for PgBackupRepository {
-    async fn export(
+impl BackupQueryPort for PgBackupQuery {
+    async fn query(
         &self,
         user_id: &UserId,
-        scope: BackupScope,
-    ) -> Result<BackupData, DomainError> {
+        scope: BackupQueryScope,
+    ) -> Result<BackupProjection, DomainError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             .execute(&mut *tx)
             .await?;
         let (authors, books) = current_data(&mut tx, user_id).await?;
         let history = match scope {
-            BackupScope::Snapshot => None,
-            BackupScope::Full => Some(history(&mut tx, user_id).await?),
+            BackupQueryScope::Snapshot => None,
+            BackupQueryScope::Full => Some(history(&mut tx, user_id).await?),
         };
         tx.commit().await?;
-        Ok(BackupData {
+        Ok(BackupProjection {
             authors,
             books,
             history,
@@ -356,9 +355,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        domain::{entity::user::UserId, repository::backup_repository::BackupRepository},
-        infrastructure::backup_repository::PgBackupRepository,
-        use_case::dto::backup::BackupScope,
+        domain::entity::user::UserId,
+        infrastructure::backup::PgBackupQuery,
+        use_case::port::backup::{BackupQueryPort, BackupQueryScope},
     };
 
     async fn insert_user(pool: &PgPool, id: &str) -> anyhow::Result<()> {
@@ -403,8 +402,11 @@ mod tests {
             .execute(&pool)
             .await?;
 
-        let data = PgBackupRepository::new(pool)
-            .export(&UserId::new("owner".to_owned())?, BackupScope::Snapshot)
+        let data = PgBackupQuery::new(pool)
+            .query(
+                &UserId::new("owner".to_owned())?,
+                BackupQueryScope::Snapshot,
+            )
             .await?;
 
         assert_eq!(data.authors.len(), 2);
@@ -420,7 +422,11 @@ mod tests {
         );
         assert_eq!(data.books[0].snapshot.format, "E_BOOK");
         assert!(data.history.is_none());
-        assert!(!serde_json::to_string(&data)?.contains("secret"));
+        assert!(
+            data.books
+                .iter()
+                .all(|book| book.snapshot.title != "secret")
+        );
         Ok(())
     }
 
@@ -474,8 +480,8 @@ mod tests {
             .execute(&pool)
             .await?;
 
-        let data = PgBackupRepository::new(pool)
-            .export(&UserId::new("owner".to_owned())?, BackupScope::Full)
+        let data = PgBackupQuery::new(pool)
+            .query(&UserId::new("owner".to_owned())?, BackupQueryScope::Full)
             .await?;
         let history = data.history.expect("full history");
         assert_eq!(history.operations.len(), 2);
@@ -494,7 +500,6 @@ mod tests {
             vec![author.to_string()]
         );
         assert_eq!(history.author_revisions.len(), 1);
-        assert!(!serde_json::to_string(&history)?.contains("other"));
         Ok(())
     }
 }

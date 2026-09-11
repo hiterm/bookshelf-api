@@ -22,9 +22,12 @@ Source dependencies point inward:
 
 ```text
 presentation ──> use_case ──> domain
-                       ^          ^
-                       │          │
-                 infrastructure ──┘
+                                  ^
+                                  │
+                         infrastructure
+
+exception: infrastructure ──> use_case::port
+           (dedicated use-case I/O/query projections only)
 ```
 
 In particular:
@@ -33,7 +36,14 @@ In particular:
   `presentation`.
 - `use_case` MAY import from `domain`, but MUST NOT import concrete
   infrastructure or presentation types.
-- `infrastructure` MAY implement abstractions owned by `domain` or `use_case`.
+- `infrastructure` normally depends on and implements abstractions owned by
+  `domain`.
+- `infrastructure` MAY depend on `use_case::port` only to implement explicit,
+  use-case-specific I/O or query projections that would be unnatural domain
+  abstractions.
+- `infrastructure` MUST NOT depend on interactors, workflow implementations,
+  presentation-facing DTO modules, or other general `use_case` implementation
+  details.
 - `presentation` MAY depend on use-case interfaces and DTOs, but MUST NOT call
   SQLx or concrete repositories directly.
 
@@ -52,6 +62,12 @@ not automatically belong to the domain. Define such an abstraction as a port
 in `use_case` when its inputs or outputs are use-case-specific. Infrastructure
 may implement that port with an optimized SQL projection or a purpose-specific
 read-only transaction.
+
+This is a narrow exception, not a general `infrastructure -> use_case`
+dependency. The infrastructure implementation may import the explicit port and
+its contract types, but not the interactor, workflow implementation, or
+presentation-facing DTO. Port projection types SHOULD live with the port so the
+permitted surface is evident and reviewable.
 
 Use-case DTO construction and choices such as export scope belong to the
 use-case layer. Infrastructure may decide how to execute the requested query,
@@ -78,6 +94,7 @@ Before adding or changing a repository or port, verify that:
 - no module under `domain` imports from an outer layer;
 - domain repository signatures contain no use-case or presentation DTOs;
 - use-case-specific projections are represented by use-case-owned ports;
+- infrastructure imports from `use_case` are limited to explicit port modules;
 - interactors contain application decisions and mapping rather than SQL;
 - concrete database types remain under `infrastructure`;
 - presentation code depends on the use-case boundary rather than concrete

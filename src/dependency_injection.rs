@@ -3,14 +3,14 @@ use sqlx::{Pool, Postgres};
 
 use crate::{
     infrastructure::{
-        author_repository::PgAuthorRepository, backup::PgBackupRepository,
+        author_repository::PgAuthorRepository, backup::PgBackupQuery,
         book_repository::PgBookRepository, history_repository::PgHistoryRepository,
         transaction::PgTransactionManager, user_repository::PgUserRepository,
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
         author::{AuthorCommandInteractor, AuthorQueryInteractor},
-        backup::BackupQueryInteractor,
+        backup::BackupInteractor,
         book::{BookCommandInteractor, BookQueryInteractor},
         history::HistoryQueryInteractor,
         user::{UserCommandInteractor, UserQueryInteractor},
@@ -24,18 +24,18 @@ pub type BC = BookCommandInteractor<PgBookRepository, PgAuthorRepository, PgTran
 pub type AQ = AuthorQueryInteractor<PgAuthorRepository>;
 pub type AC = AuthorCommandInteractor<PgAuthorRepository, PgBookRepository, PgTransactionManager>;
 pub type HQ = HistoryQueryInteractor<PgHistoryRepository>;
-pub type BackupQuery = BackupQueryInteractor<PgBackupRepository>;
+pub type BackupExport = BackupInteractor<PgBackupQuery>;
 
 pub type AppQuery = Query<UQ, BQ, AQ, HQ>;
 pub type AppMutation = Mutation<UC, BC, AC, HQ>;
 pub type AppSchema = Schema<AppQuery, AppMutation, EmptySubscription>;
 
-pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, BackupQuery, AppSchema) {
+pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, BackupExport, AppSchema) {
     let user_repository = PgUserRepository::new(pool.clone());
     let book_repository = PgBookRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
     let history_query = HistoryQueryInteractor::new(PgHistoryRepository::new(pool.clone()));
-    let backup_query = BackupQueryInteractor::new(PgBackupRepository::new(pool.clone()));
+    let backup_query = BackupInteractor::new(PgBackupQuery::new(pool.clone()));
     let transaction_manager = PgTransactionManager::new(pool);
 
     let user_query = UserQueryInteractor::new(user_repository.clone());

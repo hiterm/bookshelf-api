@@ -1,5 +1,12 @@
 use serde::Serialize;
 
+use crate::use_case::port::backup::{
+    BackupAuthorProjection, BackupAuthorRevisionProjection, BackupAuthorSnapshotProjection,
+    BackupBookProjection, BackupBookRevisionProjection, BackupBookSnapshotProjection,
+    BackupChangesProjection, BackupEntityChangeProjection, BackupHistoryProjection,
+    BackupOperationProjection, BackupProjection,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupAuthor {
@@ -140,6 +147,131 @@ impl BackupEnvelope {
             scope,
             exported_at,
             data,
+        }
+    }
+}
+
+impl From<BackupAuthorProjection> for BackupAuthor {
+    fn from(value: BackupAuthorProjection) -> Self {
+        Self {
+            id: value.id,
+            name: value.name,
+            yomi: value.yomi,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<BackupBookSnapshotProjection> for BackupBookSnapshot {
+    fn from(value: BackupBookSnapshotProjection) -> Self {
+        Self {
+            title: value.title,
+            author_ids: value.author_ids,
+            isbn: value.isbn,
+            read: value.read,
+            owned: value.owned,
+            priority: value.priority,
+            format: value.format,
+            store: value.store,
+            purchase_date: value.purchase_date,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<BackupBookProjection> for BackupBook {
+    fn from(value: BackupBookProjection) -> Self {
+        Self {
+            id: value.id,
+            snapshot: value.snapshot.into(),
+        }
+    }
+}
+
+impl From<BackupBookRevisionProjection> for BackupBookRevision {
+    fn from(value: BackupBookRevisionProjection) -> Self {
+        Self {
+            book_id: value.book_id,
+            revision_number: value.revision_number,
+            snapshot: value.snapshot.into(),
+            recorded_at: value.recorded_at,
+        }
+    }
+}
+
+impl From<BackupAuthorSnapshotProjection> for BackupAuthorSnapshot {
+    fn from(value: BackupAuthorSnapshotProjection) -> Self {
+        Self {
+            name: value.name,
+            yomi: value.yomi,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<BackupAuthorRevisionProjection> for BackupAuthorRevision {
+    fn from(value: BackupAuthorRevisionProjection) -> Self {
+        Self {
+            author_id: value.author_id,
+            revision_number: value.revision_number,
+            snapshot: value.snapshot.into(),
+            recorded_at: value.recorded_at,
+        }
+    }
+}
+
+impl From<BackupEntityChangeProjection> for BackupEntityChange {
+    fn from(value: BackupEntityChangeProjection) -> Self {
+        Self {
+            book_id: value.book_id,
+            author_id: value.author_id,
+            before_revision_number: value.before_revision_number,
+            after_revision_number: value.after_revision_number,
+        }
+    }
+}
+
+impl From<BackupChangesProjection> for BackupChanges {
+    fn from(value: BackupChangesProjection) -> Self {
+        Self {
+            books: value.books.into_iter().map(Into::into).collect(),
+            authors: value.authors.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<BackupOperationProjection> for BackupOperation {
+    fn from(value: BackupOperationProjection) -> Self {
+        Self {
+            id: value.id,
+            operation_type: value.operation_type,
+            detail: value.detail,
+            undo_of_operation_id: value.undo_of_operation_id,
+            created_at: value.created_at,
+            changes: value.changes.into(),
+        }
+    }
+}
+
+impl From<BackupHistoryProjection> for BackupHistory {
+    fn from(value: BackupHistoryProjection) -> Self {
+        Self {
+            operations: value.operations.into_iter().map(Into::into).collect(),
+            book_revisions: value.book_revisions.into_iter().map(Into::into).collect(),
+            author_revisions: value.author_revisions.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<BackupProjection> for BackupData {
+    fn from(value: BackupProjection) -> Self {
+        Self {
+            authors: value.authors.into_iter().map(Into::into).collect(),
+            books: value.books.into_iter().map(Into::into).collect(),
+            history: value.history.map(Into::into),
         }
     }
 }

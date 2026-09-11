@@ -8,7 +8,7 @@ use serde_json::json;
 use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
 
 use crate::{
-    dependency_injection::BackupQuery,
+    dependency_injection::BackupExport,
     domain::entity::user::UserId,
     presentation::extractor::claims::Claims,
     use_case::dto::backup::{BackupEnvelope, BackupScope},
@@ -16,16 +16,16 @@ use crate::{
 
 pub async fn snapshot_handler(
     claims: Claims,
-    Extension(query): Extension<BackupQuery>,
+    Extension(query): Extension<BackupExport>,
 ) -> Response {
     export(claims, query, BackupScope::Snapshot).await
 }
 
-pub async fn full_handler(claims: Claims, Extension(query): Extension<BackupQuery>) -> Response {
+pub async fn full_handler(claims: Claims, Extension(query): Extension<BackupExport>) -> Response {
     export(claims, query, BackupScope::Full).await
 }
 
-async fn export(claims: Claims, query: BackupQuery, scope: BackupScope) -> Response {
+async fn export(claims: Claims, query: BackupExport, scope: BackupScope) -> Response {
     let user_id = match UserId::new(claims.sub) {
         Ok(user_id) => user_id,
         Err(error) => {
