@@ -3,7 +3,7 @@ use sqlx::{Pool, Postgres};
 
 use crate::{
     infrastructure::{
-        author_repository::PgAuthorRepository, backup_repository::PgBackupRepository,
+        author_repository::PgAuthorRepository, backup::PgBackupRepository,
         book_repository::PgBookRepository, history_repository::PgHistoryRepository,
         transaction::PgTransactionManager, user_repository::PgUserRepository,
     },
