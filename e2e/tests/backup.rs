@@ -195,7 +195,7 @@ fn assert_full_history_schema(history: &serde_json::Value) -> Result<()> {
 
 async fn backup_response(token: &str, scope: &str) -> Result<serde_json::Value> {
     let response = Client::new()
-        .get(format!("{}/backup/{scope}", get_server_url()?))
+        .get(format!("{}/v1/backup/{scope}", get_server_url()?))
         .bearer_auth(token)
         .send()
         .await?;
@@ -214,32 +214,14 @@ async fn backup_response(token: &str, scope: &str) -> Result<serde_json::Value> 
             .and_then(|value| value.to_str().ok()),
         Some("no-store")
     );
-    let disposition = response
-        .headers()
-        .get(header::CONTENT_DISPOSITION)
-        .context("content-disposition")?
-        .to_str()?
-        .to_owned();
+    assert!(!response.headers().contains_key(header::CONTENT_DISPOSITION));
     let body: serde_json::Value = response.json().await?;
-    let exported_at = body["exportedAt"]
-        .as_str()
-        .context("exportedAt should be a string")?;
-    let exported_second = exported_at
-        .trim_end_matches('Z')
-        .split('.')
-        .next()
-        .context("exportedAt should contain a timestamp")?
-        .replace(':', "");
-    assert_eq!(
-        disposition,
-        format!("attachment; filename=\"bookshelf-backup-{scope}-{exported_second}Z.json\"")
-    );
     Ok(body)
 }
 
 #[tokio::test]
 #[serial]
-async fn snapshot_and_full_are_authenticated_json_attachments() -> Result<()> {
+async fn snapshot_and_full_are_authenticated_json_responses() -> Result<()> {
     let (user_id, token) = create_test_user().await?;
     let author_id = create_test_author("backup author", &token).await?;
     let create_book = format!(
@@ -314,10 +296,22 @@ async fn snapshot_and_full_are_authenticated_json_attachments() -> Result<()> {
 async fn backup_without_authentication_is_rejected() -> Result<()> {
     for scope in ["snapshot", "full"] {
         let response = Client::new()
-            .get(format!("{}/backup/{scope}", get_server_url()?))
+            .get(format!("{}/v1/backup/{scope}", get_server_url()?))
             .send()
             .await?;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{scope}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn legacy_backup_routes_are_not_available() -> Result<()> {
+    for scope in ["snapshot", "full"] {
+        let response = Client::new()
+            .get(format!("{}/backup/{scope}", get_server_url()?))
+            .send()
+            .await?;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{scope}");
     }
     Ok(())
 }
@@ -384,7 +378,7 @@ async fn assert_backup_is_tenant_isolated(
 #[tokio::test]
 #[serial]
 async fn snapshot_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
-    assert_backup_is_tenant_isolated("/backup/snapshot")
+    assert_backup_is_tenant_isolated("/v1/backup/snapshot")
         .await
         .map(|_| ())
 }
@@ -392,7 +386,7 @@ async fn snapshot_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()>
 #[tokio::test]
 #[serial]
 async fn full_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
-    let (body, fixture) = assert_backup_is_tenant_isolated("/backup/full").await?;
+    let (body, fixture) = assert_backup_is_tenant_isolated("/v1/backup/full").await?;
     let history = &body["data"]["history"];
     let operations = history["operations"]
         .as_array()
@@ -465,7 +459,7 @@ async fn full_backup_contains_history_generated_by_normal_writes() -> Result<()>
     assert_eq!(author_revision, 1);
 
     let response = Client::new()
-        .get(format!("{}/backup/full", get_server_url()?))
+        .get(format!("{}/v1/backup/full", get_server_url()?))
         .bearer_auth(&token)
         .send()
         .await?;

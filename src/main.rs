@@ -13,7 +13,7 @@ use bookshelf_api::{
 };
 use http::{
     HeaderValue, Method,
-    header::{ACCEPT, AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_TYPE},
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
 };
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
@@ -62,8 +62,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let cors_layer = CorsLayer::new()
         .allow_origin(allowed_origins)
         .allow_methods([Method::GET, Method::POST])
-        .allow_headers(vec![AUTHORIZATION, ACCEPT, CONTENT_TYPE])
-        .expose_headers([CONTENT_DISPOSITION]);
+        .allow_headers(vec![AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
+
+    let v1_router = Router::new()
+        .route("/backup/snapshot", get(snapshot_handler))
+        .route("/backup/full", get(full_handler));
 
     // build our application with routes
     let app = Router::new()
@@ -72,8 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .route("/graphql", post(graphql_handler))
         .route("/graphql/playground", get(graphql_playground_handler))
         .route("/health", get(|| async { "OK" }))
-        .route("/backup/snapshot", get(snapshot_handler))
-        .route("/backup/full", get(full_handler))
+        .nest("/v1", v1_router)
         .with_state(state)
         .layer(
             ServiceBuilder::new()

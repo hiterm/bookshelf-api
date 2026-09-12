@@ -31,7 +31,7 @@ pub async fn snapshot_handler(
             return internal_error();
         }
     };
-    backup_response(BackupSnapshotEnvelope::new(now, data), "snapshot", now)
+    backup_response(BackupSnapshotEnvelope::new(now, data))
 }
 
 pub async fn full_handler(claims: Claims, Extension(query): Extension<BackupExport>) -> Response {
@@ -47,7 +47,7 @@ pub async fn full_handler(claims: Claims, Extension(query): Extension<BackupExpo
             return internal_error();
         }
     };
-    backup_response(BackupFullEnvelope::new(now, data), "full", now)
+    backup_response(BackupFullEnvelope::new(now, data))
 }
 
 fn authenticated_user_id(claims: Claims) -> Option<UserId> {
@@ -58,28 +58,11 @@ fn authenticated_user_id(claims: Claims) -> Option<UserId> {
         .ok()
 }
 
-fn backup_response<T: Serialize>(envelope: T, scope: &str, now: OffsetDateTime) -> Response {
+fn backup_response<T: Serialize>(envelope: T) -> Response {
     let body = match serde_json::to_vec(&envelope) {
         Ok(body) => body,
         Err(error) => {
             tracing::error!(error = ?error, "backup serialization failed");
-            return internal_error();
-        }
-    };
-    let filename = format!(
-        "bookshelf-backup-{}-{:04}-{:02}-{:02}T{:02}{:02}{:02}Z.json",
-        scope,
-        now.year(),
-        u8::from(now.month()),
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    );
-    let disposition = match HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")) {
-        Ok(value) => value,
-        Err(error) => {
-            tracing::error!(error = ?error, "backup response header formatting failed");
             return internal_error();
         }
     };
@@ -91,9 +74,6 @@ fn backup_response<T: Serialize>(envelope: T, scope: &str, now: OffsetDateTime) 
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    response
-        .headers_mut()
-        .insert(header::CONTENT_DISPOSITION, disposition);
     response
 }
 
