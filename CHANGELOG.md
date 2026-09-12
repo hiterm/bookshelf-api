@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.17.0](https://github.com/hiterm/bookshelf-api/compare/2.16.1...2.17.0) - 2026-09-12
+
+### Other Changes
+- Add Vercel Dockerfile by @hiterm in https://github.com/hiterm/bookshelf-api/pull/338
+- Add backup export endpoints by @hiterm in https://github.com/hiterm/bookshelf-api/pull/340
+
 ## [2.16.1](https://github.com/hiterm/bookshelf-api/compare/2.16.0...2.16.1) - 2026-09-08
 
 ### Other Changes
