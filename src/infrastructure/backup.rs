@@ -2,16 +2,17 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
-use time::{Date, OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
+    common::types::{BookFormat, BookStore},
     domain::{entity::user::UserId, error::DomainError},
     use_case::port::backup::{
-        BackupAuthorProjection, BackupAuthorRevisionProjection, BackupAuthorSnapshotProjection,
-        BackupBookProjection, BackupBookRevisionProjection, BackupBookSnapshotProjection,
-        BackupChangesProjection, BackupEntityChangeProjection, BackupFullProjection,
-        BackupHistoryProjection, BackupOperationProjection, BackupQueryPort,
+        BackupAuthorChangeProjection, BackupAuthorProjection, BackupAuthorRevisionProjection,
+        BackupAuthorSnapshotProjection, BackupBookChangeProjection, BackupBookProjection,
+        BackupBookRevisionProjection, BackupBookSnapshotProjection, BackupChangesProjection,
+        BackupFullProjection, BackupHistoryProjection, BackupOperationProjection, BackupQueryPort,
         BackupSnapshotProjection,
     },
 };
@@ -98,31 +99,14 @@ struct AuthorRevisionRow {
     recorded_at: OffsetDateTime,
 }
 
-fn timestamp(value: OffsetDateTime) -> Result<String, DomainError> {
-    value
-        .format(&Rfc3339)
-        .map_err(|error| DomainError::Unexpected(error.to_string()))
+fn book_format(value: &str) -> Result<BookFormat, DomainError> {
+    BookFormat::try_from(value)
+        .map_err(|_| DomainError::Unexpected(format!("unsupported persisted book format: {value}")))
 }
 
-fn format_name(value: &str) -> Result<String, DomainError> {
-    match value {
-        "eBook" => Ok("E_BOOK".to_owned()),
-        "Printed" => Ok("PRINTED".to_owned()),
-        "Unknown" => Ok("UNKNOWN".to_owned()),
-        other => Err(DomainError::Unexpected(format!(
-            "unsupported persisted book format: {other}"
-        ))),
-    }
-}
-
-fn store_name(value: &str) -> Result<String, DomainError> {
-    match value {
-        "Kindle" => Ok("KINDLE".to_owned()),
-        "Unknown" => Ok("UNKNOWN".to_owned()),
-        other => Err(DomainError::Unexpected(format!(
-            "unsupported persisted book store: {other}"
-        ))),
-    }
+fn book_store(value: &str) -> Result<BookStore, DomainError> {
+    BookStore::try_from(value)
+        .map_err(|_| DomainError::Unexpected(format!("unsupported persisted book store: {value}")))
 }
 
 fn book_snapshot(row: &BookRow) -> Result<BackupBookSnapshotProjection, DomainError> {
@@ -133,11 +117,11 @@ fn book_snapshot(row: &BookRow) -> Result<BackupBookSnapshotProjection, DomainEr
         read: row.read,
         owned: row.owned,
         priority: row.priority,
-        format: format_name(&row.format)?,
-        store: store_name(&row.store)?,
-        purchase_date: row.purchase_date.map(|date| date.to_string()),
-        created_at: timestamp(row.created_at)?,
-        updated_at: timestamp(row.updated_at)?,
+        format: book_format(&row.format)?,
+        store: book_store(&row.store)?,
+        purchase_date: row.purchase_date,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     })
 }
 
@@ -158,8 +142,8 @@ async fn current_data(
             id: row.id.to_string(),
             name: row.name,
             yomi: row.yomi,
-            created_at: timestamp(row.created_at)?,
-            updated_at: timestamp(row.updated_at)?,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         })
     })
     .collect::<Result<Vec<_>, DomainError>>()?;
@@ -219,9 +203,8 @@ async fn history(
             .entry(row.operation_id)
             .or_default()
             .books
-            .push(BackupEntityChangeProjection {
-                book_id: Some(row.entity_id.to_string()),
-                author_id: None,
+            .push(BackupBookChangeProjection {
+                book_id: row.entity_id.to_string(),
                 before_revision_number: row.before_revision_number,
                 after_revision_number: row.after_revision_number,
             });
@@ -231,9 +214,8 @@ async fn history(
             .entry(row.operation_id)
             .or_default()
             .authors
-            .push(BackupEntityChangeProjection {
-                book_id: None,
-                author_id: Some(row.entity_id.to_string()),
+            .push(BackupAuthorChangeProjection {
+                author_id: row.entity_id.to_string(),
                 before_revision_number: row.before_revision_number,
                 after_revision_number: row.after_revision_number,
             });
@@ -246,7 +228,7 @@ async fn history(
                 operation_type: row.operation_type,
                 detail: row.detail,
                 undo_of_operation_id: row.undo_of_operation_id.map(|id| id.to_string()),
-                created_at: timestamp(row.created_at)?,
+                created_at: row.created_at,
                 changes: changes.remove(&row.id).unwrap_or_default(),
             })
         })
@@ -283,13 +265,13 @@ async fn history(
                     read: row.read,
                     owned: row.owned,
                     priority: row.priority,
-                    format: format_name(&row.format)?,
-                    store: store_name(&row.store)?,
-                    purchase_date: row.purchase_date.map(|date| date.to_string()),
-                    created_at: timestamp(row.book_created_at)?,
-                    updated_at: timestamp(row.book_updated_at)?,
+                    format: book_format(&row.format)?,
+                    store: book_store(&row.store)?,
+                    purchase_date: row.purchase_date,
+                    created_at: row.book_created_at,
+                    updated_at: row.book_updated_at,
                 },
-                recorded_at: timestamp(row.recorded_at)?,
+                recorded_at: row.recorded_at,
             })
         })
         .collect::<Result<Vec<_>, DomainError>>()?;
@@ -310,10 +292,10 @@ async fn history(
             snapshot: BackupAuthorSnapshotProjection {
                 name: row.name,
                 yomi: row.yomi,
-                created_at: timestamp(row.author_created_at)?,
-                updated_at: timestamp(row.author_updated_at)?,
+                created_at: row.author_created_at,
+                updated_at: row.author_updated_at,
             },
-            recorded_at: timestamp(row.recorded_at)?,
+            recorded_at: row.recorded_at,
         })
     })
     .collect::<Result<Vec<_>, DomainError>>()?;
@@ -356,11 +338,12 @@ impl BackupQueryPort for PgBackupQuery {
 #[cfg(all(test, feature = "test-with-database"))]
 mod tests {
     use sqlx::PgPool;
+    use time::{Date, Month};
     use uuid::Uuid;
 
     use crate::{
-        domain::entity::user::UserId, infrastructure::backup::PgBackupQuery,
-        use_case::port::backup::BackupQueryPort,
+        common::types::BookFormat, domain::entity::user::UserId,
+        infrastructure::backup::PgBackupQuery, use_case::port::backup::BackupQueryPort,
     };
 
     async fn insert_user(pool: &PgPool, id: &str) -> anyhow::Result<()> {
@@ -417,10 +400,10 @@ mod tests {
             vec![first_author.to_string(), second_author.to_string()]
         );
         assert_eq!(
-            data.books[0].snapshot.purchase_date.as_deref(),
-            Some("2026-09-01")
+            data.books[0].snapshot.purchase_date,
+            Some(Date::from_calendar_date(2026, Month::September, 1)?)
         );
-        assert_eq!(data.books[0].snapshot.format, "E_BOOK");
+        assert_eq!(data.books[0].snapshot.format, BookFormat::EBook);
         assert!(
             data.books
                 .iter()

@@ -1,11 +1,57 @@
-use serde::Serialize;
+use serde::{Serialize, Serializer, ser::Error};
+use time::{Date, OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::use_case::port::backup::{
-    BackupAuthorProjection, BackupAuthorRevisionProjection, BackupAuthorSnapshotProjection,
-    BackupBookProjection, BackupBookRevisionProjection, BackupBookSnapshotProjection,
-    BackupChangesProjection, BackupEntityChangeProjection, BackupFullProjection,
-    BackupHistoryProjection, BackupOperationProjection, BackupSnapshotProjection,
+use crate::{
+    common::types::{BookFormat, BookStore},
+    use_case::port::backup::{
+        BackupAuthorChangeProjection, BackupAuthorProjection, BackupAuthorRevisionProjection,
+        BackupAuthorSnapshotProjection, BackupBookChangeProjection, BackupBookProjection,
+        BackupBookRevisionProjection, BackupBookSnapshotProjection, BackupChangesProjection,
+        BackupFullProjection, BackupHistoryProjection, BackupOperationProjection,
+        BackupSnapshotProjection,
+    },
 };
+
+const BACKUP_FORMAT: &str = "bookshelf-backup";
+const BACKUP_VERSION: u32 = 1;
+
+fn serialize_timestamp<S>(value: &OffsetDateTime, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&value.format(&Rfc3339).map_err(S::Error::custom)?)
+}
+
+fn serialize_optional_date<S>(value: &Option<Date>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(value) => serializer.serialize_some(&value.to_string()),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn serialize_book_format<S>(value: &BookFormat, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(match value {
+        BookFormat::EBook => "E_BOOK",
+        BookFormat::Printed => "PRINTED",
+        BookFormat::Unknown => "UNKNOWN",
+    })
+}
+
+fn serialize_book_store<S>(value: &BookStore, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(match value {
+        BookStore::Kindle => "KINDLE",
+        BookStore::Unknown => "UNKNOWN",
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,8 +59,10 @@ pub struct BackupAuthor {
     pub id: String,
     pub name: String,
     pub yomi: String,
-    pub created_at: String,
-    pub updated_at: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub created_at: OffsetDateTime,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -26,11 +74,16 @@ pub struct BackupBookSnapshot {
     pub read: bool,
     pub owned: bool,
     pub priority: i32,
-    pub format: String,
-    pub store: String,
-    pub purchase_date: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    #[serde(serialize_with = "serialize_book_format")]
+    pub format: BookFormat,
+    #[serde(serialize_with = "serialize_book_store")]
+    pub store: BookStore,
+    #[serde(serialize_with = "serialize_optional_date")]
+    pub purchase_date: Option<Date>,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub created_at: OffsetDateTime,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -47,7 +100,8 @@ pub struct BackupBookRevision {
     pub book_id: String,
     pub revision_number: i32,
     pub snapshot: BackupBookSnapshot,
-    pub recorded_at: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub recorded_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -55,8 +109,10 @@ pub struct BackupBookRevision {
 pub struct BackupAuthorSnapshot {
     pub name: String,
     pub yomi: String,
-    pub created_at: String,
-    pub updated_at: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub created_at: OffsetDateTime,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -65,24 +121,30 @@ pub struct BackupAuthorRevision {
     pub author_id: String,
     pub revision_number: i32,
     pub snapshot: BackupAuthorSnapshot,
-    pub recorded_at: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub recorded_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BackupEntityChange {
-    #[serde(rename = "bookId", skip_serializing_if = "Option::is_none")]
-    pub book_id: Option<String>,
-    #[serde(rename = "authorId", skip_serializing_if = "Option::is_none")]
-    pub author_id: Option<String>,
+pub struct BackupBookChange {
+    pub book_id: String,
+    pub before_revision_number: Option<i32>,
+    pub after_revision_number: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupAuthorChange {
+    pub author_id: String,
     pub before_revision_number: Option<i32>,
     pub after_revision_number: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct BackupChanges {
-    pub books: Vec<BackupEntityChange>,
-    pub authors: Vec<BackupEntityChange>,
+    pub books: Vec<BackupBookChange>,
+    pub authors: Vec<BackupAuthorChange>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -93,7 +155,8 @@ pub struct BackupOperation {
     pub operation_type: String,
     pub detail: Option<serde_json::Value>,
     pub undo_of_operation_id: Option<String>,
-    pub created_at: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub created_at: OffsetDateTime,
     pub changes: BackupChanges,
 }
 
@@ -106,45 +169,58 @@ pub struct BackupHistory {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BackupData {
+pub struct BackupSnapshotData {
     pub authors: Vec<BackupAuthor>,
     pub books: Vec<BackupBook>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub history: Option<BackupHistory>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BackupScope {
-    Snapshot,
-    Full,
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct BackupFullData {
+    pub authors: Vec<BackupAuthor>,
+    pub books: Vec<BackupBook>,
+    pub history: BackupHistory,
 }
 
-impl BackupScope {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Snapshot => "snapshot",
-            Self::Full => "full",
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupSnapshotEnvelope {
+    format: &'static str,
+    version: u32,
+    scope: &'static str,
+    #[serde(serialize_with = "serialize_timestamp")]
+    exported_at: OffsetDateTime,
+    data: BackupSnapshotData,
+}
+
+impl BackupSnapshotEnvelope {
+    pub fn new(exported_at: OffsetDateTime, data: BackupSnapshotData) -> Self {
+        Self {
+            format: BACKUP_FORMAT,
+            version: BACKUP_VERSION,
+            scope: "snapshot",
+            exported_at,
+            data,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BackupEnvelope {
-    pub format: &'static str,
-    pub version: u32,
-    pub scope: BackupScope,
-    pub exported_at: String,
-    pub data: BackupData,
+pub struct BackupFullEnvelope {
+    format: &'static str,
+    version: u32,
+    scope: &'static str,
+    #[serde(serialize_with = "serialize_timestamp")]
+    exported_at: OffsetDateTime,
+    data: BackupFullData,
 }
 
-impl BackupEnvelope {
-    pub fn new(scope: BackupScope, exported_at: String, data: BackupData) -> Self {
+impl BackupFullEnvelope {
+    pub fn new(exported_at: OffsetDateTime, data: BackupFullData) -> Self {
         Self {
-            format: "bookshelf-backup",
-            version: 1,
-            scope,
+            format: BACKUP_FORMAT,
+            version: BACKUP_VERSION,
+            scope: "full",
             exported_at,
             data,
         }
@@ -223,10 +299,19 @@ impl From<BackupAuthorRevisionProjection> for BackupAuthorRevision {
     }
 }
 
-impl From<BackupEntityChangeProjection> for BackupEntityChange {
-    fn from(value: BackupEntityChangeProjection) -> Self {
+impl From<BackupBookChangeProjection> for BackupBookChange {
+    fn from(value: BackupBookChangeProjection) -> Self {
         Self {
             book_id: value.book_id,
+            before_revision_number: value.before_revision_number,
+            after_revision_number: value.after_revision_number,
+        }
+    }
+}
+
+impl From<BackupAuthorChangeProjection> for BackupAuthorChange {
+    fn from(value: BackupAuthorChangeProjection) -> Self {
+        Self {
             author_id: value.author_id,
             before_revision_number: value.before_revision_number,
             after_revision_number: value.after_revision_number,
@@ -266,22 +351,21 @@ impl From<BackupHistoryProjection> for BackupHistory {
     }
 }
 
-impl From<BackupSnapshotProjection> for BackupData {
+impl From<BackupSnapshotProjection> for BackupSnapshotData {
     fn from(value: BackupSnapshotProjection) -> Self {
         Self {
             authors: value.authors.into_iter().map(Into::into).collect(),
             books: value.books.into_iter().map(Into::into).collect(),
-            history: None,
         }
     }
 }
 
-impl From<BackupFullProjection> for BackupData {
+impl From<BackupFullProjection> for BackupFullData {
     fn from(value: BackupFullProjection) -> Self {
         Self {
             authors: value.authors.into_iter().map(Into::into).collect(),
             books: value.books.into_iter().map(Into::into).collect(),
-            history: Some(value.history.into()),
+            history: value.history.into(),
         }
     }
 }
@@ -289,12 +373,20 @@ impl From<BackupFullProjection> for BackupData {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use time::{Date, Month, OffsetDateTime, format_description::well_known::Rfc3339};
+
+    use crate::common::types::{BookFormat, BookStore};
 
     use super::{
-        BackupAuthor, BackupAuthorRevision, BackupAuthorSnapshot, BackupBook, BackupBookRevision,
-        BackupBookSnapshot, BackupChanges, BackupData, BackupEntityChange, BackupEnvelope,
-        BackupHistory, BackupOperation, BackupScope,
+        BackupAuthor, BackupAuthorChange, BackupAuthorRevision, BackupAuthorSnapshot, BackupBook,
+        BackupBookChange, BackupBookRevision, BackupBookSnapshot, BackupChanges, BackupFullData,
+        BackupFullEnvelope, BackupHistory, BackupOperation, BackupSnapshotData,
+        BackupSnapshotEnvelope,
     };
+
+    fn timestamp(value: &str) -> OffsetDateTime {
+        OffsetDateTime::parse(value, &Rfc3339).expect("valid timestamp")
+    }
 
     fn book_snapshot(title: &str) -> BackupBookSnapshot {
         BackupBookSnapshot {
@@ -304,48 +396,45 @@ mod tests {
             read: true,
             owned: false,
             priority: 42,
-            format: "E_BOOK".to_owned(),
-            store: "KINDLE".to_owned(),
-            purchase_date: Some("2026-09-10".to_owned()),
-            created_at: "2026-09-10T01:00:00Z".to_owned(),
-            updated_at: "2026-09-10T02:00:00Z".to_owned(),
+            format: BookFormat::EBook,
+            store: BookStore::Kindle,
+            purchase_date: Some(Date::from_calendar_date(2026, Month::September, 10).unwrap()),
+            created_at: timestamp("2026-09-10T01:00:00Z"),
+            updated_at: timestamp("2026-09-10T02:00:00Z"),
         }
     }
 
     #[test]
     fn full_envelope_matches_the_complete_v1_json_contract() {
-        let actual = serde_json::to_value(BackupEnvelope::new(
-            BackupScope::Full,
-            "2026-09-11T03:00:00Z".to_owned(),
-            BackupData {
+        let actual = serde_json::to_value(BackupFullEnvelope::new(
+            timestamp("2026-09-11T03:00:00Z"),
+            BackupFullData {
                 authors: vec![BackupAuthor {
                     id: "author-1".to_owned(),
                     name: "Author".to_owned(),
                     yomi: "オーサー".to_owned(),
-                    created_at: "2026-09-10T00:00:00Z".to_owned(),
-                    updated_at: "2026-09-10T00:30:00Z".to_owned(),
+                    created_at: timestamp("2026-09-10T00:00:00Z"),
+                    updated_at: timestamp("2026-09-10T00:30:00Z"),
                 }],
                 books: vec![BackupBook {
                     id: "book-1".to_owned(),
                     snapshot: book_snapshot("Current Book"),
                 }],
-                history: Some(BackupHistory {
+                history: BackupHistory {
                     operations: vec![BackupOperation {
                         id: "operation-2".to_owned(),
                         operation_type: "undo".to_owned(),
                         detail: Some(json!({"reason": "fixture"})),
                         undo_of_operation_id: Some("operation-1".to_owned()),
-                        created_at: "2026-09-10T02:00:00Z".to_owned(),
+                        created_at: timestamp("2026-09-10T02:00:00Z"),
                         changes: BackupChanges {
-                            books: vec![BackupEntityChange {
-                                book_id: Some("book-1".to_owned()),
-                                author_id: None,
+                            books: vec![BackupBookChange {
+                                book_id: "book-1".to_owned(),
                                 before_revision_number: None,
                                 after_revision_number: Some(2),
                             }],
-                            authors: vec![BackupEntityChange {
-                                book_id: None,
-                                author_id: Some("author-1".to_owned()),
+                            authors: vec![BackupAuthorChange {
+                                author_id: "author-1".to_owned(),
                                 before_revision_number: Some(1),
                                 after_revision_number: None,
                             }],
@@ -355,7 +444,7 @@ mod tests {
                         book_id: "book-1".to_owned(),
                         revision_number: 2,
                         snapshot: book_snapshot("Revision Book"),
-                        recorded_at: "2026-09-10T02:00:01Z".to_owned(),
+                        recorded_at: timestamp("2026-09-10T02:00:01Z"),
                     }],
                     author_revisions: vec![BackupAuthorRevision {
                         author_id: "author-1".to_owned(),
@@ -363,12 +452,12 @@ mod tests {
                         snapshot: BackupAuthorSnapshot {
                             name: "Author".to_owned(),
                             yomi: "オーサー".to_owned(),
-                            created_at: "2026-09-10T00:00:00Z".to_owned(),
-                            updated_at: "2026-09-10T00:30:00Z".to_owned(),
+                            created_at: timestamp("2026-09-10T00:00:00Z"),
+                            updated_at: timestamp("2026-09-10T00:30:00Z"),
                         },
-                        recorded_at: "2026-09-10T00:30:01Z".to_owned(),
+                        recorded_at: timestamp("2026-09-10T00:30:01Z"),
                     }],
-                }),
+                },
             },
         ))
         .expect("backup envelope is serializable");
@@ -458,13 +547,11 @@ mod tests {
 
     #[test]
     fn snapshot_omits_the_history_key() {
-        let actual = serde_json::to_value(BackupEnvelope::new(
-            BackupScope::Snapshot,
-            "2026-09-11T03:00:00Z".to_owned(),
-            BackupData {
+        let actual = serde_json::to_value(BackupSnapshotEnvelope::new(
+            timestamp("2026-09-11T03:00:00Z"),
+            BackupSnapshotData {
                 authors: vec![],
                 books: vec![],
-                history: None,
             },
         ))
         .expect("backup envelope is serializable");

@@ -1,15 +1,19 @@
 use async_trait::async_trait;
 use mockall::automock;
+use time::{Date, OffsetDateTime};
 
-use crate::domain::{entity::user::UserId, error::DomainError};
+use crate::{
+    common::types::{BookFormat, BookStore},
+    domain::{entity::user::UserId, error::DomainError},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackupAuthorProjection {
     pub id: String,
     pub name: String,
     pub yomi: String,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,11 +24,11 @@ pub struct BackupBookSnapshotProjection {
     pub read: bool,
     pub owned: bool,
     pub priority: i32,
-    pub format: String,
-    pub store: String,
-    pub purchase_date: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub format: BookFormat,
+    pub store: BookStore,
+    pub purchase_date: Option<Date>,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,15 +42,15 @@ pub struct BackupBookRevisionProjection {
     pub book_id: String,
     pub revision_number: i32,
     pub snapshot: BackupBookSnapshotProjection,
-    pub recorded_at: String,
+    pub recorded_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackupAuthorSnapshotProjection {
     pub name: String,
     pub yomi: String,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,21 +58,27 @@ pub struct BackupAuthorRevisionProjection {
     pub author_id: String,
     pub revision_number: i32,
     pub snapshot: BackupAuthorSnapshotProjection,
-    pub recorded_at: String,
+    pub recorded_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BackupEntityChangeProjection {
-    pub book_id: Option<String>,
-    pub author_id: Option<String>,
+pub struct BackupBookChangeProjection {
+    pub book_id: String,
+    pub before_revision_number: Option<i32>,
+    pub after_revision_number: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackupAuthorChangeProjection {
+    pub author_id: String,
     pub before_revision_number: Option<i32>,
     pub after_revision_number: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BackupChangesProjection {
-    pub books: Vec<BackupEntityChangeProjection>,
-    pub authors: Vec<BackupEntityChangeProjection>,
+    pub books: Vec<BackupBookChangeProjection>,
+    pub authors: Vec<BackupAuthorChangeProjection>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,7 +87,7 @@ pub struct BackupOperationProjection {
     pub operation_type: String,
     pub detail: Option<serde_json::Value>,
     pub undo_of_operation_id: Option<String>,
-    pub created_at: String,
+    pub created_at: OffsetDateTime,
     pub changes: BackupChangesProjection,
 }
 

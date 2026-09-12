@@ -4,51 +4,62 @@ use axum::{
     http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
+use serde::Serialize;
 use serde_json::json;
-use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
+use time::{OffsetDateTime, UtcOffset};
 
 use crate::{
     dependency_injection::BackupExport,
     domain::entity::user::UserId,
     presentation::extractor::claims::Claims,
-    use_case::dto::backup::{BackupEnvelope, BackupScope},
+    use_case::dto::backup::{BackupFullEnvelope, BackupSnapshotEnvelope},
 };
 
 pub async fn snapshot_handler(
     claims: Claims,
     Extension(query): Extension<BackupExport>,
 ) -> Response {
-    export(claims, query, BackupScope::Snapshot).await
+    let user_id = match authenticated_user_id(claims) {
+        Some(user_id) => user_id,
+        None => return internal_error(),
+    };
+    let now = OffsetDateTime::now_utc().to_offset(UtcOffset::UTC);
+    let data = match query.snapshot(&user_id).await {
+        Ok(data) => data,
+        Err(error) => {
+            tracing::error!(error = ?error, scope = "snapshot", "backup export failed");
+            return internal_error();
+        }
+    };
+    backup_response(BackupSnapshotEnvelope::new(now, data), "snapshot", now)
 }
 
 pub async fn full_handler(claims: Claims, Extension(query): Extension<BackupExport>) -> Response {
-    export(claims, query, BackupScope::Full).await
-}
-
-async fn export(claims: Claims, query: BackupExport, scope: BackupScope) -> Response {
-    let user_id = match UserId::new(claims.sub) {
-        Ok(user_id) => user_id,
-        Err(error) => {
-            tracing::error!(error = ?error, "authenticated subject is invalid");
-            return internal_error();
-        }
+    let user_id = match authenticated_user_id(claims) {
+        Some(user_id) => user_id,
+        None => return internal_error(),
     };
     let now = OffsetDateTime::now_utc().to_offset(UtcOffset::UTC);
-    let data = match query.export(&user_id, scope).await {
+    let data = match query.full(&user_id).await {
         Ok(data) => data,
         Err(error) => {
-            tracing::error!(error = ?error, scope = scope.as_str(), "backup export failed");
+            tracing::error!(error = ?error, scope = "full", "backup export failed");
             return internal_error();
         }
     };
-    let exported_at = match now.format(&Rfc3339) {
-        Ok(value) => value,
-        Err(error) => {
-            tracing::error!(error = ?error, "backup timestamp formatting failed");
-            return internal_error();
-        }
-    };
-    let body = match serde_json::to_vec(&BackupEnvelope::new(scope, exported_at, data)) {
+    backup_response(BackupFullEnvelope::new(now, data), "full", now)
+}
+
+fn authenticated_user_id(claims: Claims) -> Option<UserId> {
+    UserId::new(claims.sub)
+        .inspect_err(|error| {
+            tracing::error!(error = ?error, "authenticated subject is invalid");
+        })
+        .ok()
+}
+
+fn backup_response<T: Serialize>(envelope: T, scope: &str, now: OffsetDateTime) -> Response {
+    let body = match serde_json::to_vec(&envelope) {
         Ok(body) => body,
         Err(error) => {
             tracing::error!(error = ?error, "backup serialization failed");
@@ -57,7 +68,7 @@ async fn export(claims: Claims, query: BackupExport, scope: BackupScope) -> Resp
     };
     let filename = format!(
         "bookshelf-backup-{}-{:04}-{:02}-{:02}T{:02}{:02}{:02}Z.json",
-        scope.as_str(),
+        scope,
         now.year(),
         u8::from(now.month()),
         now.day(),

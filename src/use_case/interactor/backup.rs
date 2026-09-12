@@ -1,7 +1,7 @@
 use crate::{
     domain::{entity::user::UserId, error::DomainError},
     use_case::{
-        dto::backup::{BackupData, BackupScope},
+        dto::backup::{BackupFullData, BackupSnapshotData},
         port::backup::BackupQueryPort,
     },
 };
@@ -16,15 +16,12 @@ impl<Q: BackupQueryPort> BackupInteractor<Q> {
         Self { query }
     }
 
-    pub async fn export(
-        &self,
-        user_id: &UserId,
-        scope: BackupScope,
-    ) -> Result<BackupData, DomainError> {
-        match scope {
-            BackupScope::Snapshot => Ok(self.query.snapshot(user_id).await?.into()),
-            BackupScope::Full => Ok(self.query.full(user_id).await?.into()),
-        }
+    pub async fn snapshot(&self, user_id: &UserId) -> Result<BackupSnapshotData, DomainError> {
+        Ok(self.query.snapshot(user_id).await?.into())
+    }
+
+    pub async fn full(&self, user_id: &UserId) -> Result<BackupFullData, DomainError> {
+        Ok(self.query.full(user_id).await?.into())
     }
 }
 
@@ -32,21 +29,27 @@ impl<Q: BackupQueryPort> BackupInteractor<Q> {
 mod tests {
     use mockall::predicate::eq;
     use serde_json::json;
+    use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
     use crate::{
+        common::types::{BookFormat, BookStore},
         domain::entity::user::UserId,
         use_case::{
-            dto::backup::BackupScope,
             interactor::backup::BackupInteractor,
             port::backup::{
-                BackupAuthorProjection, BackupAuthorRevisionProjection,
-                BackupAuthorSnapshotProjection, BackupBookProjection, BackupBookRevisionProjection,
-                BackupBookSnapshotProjection, BackupChangesProjection,
-                BackupEntityChangeProjection, BackupFullProjection, BackupHistoryProjection,
-                BackupOperationProjection, BackupSnapshotProjection, MockBackupQueryPort,
+                BackupAuthorChangeProjection, BackupAuthorProjection,
+                BackupAuthorRevisionProjection, BackupAuthorSnapshotProjection,
+                BackupBookChangeProjection, BackupBookProjection, BackupBookRevisionProjection,
+                BackupBookSnapshotProjection, BackupChangesProjection, BackupFullProjection,
+                BackupHistoryProjection, BackupOperationProjection, BackupSnapshotProjection,
+                MockBackupQueryPort,
             },
         },
     };
+
+    fn timestamp(value: &str) -> OffsetDateTime {
+        OffsetDateTime::parse(value, &Rfc3339).expect("valid timestamp")
+    }
 
     #[tokio::test]
     async fn snapshot_maps_the_query_projection_to_the_external_dto() {
@@ -62,20 +65,19 @@ mod tests {
                         id: "author-id".to_owned(),
                         name: "Author".to_owned(),
                         yomi: "".to_owned(),
-                        created_at: "2026-09-11T00:00:00Z".to_owned(),
-                        updated_at: "2026-09-11T00:00:00Z".to_owned(),
+                        created_at: timestamp("2026-09-11T00:00:00Z"),
+                        updated_at: timestamp("2026-09-11T00:00:00Z"),
                     }],
                     books: vec![],
                 })
             });
 
         let data = BackupInteractor::new(query)
-            .export(&user_id, BackupScope::Snapshot)
+            .snapshot(&user_id)
             .await
             .expect("backup query succeeds");
 
         assert_eq!(data.authors[0].id, "author-id");
-        assert!(data.history.is_none());
     }
 
     #[tokio::test]
@@ -99,11 +101,11 @@ mod tests {
             });
 
         let data = BackupInteractor::new(query)
-            .export(&user_id, BackupScope::Full)
+            .full(&user_id)
             .await
             .expect("backup query succeeds");
 
-        assert!(data.history.is_some());
+        assert!(data.history.operations.is_empty());
     }
 
     #[tokio::test]
@@ -116,11 +118,11 @@ mod tests {
             read: true,
             owned: true,
             priority: 7,
-            format: "PRINTED".to_owned(),
-            store: "UNKNOWN".to_owned(),
+            format: BookFormat::Printed,
+            store: BookStore::Unknown,
             purchase_date: None,
-            created_at: "2026-09-10T00:00:00Z".to_owned(),
-            updated_at: "2026-09-11T00:00:00Z".to_owned(),
+            created_at: timestamp("2026-09-10T00:00:00Z"),
+            updated_at: timestamp("2026-09-11T00:00:00Z"),
         };
         let mut query = MockBackupQueryPort::new();
         query
@@ -140,17 +142,15 @@ mod tests {
                             operation_type: "update_book".to_owned(),
                             detail: Some(json!({"source": "fixture"})),
                             undo_of_operation_id: Some("previous-operation-id".to_owned()),
-                            created_at: "2026-09-11T00:00:01Z".to_owned(),
+                            created_at: timestamp("2026-09-11T00:00:01Z"),
                             changes: BackupChangesProjection {
-                                books: vec![BackupEntityChangeProjection {
-                                    book_id: Some("book-id".to_owned()),
-                                    author_id: None,
+                                books: vec![BackupBookChangeProjection {
+                                    book_id: "book-id".to_owned(),
                                     before_revision_number: Some(1),
                                     after_revision_number: Some(2),
                                 }],
-                                authors: vec![BackupEntityChangeProjection {
-                                    book_id: None,
-                                    author_id: Some("author-id".to_owned()),
+                                authors: vec![BackupAuthorChangeProjection {
+                                    author_id: "author-id".to_owned(),
                                     before_revision_number: None,
                                     after_revision_number: Some(1),
                                 }],
@@ -160,7 +160,7 @@ mod tests {
                             book_id: "book-id".to_owned(),
                             revision_number: 2,
                             snapshot: book_snapshot(),
-                            recorded_at: "2026-09-11T00:00:02Z".to_owned(),
+                            recorded_at: timestamp("2026-09-11T00:00:02Z"),
                         }],
                         author_revisions: vec![BackupAuthorRevisionProjection {
                             author_id: "author-id".to_owned(),
@@ -168,23 +168,23 @@ mod tests {
                             snapshot: BackupAuthorSnapshotProjection {
                                 name: "Author".to_owned(),
                                 yomi: "".to_owned(),
-                                created_at: "2026-09-10T00:00:00Z".to_owned(),
-                                updated_at: "2026-09-10T00:00:00Z".to_owned(),
+                                created_at: timestamp("2026-09-10T00:00:00Z"),
+                                updated_at: timestamp("2026-09-10T00:00:00Z"),
                             },
-                            recorded_at: "2026-09-10T00:00:01Z".to_owned(),
+                            recorded_at: timestamp("2026-09-10T00:00:01Z"),
                         }],
                     },
                 })
             });
 
         let data = BackupInteractor::new(query)
-            .export(&user_id, BackupScope::Full)
+            .full(&user_id)
             .await
             .expect("backup query succeeds");
 
         assert_eq!(data.books[0].id, "book-id");
         assert_eq!(data.books[0].snapshot.title, "Updated Book");
-        let history = data.history.expect("full backup history");
+        let history = data.history;
         let operation = &history.operations[0];
         assert_eq!(operation.operation_type, "update_book");
         assert_eq!(operation.detail, Some(json!({"source": "fixture"})));
@@ -192,16 +192,10 @@ mod tests {
             operation.undo_of_operation_id.as_deref(),
             Some("previous-operation-id")
         );
-        assert_eq!(
-            operation.changes.books[0].book_id.as_deref(),
-            Some("book-id")
-        );
+        assert_eq!(operation.changes.books[0].book_id, "book-id");
         assert_eq!(operation.changes.books[0].before_revision_number, Some(1));
         assert_eq!(operation.changes.books[0].after_revision_number, Some(2));
-        assert_eq!(
-            operation.changes.authors[0].author_id.as_deref(),
-            Some("author-id")
-        );
+        assert_eq!(operation.changes.authors[0].author_id, "author-id");
         assert_eq!(history.book_revisions[0].snapshot.author_ids, ["author-id"]);
         assert_eq!(history.author_revisions[0].snapshot.name, "Author");
     }
