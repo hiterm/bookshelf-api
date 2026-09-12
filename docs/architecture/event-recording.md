@@ -4,6 +4,9 @@ This document describes the current mutation-history architecture.
 Operation/Revision is the authoritative write model and the only GraphQL
 history contract. The legacy Event/EventSet code and tables have been removed.
 
+The general dependency rules for domain, use-case, infrastructure, and
+presentation code are defined in [`layers.md`](layers.md).
+
 ## Invariant
 
 Every Book or Author create, update, delete, restore, import, or merge creates

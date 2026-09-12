@@ -6,13 +6,14 @@ use axum::{
 };
 use bookshelf_api::{
     dependency_injection::dependency_injection,
+    presentation::handler::backup::{full_handler, snapshot_handler},
     presentation::handler::graphql::{graphql_handler, graphql_playground_handler},
     presentation::handler::user::me_handler,
     presentation::{app_state::AppState, extractor::claims::JwtConfig},
 };
 use http::{
     HeaderValue, Method,
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+    header::{ACCEPT, AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_TYPE},
 };
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
@@ -37,7 +38,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     sqlx::migrate!().run(&pool).await?;
 
-    let (author_query, book_query, history_query, schema) = dependency_injection(pool);
+    let (author_query, book_query, history_query, backup_query, schema) =
+        dependency_injection(pool);
 
     let jwt_config = JwtConfig::from_env()?;
     let jwks_cache = moka::future::Cache::builder()
@@ -60,7 +62,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let cors_layer = CorsLayer::new()
         .allow_origin(allowed_origins)
         .allow_methods([Method::GET, Method::POST])
-        .allow_headers(vec![AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
+        .allow_headers(vec![AUTHORIZATION, ACCEPT, CONTENT_TYPE])
+        .expose_headers([CONTENT_DISPOSITION]);
 
     // build our application with routes
     let app = Router::new()
@@ -69,12 +72,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .route("/graphql", post(graphql_handler))
         .route("/graphql/playground", get(graphql_playground_handler))
         .route("/health", get(|| async { "OK" }))
+        .route("/backup/snapshot", get(snapshot_handler))
+        .route("/backup/full", get(full_handler))
         .with_state(state)
         .layer(
             ServiceBuilder::new()
                 .layer(Extension(author_query))
                 .layer(Extension(book_query))
                 .layer(Extension(history_query))
+                .layer(Extension(backup_query))
                 .layer(Extension(schema))
                 .layer(
                     TraceLayer::new_for_http()

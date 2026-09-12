@@ -426,7 +426,8 @@ mod tests {
         .execute(&pool)
         .await?;
 
-        let (author_query, book_query, _history_query, schema) = dependency_injection(pool);
+        let (author_query, book_query, _history_query, _backup_query, schema) =
+            dependency_injection(pool);
         let claims = Claims {
             sub: "user1".to_string(),
             _permissions: None,
