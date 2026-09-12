@@ -2,8 +2,9 @@
 
 use anyhow::{Context, Result};
 use bookshelf_e2e::{
-    assert_no_graphql_errors, create_test_author, create_test_book, create_test_book_with_event,
-    create_test_user, delete_test_author, delete_test_book, get_server_url, graphql_request,
+    assert_no_graphql_errors, create_test_author, create_test_author_with_event, create_test_book,
+    create_test_book_with_event, create_test_user, delete_test_author, delete_test_book,
+    get_server_url, graphql_request,
 };
 use reqwest::{Client, StatusCode, header};
 use serial_test::serial;
@@ -102,13 +103,26 @@ async fn backup_without_authentication_is_rejected() -> Result<()> {
     Ok(())
 }
 
-async fn assert_backup_is_tenant_isolated(endpoint: &str) -> Result<()> {
+struct TenantIsolationFixture {
+    author_b: String,
+    author_b_revision: i32,
+    author_b_operation: String,
+    book_b: String,
+    book_b_revision: i32,
+    book_b_operation: String,
+}
+
+async fn assert_backup_is_tenant_isolated(
+    endpoint: &str,
+) -> Result<(serde_json::Value, TenantIsolationFixture)> {
     let (_, token_a) = create_test_user().await?;
     let author_a = create_test_author("tenant A backup author", &token_a).await?;
     let book_a = create_test_book("tenant A backup book", &author_a, &token_a).await?;
     let (_, token_b) = create_test_user().await?;
-    let author_b = create_test_author("tenant B backup author", &token_b).await?;
-    let book_b = create_test_book("tenant B backup book", &author_b, &token_b).await?;
+    let (author_b, author_b_revision, author_b_operation) =
+        create_test_author_with_event("tenant B backup author", &token_b).await?;
+    let (book_b, book_b_revision, book_b_operation) =
+        create_test_book_with_event("tenant B backup book", &author_b, &token_b).await?;
 
     let response = Client::new()
         .get(format!("{}{endpoint}", get_server_url()?))
@@ -117,10 +131,15 @@ async fn assert_backup_is_tenant_isolated(endpoint: &str) -> Result<()> {
         .await?;
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = response.json().await?;
-    let serialized = body.to_string();
+    let authors = body["data"]["authors"].as_array().context("data.authors")?;
+    let books = body["data"]["books"].as_array().context("data.books")?;
 
-    assert!(serialized.contains(&author_a));
-    assert!(serialized.contains(&book_a));
+    assert!(authors.iter().any(|author| author["id"] == author_a));
+    assert!(books.iter().any(|book| book["id"] == book_a));
+    assert!(!authors.iter().any(|author| author["id"] == author_b));
+    assert!(!books.iter().any(|book| book["id"] == book_b));
+
+    let serialized = body.to_string();
     assert!(!serialized.contains(&author_b));
     assert!(!serialized.contains(&book_b));
     assert!(!serialized.contains("tenant B backup author"));
@@ -130,19 +149,72 @@ async fn assert_backup_is_tenant_isolated(endpoint: &str) -> Result<()> {
     delete_test_author(&author_a, &token_a).await?;
     delete_test_book(&book_b, &token_b).await?;
     delete_test_author(&author_b, &token_b).await?;
-    Ok(())
+    Ok((
+        body,
+        TenantIsolationFixture {
+            author_b,
+            author_b_revision,
+            author_b_operation,
+            book_b,
+            book_b_revision,
+            book_b_operation,
+        },
+    ))
 }
 
 #[tokio::test]
 #[serial]
 async fn snapshot_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
-    assert_backup_is_tenant_isolated("/backup/snapshot").await
+    assert_backup_is_tenant_isolated("/backup/snapshot")
+        .await
+        .map(|_| ())
 }
 
 #[tokio::test]
 #[serial]
 async fn full_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
-    assert_backup_is_tenant_isolated("/backup/full").await
+    let (body, fixture) = assert_backup_is_tenant_isolated("/backup/full").await?;
+    let history = &body["data"]["history"];
+    let operations = history["operations"]
+        .as_array()
+        .context("data.history.operations")?;
+    let book_revisions = history["bookRevisions"]
+        .as_array()
+        .context("data.history.bookRevisions")?;
+    let author_revisions = history["authorRevisions"]
+        .as_array()
+        .context("data.history.authorRevisions")?;
+
+    assert!(operations.iter().all(|operation| {
+        operation["id"] != fixture.author_b_operation && operation["id"] != fixture.book_b_operation
+    }));
+    assert!(book_revisions.iter().all(|revision| {
+        revision["bookId"] != fixture.book_b
+            || revision["revisionNumber"] != fixture.book_b_revision
+    }));
+    assert!(author_revisions.iter().all(|revision| {
+        revision["authorId"] != fixture.author_b
+            || revision["revisionNumber"] != fixture.author_b_revision
+    }));
+    assert!(operations.iter().all(|operation| {
+        operation["changes"]["books"]
+            .as_array()
+            .is_some_and(|changes| {
+                changes
+                    .iter()
+                    .all(|change| change["bookId"] != fixture.book_b)
+            })
+    }));
+    assert!(operations.iter().all(|operation| {
+        operation["changes"]["authors"]
+            .as_array()
+            .is_some_and(|changes| {
+                changes
+                    .iter()
+                    .all(|change| change["authorId"] != fixture.author_b)
+            })
+    }));
+    Ok(())
 }
 
 #[tokio::test]
