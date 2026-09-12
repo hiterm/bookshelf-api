@@ -22,7 +22,39 @@ fn assert_exact_keys(value: &serde_json::Value, expected: &[&str], context: &str
     Ok(())
 }
 
-fn assert_common_backup_schema(body: &serde_json::Value, scope: &str) -> Result<()> {
+fn assert_no_auth_identity(value: &serde_json::Value, user_id: &str) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, value) in object {
+                let normalized_key = key.replace('_', "").to_ascii_lowercase();
+                assert!(
+                    !matches!(
+                        normalized_key.as_str(),
+                        "userid"
+                            | "providerid"
+                            | "auth0id"
+                            | "authenticationproviderid"
+                            | "sub"
+                            | "subject"
+                    ),
+                    "authentication key leaked into backup: {key}"
+                );
+                assert_no_auth_identity(value, user_id);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                assert_no_auth_identity(value, user_id);
+            }
+        }
+        serde_json::Value::String(value) => {
+            assert_ne!(value, user_id, "authenticated user ID leaked into backup");
+        }
+        _ => {}
+    }
+}
+
+fn assert_common_backup_schema(body: &serde_json::Value, scope: &str, user_id: &str) -> Result<()> {
     assert_exact_keys(
         body,
         &["format", "version", "scope", "exportedAt", "data"],
@@ -31,7 +63,11 @@ fn assert_common_backup_schema(body: &serde_json::Value, scope: &str) -> Result<
     assert_eq!(body["format"], "bookshelf-backup");
     assert_eq!(body["version"], 1);
     assert_eq!(body["scope"], scope);
-    assert!(!body.to_string().contains("user_id"));
+    assert_no_auth_identity(body, user_id);
+    assert!(
+        !body.to_string().contains(user_id),
+        "authenticated user ID leaked into backup"
+    );
     Ok(())
 }
 
@@ -204,7 +240,7 @@ async fn backup_response(token: &str, scope: &str) -> Result<serde_json::Value> 
 #[tokio::test]
 #[serial]
 async fn snapshot_and_full_are_authenticated_json_attachments() -> Result<()> {
-    let (_, token) = create_test_user().await?;
+    let (user_id, token) = create_test_user().await?;
     let author_id = create_test_author("backup author", &token).await?;
     let create_book = format!(
         r#"mutation {{ createBook(bookData: {{
@@ -222,7 +258,7 @@ async fn snapshot_and_full_are_authenticated_json_attachments() -> Result<()> {
 
     for scope in ["snapshot", "full"] {
         let body = backup_response(&token, scope).await?;
-        assert_common_backup_schema(&body, scope)?;
+        assert_common_backup_schema(&body, scope, &user_id)?;
         let author = body["data"]["authors"]
             .as_array()
             .context("data.authors")?
@@ -403,7 +439,7 @@ async fn full_backup_is_tenant_isolated_at_the_http_boundary() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn full_backup_contains_history_generated_by_normal_writes() -> Result<()> {
-    let (_, token) = create_test_user().await?;
+    let (user_id, token) = create_test_user().await?;
     let (author_id, author_revision, author_operation_id) =
         create_test_author_with_event("vertical backup author", &token).await?;
     let (book_id, create_revision, _) =
@@ -436,7 +472,7 @@ async fn full_backup_contains_history_generated_by_normal_writes() -> Result<()>
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = response.json().await?;
     let data = &body["data"];
-    assert_common_backup_schema(&body, "full")?;
+    assert_common_backup_schema(&body, "full", &user_id)?;
     assert_exact_keys(data, &["authors", "books", "history"], "full data")?;
     for author in data["authors"].as_array().context("current Authors")? {
         assert_author_schema(author)?;
