@@ -58,18 +58,16 @@ domain layer to depend on use-case types.
 - **THEN** it depends on a use-case-owned query port implemented by
   infrastructure without introducing a domain-to-use-case dependency
 
-### Requirement: Full backups are consistent and referentially valid
-The system SHALL read all collections through one read-only repeatable database
-snapshot and SHALL emit only unique, internally resolvable entity, Operation,
-Revision, change, author, and undo identities as applicable.
+### Requirement: Full backups use a consistent database snapshot
+The system SHALL read current state, Operations, Revisions, changes, and
+relations through one read-only repeatable database snapshot so every exported
+collection represents the same persisted instant. Backup export SHALL serialize
+the tenant-owned persisted records visible in that snapshot without independently
+revalidating that every stored identity or reference resolves.
 
 #### Scenario: Writes commit during export
 - **WHEN** concurrent writes occur
 - **THEN** every exported collection reflects the same database snapshot
-
-#### Scenario: A reference cannot be resolved
-- **WHEN** exported history contains a dangling change or undo reference
-- **THEN** the request fails instead of downloading an invalid backup
 
 ### Requirement: Backup arrays have deterministic order
 The system SHALL order entities by ID, Operations by `createdAt` then ID,
