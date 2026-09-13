@@ -1,13 +1,18 @@
 # versioned-http-api Specification
 
 ## Purpose
-Define stable version namespaces for non-GraphQL HTTP APIs.
+Define the version namespace used by backup and future explicitly versioned
+non-GraphQL HTTP APIs.
 
 ## Requirements
 
-### Requirement: Non-GraphQL HTTP APIs use a version namespace
-The system SHALL expose version 1 non-GraphQL HTTP APIs below `/v1` while keeping `/graphql` unchanged. HTTP API versions SHALL be independent of format versions carried in response bodies.
+### Requirement: Versioned non-GraphQL HTTP APIs use a namespace
+The system SHALL expose the backup APIs at `/v1/backup/snapshot` and
+`/v1/backup/full`. Future non-GraphQL APIs explicitly introduced as version 1
+APIs SHALL use `/v1`; existing `/me` and `/health` routes remain outside that
+namespace, and `/graphql` remains unchanged. HTTP API versions SHALL be
+independent of format versions carried in response bodies.
 
 #### Scenario: Address a versioned HTTP API
-- **WHEN** a client requests a version 1 non-GraphQL HTTP capability
+- **WHEN** a client requests backup or another explicitly versioned version 1 non-GraphQL HTTP capability
 - **THEN** its route begins with `/v1`

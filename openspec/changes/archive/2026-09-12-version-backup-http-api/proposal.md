@@ -1,7 +1,8 @@
 ## Why
 
-Non-GraphQL HTTP APIs need an explicit version namespace, and backup responses
-should remain ordinary JSON APIs rather than owning browser filenames.
+Backup and future explicitly versioned non-GraphQL HTTP APIs need a version
+namespace, and backup responses should remain ordinary JSON APIs rather than
+owning browser filenames.
 
 ## What Changes
 
@@ -13,7 +14,7 @@ should remain ordinary JSON APIs rather than owning browser filenames.
 
 ### New Capabilities
 
-- `versioned-http-api`: Defines `/v1` as the namespace for non-GraphQL HTTP APIs.
+- `versioned-http-api`: Defines `/v1` for backup and future explicitly versioned non-GraphQL HTTP APIs without moving `/me` or `/health`.
 
 ### Modified Capabilities
 

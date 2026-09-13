@@ -4,13 +4,14 @@ Backup is the first authenticated non-GraphQL JSON API. Its current unversioned 
 
 ## Goals / Non-Goals
 
-**Goals:** establish `/v1`, return ordinary JSON, and preserve the backup body and security behavior.
+**Goals:** establish `/v1` for backup and future explicitly versioned APIs,
+return ordinary JSON, and preserve the backup body and security behavior.
 
 **Non-Goals:** GraphQL changes, compatibility routes, streaming, compression, or backup format changes.
 
 ## Decisions
 
-- Nest a small backup router under `/v1`; `/graphql` remains unchanged.
+- Nest a small backup router under `/v1`; `/me`, `/health`, and `/graphql` remain unchanged.
 - Remove `Content-Disposition` and its CORS exposure. The frontend owns filenames.
 - Treat `/v1` and body `version: 1` as independent HTTP and file-format versions.
 
