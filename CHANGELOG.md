@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.17.1](https://github.com/hiterm/bookshelf-api/compare/2.17.0...2.17.1) - 2026-09-13
+
+### Other Changes
+- Version backup HTTP endpoints by @hiterm in https://github.com/hiterm/bookshelf-api/pull/342
+
 ## [2.17.0](https://github.com/hiterm/bookshelf-api/compare/2.16.1...2.17.0) - 2026-09-12
 
 ### Other Changes
