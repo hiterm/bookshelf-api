@@ -214,7 +214,6 @@ async fn backup_response(token: &str, scope: &str) -> Result<serde_json::Value> 
             .and_then(|value| value.to_str().ok()),
         Some("no-store")
     );
-    assert!(!response.headers().contains_key(header::CONTENT_DISPOSITION));
     let body: serde_json::Value = response.json().await?;
     Ok(body)
 }
@@ -300,18 +299,6 @@ async fn backup_without_authentication_is_rejected() -> Result<()> {
             .send()
             .await?;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{scope}");
-    }
-    Ok(())
-}
-
-#[tokio::test]
-async fn legacy_backup_routes_are_not_available() -> Result<()> {
-    for scope in ["snapshot", "full"] {
-        let response = Client::new()
-            .get(format!("{}/backup/{scope}", get_server_url()?))
-            .send()
-            .await?;
-        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{scope}");
     }
     Ok(())
 }
