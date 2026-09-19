@@ -1,7 +1,9 @@
 # main-container-image Specification
 
 ## Purpose
-TBD - created by archiving change publish-main-container-image. Update Purpose after archive.
+Define how API CI publishes a traceable production image for the current
+`main` HEAD and validates the published registry artifact without applying
+release-image guarantees.
 ## Requirements
 ### Requirement: Main pushes publish a rolling production image
 The API CI workflow SHALL publish the production Docker image from every push
@@ -48,4 +50,3 @@ validation-before-publication contract.
 #### Scenario: A release image is published
 - **WHEN** the release workflow processes a release image
 - **THEN** its existing validation and publication gates apply independently of the rolling `main` image
-
