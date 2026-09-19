@@ -86,13 +86,14 @@ jobs:
           image=ghcr.io/hiterm/bookshelf-api:main
           docker tag bookshelf-api:test "$image"
           docker push "$image"
+          digest_ref=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")
+          echo "TEST_IMAGE=$digest_ref" >> "$GITHUB_ENV"
           docker image rm bookshelf-api:test "$image"
-          docker pull "$image"
+          docker pull "$digest_ref"
 
       - name: Run container and health check
-        env:
-          TEST_IMAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'ghcr.io/hiterm/bookshelf-api:main' || 'bookshelf-api:test' }}
         run: |
+          test_image=${TEST_IMAGE:-bookshelf-api:test}
           docker network create test-network
 
           docker run -d --name postgres --network test-network \
@@ -117,7 +118,7 @@ jobs:
             -e RUST_LOG=debug \
             -e JWT_AUDIENCE=dummy \
             -e JWT_DOMAIN=dummy \
-            "$TEST_IMAGE"
+            "$test_image"
 
           for i in {1..20}; do
             if curl --fail http://localhost:8080/health 2>/dev/null; then
