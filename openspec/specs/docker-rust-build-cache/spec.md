@@ -7,7 +7,7 @@ cache mounts used by Docker BuildKit builds.
 ## Requirements
 
 ### Requirement: Docker Cargo caches advance after successful builds
-The CI and deployment Docker build workflows SHALL use a unique primary GitHub Actions cache key for each commit and SHALL restore the most recently created cache from the same compatibility lineage when an exact key is unavailable.
+The CI and deployment Docker build workflows SHALL use a unique primary GitHub Actions cache key for each commit and SHALL prefer the most recently created cache with the same Dockerfile, workspace manifests, and lockfile when an exact key is unavailable.
 
 #### Scenario: Ordinary source change restores and advances the cache
 - **WHEN** a workflow builds a new commit whose Dockerfile and Cargo.lock match a previously cached build
@@ -17,8 +17,8 @@ The CI and deployment Docker build workflows SHALL use a unique primary GitHub A
 - **WHEN** a workflow reruns a commit whose complete primary cache key already exists
 - **THEN** it restores that exact cache and MAY skip post-build cache extraction because the immutable key cannot be updated
 
-### Requirement: Docker Cargo cache compatibility is bounded by build inputs
-The CI and deployment Docker build workflows MUST include both Dockerfile and Cargo.lock content in the cache compatibility boundary and MUST NOT restore Cargo target caches through a broader fallback that omits that boundary.
+### Requirement: Docker Cargo cache restoration uses staged boundaries
+The CI and deployment Docker build workflows MUST use Dockerfile content as the hard cache-lineage boundary, MUST include every workspace Cargo.toml and Cargo.lock in the most-specific restore prefix, and SHALL fall back first across lockfile changes and then across manifest changes within the same Dockerfile lineage.
 
 #### Scenario: Docker build definition changes
 - **WHEN** Dockerfile changes
@@ -26,7 +26,11 @@ The CI and deployment Docker build workflows MUST include both Dockerfile and Ca
 
 #### Scenario: Locked dependencies change
 - **WHEN** Cargo.lock changes
-- **THEN** the workflow does not restore a Cargo target cache created for the previous lockfile content
+- **THEN** the workflow may restore the newest cache with matching Dockerfile and workspace manifests so Cargo can reuse compatible artifacts
+
+#### Scenario: Workspace manifest changes
+- **WHEN** any workspace Cargo.toml changes
+- **THEN** the workflow may restore the newest cache with matching Dockerfile so Cargo can reuse compatible artifacts
 
 ### Requirement: Cache mechanisms retain separate responsibilities
 The workflows SHALL retain the BuildKit GHA layer cache alongside buildkit-cache-dance, with cache-dance persisting Dockerfile cache-mount contents and the GHA backend persisting BuildKit layers.

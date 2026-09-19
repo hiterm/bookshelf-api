@@ -5,8 +5,8 @@ The Docker build jobs restore Cargo cache mounts from an immutable GitHub Action
 ## What Changes
 
 - Give each commit built by the CI and deployment workflows its own Cargo cache key.
-- Restore the most recent cache that has the same Dockerfile and Cargo dependency lockfile inputs.
-- Preserve cache-dance extraction on partial restores so each successful run saves its updated Cargo registry and target directories.
+- Prefer the most recent cache with matching Dockerfile, workspace manifests, and lockfile inputs, then fall back through matching manifests to the Dockerfile lineage.
+- Preserve commit-specific cache generations so cache-dance extracts partial restores and each successful commit build can save its updated Cargo registry and target directories.
 - Keep the BuildKit GHA layer cache configuration unchanged because it serves a separate cache layer.
 
 ## Capabilities
