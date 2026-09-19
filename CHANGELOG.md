@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.2](https://github.com/hiterm/bookshelf-api/compare/2.17.1...2.17.2) - 2026-09-19
+
+### Other Changes
+- Bump quinn-proto from 0.11.14 to 0.11.18 by @dependabot[bot] in https://github.com/hiterm/bookshelf-api/pull/345
+- Follow frontend integration E2E script rename by @hiterm in https://github.com/hiterm/bookshelf-api/pull/347
+- Advance Docker Rust build cache by @hiterm in https://github.com/hiterm/bookshelf-api/pull/348
+
 ## [2.17.1](https://github.com/hiterm/bookshelf-api/compare/2.17.0...2.17.1) - 2026-09-13
 
 ### Other Changes
