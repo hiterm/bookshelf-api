@@ -1,6 +1,6 @@
 # https://docs.docker.com/language/rust/develop/
 
-FROM rust:1.98.0-trixie@sha256:7f7a53a25a0319dd8284e279d529d45759cb384d59b14cc6806132910f45522e AS build-stage
+FROM rust:1.98.1-trixie@sha256:c92b3414e418f5b250f13c5bd393f90192f0b4bb4767e64f29c9e583197b27cb AS build-stage
 
 ARG APP_NAME=bookshelf-api
 
