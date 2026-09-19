@@ -249,5 +249,5 @@ jobs:
           done
           cat /tmp/api.log; exit 1
       - name: Run e2e-integration tests
-        run: pnpm run test:integration
+        run: pnpm run test:e2e:integration
         working-directory: bookshelf-src
