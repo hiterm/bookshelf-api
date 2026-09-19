@@ -44,7 +44,9 @@ jobs:
           path: |
             usr-local-cargo-registry
             app-target
-          key: cache-${{ hashFiles('Dockerfile') }}
+          key: docker-rust-${{ hashFiles('Dockerfile', 'Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            docker-rust-${{ hashFiles('Dockerfile', 'Cargo.lock') }}-
       - name: inject cache into docker
         uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
