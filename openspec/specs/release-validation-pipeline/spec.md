@@ -50,7 +50,7 @@ The deployment workflow MUST run API E2E against a release Docker image with Pos
 
 #### Scenario: API E2E fails
 - **WHEN** API E2E against the release container fails
-- **THEN** the workflow does not push the image to GHCR and does not trigger Render deployment
+- **THEN** the workflow does not push the image to GHCR and does not notify the deployment repository
 
 #### Scenario: API E2E succeeds
 - **WHEN** API E2E against the release container succeeds
@@ -65,14 +65,14 @@ The deployment workflow SHALL build the release image once and SHALL push the sa
 - **AND** the published image retains the release OCI labels applied before validation
 
 ### Requirement: Frontend compatibility does not gate deployment
-After successful image publication, the workflow SHALL run Render deployment and `Integration tests (bookshelf frontend)` as independent jobs, and a frontend integration failure SHALL fail the workflow without stopping or cancelling deployment.
+After successful image publication, the workflow SHALL notify `bookshelf-api-deploy` with the image version and registry digest and run `Integration tests (bookshelf frontend)` as independent jobs. A frontend integration failure SHALL fail the workflow without stopping or cancelling the deployment repository notification.
 
 #### Scenario: Frontend integration fails
 - **WHEN** the published release image is incompatible with the frontend `main` branch
-- **THEN** the frontend integration job and workflow fail while the Render deployment remains eligible to complete
+- **THEN** the frontend integration job and workflow fail while the deployment repository notification remains eligible to complete
 
-#### Scenario: Render deployment fails
-- **WHEN** Render deployment fails
+#### Scenario: Deployment repository notification fails
+- **WHEN** the deployment repository notification fails
 - **THEN** the frontend integration job remains independently eligible to complete
 
 ### Requirement: Release runs are serialized

@@ -1,4 +1,4 @@
-name: Deploy to Render
+name: Publish release
 
 on:
   workflow_call:
@@ -260,19 +260,6 @@ jobs:
             --arg digest "${IMAGE_DIGEST}" \
             '{event_type: "api-released", client_payload: {version: $version, digest: $digest}}' |
             gh api --method POST repos/hiterm/bookshelf-api-deploy/dispatches --input -
-
-  # secrets-outside-env: this trusted release job passes the Render hook through
-  # the step environment and does not require a GitHub Environment.
-  deploy: # zizmor: ignore[secrets-outside-env]
-    name: Deploy
-    needs: push_to_registry
-    runs-on: ubuntu-latest
-    permissions: {}
-    steps:
-      - name: Trigger Render deployment
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-        run: curl --fail-with-body "${RENDER_DEPLOY_HOOK}"
 
   test-integration-bookshelf:
     name: Integration tests (bookshelf frontend)

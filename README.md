@@ -96,10 +96,14 @@ their results before merging the release pull request.
 
 The merge creates the matching Git tag and GitHub Release. The release workflow
 builds the Docker image once and runs API E2E against that image. API E2E is a
-release gate: if it fails, the image is not pushed to GHCR and Render deployment
-does not start. After API E2E succeeds, the exact validated image is pushed
-without rebuilding it.
+release gate: if it fails, the image is not pushed to GHCR. After API E2E
+succeeds, the exact validated image is pushed without rebuilding it.
 
-Render deployment and `Integration tests (bookshelf frontend)` then run
-independently. A frontend integration failure makes the release workflow fail
-but does not stop or cancel image publication or Render deployment.
+After publication, the workflow sends the image version and registry digest to
+`bookshelf-api-deploy` in an `api-released` repository dispatch. That repository
+opens the deployment pull request; merging it approves the production
+deployment to Vercel.
+
+`Integration tests (bookshelf frontend)` runs independently after the image is
+published to GHCR. A frontend integration failure makes the release workflow
+fail but does not stop or cancel the deployment repository notification.
