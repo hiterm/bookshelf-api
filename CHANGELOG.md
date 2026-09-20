@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.3](https://github.com/hiterm/bookshelf-api/compare/2.17.2...2.17.3) - 2026-09-20
+
+### Other Changes
+- Use delivery app token for tagpr by @hiterm in https://github.com/hiterm/bookshelf-api/pull/351
+- Add historical artifact guidance by @hiterm in https://github.com/hiterm/bookshelf-api/pull/353
+- Notify deployment repository on API release by @hiterm in https://github.com/hiterm/bookshelf-api/pull/354
+
 ## [2.17.2](https://github.com/hiterm/bookshelf-api/compare/2.17.1...2.17.2) - 2026-09-20
 
 ### Other Changes
