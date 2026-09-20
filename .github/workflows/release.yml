@@ -12,7 +12,9 @@ concurrency:
 permissions: {}
 
 jobs:
-  tagpr:
+  # secrets-outside-env: this trusted main release job needs the GitHub App key
+  # to create a token for release pull requests.
+  tagpr: # zizmor: ignore[secrets-outside-env]
     name: Update release pull request or tag release
     runs-on: ubuntu-latest
     permissions:
