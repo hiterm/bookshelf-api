@@ -30,11 +30,17 @@ jobs:
       - uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
         with:
           tool: cargo-edit
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.BOOKSHELF_DELIVERY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BOOKSHELF_DELIVERY_APP_PRIVATE_KEY }}
       - name: Run tagpr
         id: tagpr
         uses: Songmu/tagpr@d1b8138b7a31075141b6cd64103de9485ced7ac9 # v1.20.1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
       - name: Determine release tag
         id: release_tag
         env:
