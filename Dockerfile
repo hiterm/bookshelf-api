@@ -57,6 +57,7 @@ set -e
 if [ "${SCCACHE_ENABLED}" = "true" ]; then
     : "${ACTIONS_RESULTS_URL:?sccache requires the actions_results_url BuildKit secret}"
     : "${ACTIONS_RUNTIME_TOKEN:?sccache requires the actions_runtime_token BuildKit secret}"
+    export ACTIONS_CACHE_SERVICE_V2=true
     export RUSTC_WRAPPER=sccache
     export SCCACHE_GHA_ENABLED=on
     export SCCACHE_GHA_VERSION=bookshelf-api-docker-v1
