@@ -60,11 +60,17 @@ if [ "${SCCACHE_ENABLED}" = "true" ]; then
     export RUSTC_WRAPPER=sccache
     export SCCACHE_GHA_ENABLED=on
     export SCCACHE_GHA_VERSION=bookshelf-api-docker-v1
+    export SCCACHE_ERROR_LOG=/tmp/sccache-error.log
+    export SCCACHE_LOG=warn
 fi
 cargo build --locked --release
 if [ "${SCCACHE_ENABLED}" = "true" ]; then
     sccache --show-stats
     sccache --stop-server
+    if [ -s "${SCCACHE_ERROR_LOG}" ]; then
+        echo "=== sccache backend warnings ==="
+        cat "${SCCACHE_ERROR_LOG}"
+    fi
 fi
 cp ./target/release/$APP_NAME /bin/server
 cp ./target/release/check_tls /bin/check_tls
