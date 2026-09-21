@@ -59,19 +59,19 @@ jobs:
         with:
           path: |
             usr-local-cargo-registry
-            app-target
-          key: docker-rust-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+            sccache
+          key: docker-rust-sccache-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
-            docker-rust-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('Cargo.lock') }}-
-            docker-rust-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-
-            docker-rust-${{ hashFiles('Dockerfile') }}-
+            docker-rust-sccache-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('Cargo.lock') }}-
+            docker-rust-sccache-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-
+            docker-rust-sccache-${{ hashFiles('Dockerfile') }}-
       - name: inject cache into docker
         uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
           cache-map: |
             {
               "usr-local-cargo-registry": "/usr/local/cargo/registry",
-              "app-target": "/app/target"
+              "sccache": "/sccache"
             }
           skip-extraction: ${{ steps.cache.outputs.cache-hit }}
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -79,6 +79,8 @@ jobs:
           push: false
           load: true
           tags: bookshelf-api:test
+          build-args: |
+            SCCACHE_ENABLED=true
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
