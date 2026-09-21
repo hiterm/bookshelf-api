@@ -54,3 +54,15 @@ The Dockerfile must continue to build outside GitHub Actions without credentials
 ## Open Questions
 
 None.
+
+## Trial outcome (2026-09-21)
+
+The implementation was trialed in PR #359 and then withdrawn rather than adopted:
+
+- Without `ACTIONS_CACHE_SERVICE_V2=true`, sccache v0.17.0 selected the legacy cache API and every one of 1,118 writes failed with HTTP 404. The job still passed, demonstrating why write-error statistics are necessary.
+- Enabling cache service v2 fixed the endpoint mismatch. The miss-heavy run then recorded 6 hits, 1,112 misses, 0 read errors, and 296 write errors. The write failures were HTTP 429 responses from GitHub's `CreateCacheEntry` endpoint with `retry-after: 1`.
+- The v2 miss-heavy `Test Image Building` job took 6m31s, including a 5m23s Docker API build, 23s Cargo registry extraction, and 6s registry save. The immediately preceding main baseline took 3m05s, including a 6s Docker API build, 82s cache-dance extraction, and 13s cache save. These runs have different cache warmth, so the total-time difference is not a controlled performance comparison; nevertheless, 296 failed writes make the cache unreliable and preclude accepting this configuration.
+- A warm compiler-cache run was not pursued after the high write-error rate met the rejection condition in the request. Local default `docker build .` reached Cargo without credentials or sccache, but the local filesystem ran out of space during release compilation, so a successful default local build was not established. The CI image build and health check did succeed.
+- OpenSpec strict validation, actionlint 1.7.12, zizmor 1.23.1, `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, and `cargo test --locked` passed. The frontend integration test ran only in CI and passed. No new API endpoint was added, so no new API E2E test was required; the existing CI API E2E test passed.
+
+The source and workflow changes were reverted. Keep the change unimplemented until a reliable write strategy is available and both cold and warm runs demonstrate a net benefit.
