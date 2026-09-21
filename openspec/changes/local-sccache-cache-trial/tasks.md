@@ -7,9 +7,9 @@
 ## 2. Validation and measurement
 
 - [x] 2.1 Run strict OpenSpec validation, actionlint, zizmor, and all required Rust checks.
-- [ ] 2.2 Compare main and trial cache sizes, hit rates, errors, and cold/warm step and job durations.
-- [ ] 2.3 Decide adoption; update deploy only if the trial improves CI materially.
-- [ ] 2.4 Assess non-API E2E coverage and leave frontend integration to CI.
+- [x] 2.2 Compare main and trial cache sizes, hit rates, errors, and cold/warm step and job durations.
+- [x] 2.3 Decide adoption; withdraw the implementation and leave deploy unchanged because CI did not improve materially.
+- [x] 2.4 Assess non-API E2E coverage and leave frontend integration to CI.
 
 ## 3. Adoption, if justified
 
