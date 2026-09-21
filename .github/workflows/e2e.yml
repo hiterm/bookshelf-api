@@ -102,11 +102,6 @@ jobs:
           node-version: "24"
           cache: "pnpm"
           cache-dependency-path: bookshelf-src/pnpm-lock.yaml
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bookshelf-src/pnpm-lock.yaml') }}
       - uses: ./.github/actions/setup-rust-toolchain
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Build API and prepare frontend
@@ -165,7 +160,7 @@ jobs:
             fi
             if [ "${status}" -eq 0 ]; then
               step_start=$(date +%s)
-              pnpm exec playwright install --with-deps chromium
+              pnpm exec playwright install --with-deps --only-shell chromium
               status=$?
               step_end=$(date +%s)
               printf 'Frontend Playwright install: %ss (status %s)\n' "$((step_end - step_start))" "${status}" >>"${frontend_timing}"
