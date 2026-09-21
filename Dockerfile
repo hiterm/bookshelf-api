@@ -36,6 +36,7 @@ EOF
 
 ARG BUILDDIR=/app
 WORKDIR ${BUILDDIR}
+ARG CI_COMPILE_BUST
 
 # Build the application.
 # Leverage a cache mount to /usr/local/cargo/registry/
@@ -54,6 +55,7 @@ RUN --mount=type=bind,source=src,target=src \
     --mount=type=bind,source=migrations,target=migrations \
     <<EOF
 set -e
+: "${CI_COMPILE_BUST}"
 if [ "${SCCACHE_ENABLED}" = "true" ]; then
     export RUSTC_WRAPPER=sccache
     export SCCACHE_DIR=/sccache

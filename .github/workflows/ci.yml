@@ -60,11 +60,11 @@ jobs:
           path: |
             usr-local-cargo-registry
             sccache
-          key: docker-rust-sccache-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          key: docker-rust-sccache-bda296138fa895fda204a446b6f0cdaf6425926f1293ab11f6a4a76deae50f7a-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
-            docker-rust-sccache-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('Cargo.lock') }}-
-            docker-rust-sccache-${{ hashFiles('Dockerfile') }}-${{ hashFiles('**/Cargo.toml') }}-
-            docker-rust-sccache-${{ hashFiles('Dockerfile') }}-
+            docker-rust-sccache-bda296138fa895fda204a446b6f0cdaf6425926f1293ab11f6a4a76deae50f7a-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('Cargo.lock') }}-
+            docker-rust-sccache-bda296138fa895fda204a446b6f0cdaf6425926f1293ab11f6a4a76deae50f7a-${{ hashFiles('**/Cargo.toml') }}-
+            docker-rust-sccache-bda296138fa895fda204a446b6f0cdaf6425926f1293ab11f6a4a76deae50f7a-
       - name: inject cache into docker
         uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
@@ -81,6 +81,7 @@ jobs:
           tags: bookshelf-api:test
           build-args: |
             SCCACHE_ENABLED=true
+            CI_COMPILE_BUST=${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
