@@ -19,3 +19,11 @@ The existing cache-dance map transfers the Cargo registry and `/app/target`. PR 
 ## Adoption
 
 Adopt only if repeated warm runs materially beat the roughly three-minute main baseline, the transferred cache is clearly smaller, hit rate is high, and errors are absent. Otherwise record the result and withdraw the implementation. Deploy workflow follows only after a positive CI decision.
+
+## Trial measurements (2026-09-21)
+
+The main baseline image jobs were 3m04s (run 35549692295) and 3m19s (run 35515239693). Both spent about 82–83s extracting the target cache after the build. The recent main cache archive was about 437 MB compressed.
+
+The miss-heavy trial (run 35568769043) took 6m16s. Cargo release took 4m24s. sccache recorded 1,200 compile requests, 400 Rust misses, 0 Rust hits, and 0 read/write errors. After the build, `/sccache` was 286 MB with 1,837 files and the Cargo registry was 334 MB. The saved Actions archive was 351,394,964 bytes compressed.
+
+The first controlled warm run (35569364188) restored that archive and changed only a temporary compile-layer cache-bust argument. Cargo release took 1m04s; all 400 Rust cacheable requests hit, with 0 misses and 0 read/write errors. `/sccache` remained 286 MB and the registry 334 MB. The image job took 2m56s. A second warm run is needed before deciding whether the small whole-job gain justifies the maintenance cost.
