@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.4](https://github.com/hiterm/bookshelf-api/compare/2.17.3...2.17.4) - 2026-09-21
+
+### Other Changes
+- Remove Render deployment integration by @hiterm in https://github.com/hiterm/bookshelf-api/pull/355
+- Add OpenSpec validation to CI by @hiterm in https://github.com/hiterm/bookshelf-api/pull/356
+- Optimize frontend Playwright browser install by @hiterm in https://github.com/hiterm/bookshelf-api/pull/358
+
 ## [2.17.3](https://github.com/hiterm/bookshelf-api/compare/2.17.2...2.17.3) - 2026-09-20
 
 ### Other Changes
