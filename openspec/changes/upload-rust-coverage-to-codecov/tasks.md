@@ -1,7 +1,7 @@
 ## 1. Integrate Codecov with the existing Rust test job
 
 - [x] 1.1 Update the existing `cargo-llvm-cov` invocation to generate `lcov.info` from the ordinary all-features locked Rust test run without adding another test execution.
-- [x] 1.2 Add a pinned `codecov/codecov-action` step that uploads only `lcov.info`, uses `CODECOV_TOKEN`, and fails on upload or missing-report errors.
+- [x] 1.2 Add a pinned `codecov/codecov-action` step that uploads only `lcov.info`, uses GitHub OIDC, and fails on upload or missing-report errors.
 
 ## 2. Verify and deliver the integration
 

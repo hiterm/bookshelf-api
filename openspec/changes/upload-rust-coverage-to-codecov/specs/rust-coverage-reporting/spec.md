@@ -22,13 +22,13 @@ The continuous integration workflow SHALL upload the generated Rust LCOV report 
 - **THEN** the Rust test job fails instead of silently omitting the report
 
 ### Requirement: Coverage upload uses protected authentication
-The continuous integration workflow SHALL read Codecov upload credentials from a dedicated GitHub Environment secret and MUST NOT store those credentials in the repository.
+The continuous integration workflow SHALL authenticate Codecov uploads with GitHub OIDC and MUST NOT require a long-lived Codecov token in repository configuration.
 
 #### Scenario: CI uploads coverage
 - **WHEN** the Codecov action authenticates an upload
-- **THEN** the job is bound to the dedicated `codecov` GitHub Environment
-- **AND** it receives the token from that Environment's `CODECOV_TOKEN` secret
-- **AND** no token value is present in tracked files
+- **THEN** only the Rust test job receives permission to request a GitHub OIDC token
+- **AND** the Codecov action uses that OIDC identity for the upload
+- **AND** no Codecov token is required in GitHub Secrets or tracked files
 
 ## REMOVED Requirements
 
@@ -40,4 +40,4 @@ The continuous integration workflow SHALL read Codecov upload credentials from a
 ### Requirement: Coverage remains informational and local to GitHub Actions
 **Reason**: The coverage report must now be uploaded to Codecov, superseding the previous prohibition on external reporting. Coverage remains informational because this change adds no percentage threshold.
 
-**Migration**: Configure the repository in Codecov, create a `codecov` GitHub Environment without deployment approval rules, and add the upload token as that Environment's `CODECOV_TOKEN` secret.
+**Migration**: Enable the repository in Codecov; GitHub OIDC authenticates uploads without a Codecov token secret.

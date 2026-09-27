@@ -8,7 +8,7 @@ Rust test coverage is currently visible only inside individual GitHub Actions ru
 - Upload that report to Codecov with the official `codecov/codecov-action`.
 - Keep coverage collection in the existing test job so the ordinary Rust tests still run only once.
 - Add focused workflow checks for LCOV generation and Codecov upload configuration.
-- Document the required Codecov project and GitHub secret setup.
+- Document the required Codecov project setup and secretless OIDC authentication.
 - Exclude E2E test coverage collection and aggregation from this change.
 
 ## Capabilities
@@ -25,5 +25,5 @@ None.
 
 - `.github/workflows/ci.yml` gains LCOV generation and a Codecov upload step in the existing Rust test job.
 - `.github/scripts/test-coverage-workflow.sh` validates the revised workflow contract.
-- Codecov becomes an external CI integration and requires repository onboarding plus an upload token stored as a GitHub Environment secret.
+- Codecov becomes an external CI integration and requires repository onboarding; uploads use GitHub OIDC and require no GitHub secret.
 - Application code, API behavior, and E2E workflows are unaffected.
