@@ -8,4 +8,4 @@
 
 - [x] 2.1 Add focused automated checks for the workflow's pinned tool, coverage flags, summary output, and absence of threshold, upload, and artifact configuration.
 - [x] 2.2 Run OpenSpec validation and the repository's required formatting, lint, and locked test checks.
-- [ ] 2.3 Confirm on the pull request that the coverage report renders in GitHub Actions and that all CI checks pass.
+- [x] 2.3 Confirm on the pull request that the coverage report renders in GitHub Actions and that all CI checks pass.
