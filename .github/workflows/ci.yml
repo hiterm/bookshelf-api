@@ -26,6 +26,7 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    environment: codecov
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
     steps:
