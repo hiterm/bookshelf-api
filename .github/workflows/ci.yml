@@ -53,7 +53,6 @@ jobs:
           files: lcov.info
           disable_search: true
           fail_ci_if_error: true
-          handle_no_reports_found: true
       - name: Test release tag validation
         run: .github/scripts/test-validate-release-tag.sh
       - name: Test coverage workflow configuration
