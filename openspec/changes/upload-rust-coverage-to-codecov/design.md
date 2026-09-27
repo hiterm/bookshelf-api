@@ -25,20 +25,20 @@ Codecov is a new external integration. Upload authentication must remain secret,
 
 2. **Upload an explicit file with Codecov Action v7.1.1 pinned by commit SHA.** The upload step names `lcov.info`, disables automatic report discovery, and fails CI when uploading fails. Explicit discovery prevents unrelated or future E2E coverage files from being included accidentally. The immutable SHA follows the repository's supply-chain convention; the comment retains the human-readable release.
 
-3. **Authenticate with a repository upload token.** Pass `${{ secrets.CODECOV_TOKEN }}` to the action. The repository owner must enable the GitHub repository in Codecov and add that value as an Actions secret. Tokenless organization settings and OIDC were considered, but both require additional organization-level policy and OIDC would broaden workflow permissions.
+3. **Authenticate with an environment-scoped repository upload token.** Bind the test job to a dedicated `codecov` GitHub Environment and pass its `${{ secrets.CODECOV_TOKEN }}` to the action. The repository owner must enable the GitHub repository in Codecov, create the Environment without deployment approval rules, and add the upload token as its Environment secret. Environment scoping satisfies the repository's secret-isolation policy without broadening workflow permissions. Tokenless organization settings and OIDC were considered, but both require additional organization-level policy and OIDC would require `id-token: write`.
 
 4. **Keep focused static workflow tests.** Revise the existing shell test to require the LCOV flags, explicit Codecov inputs, and pinned action, and to reject duplicate test commands, thresholds, artifact upload, or E2E coverage inputs.
 
 ## Risks / Trade-offs
 
-- **[Missing or invalid `CODECOV_TOKEN` blocks the test job]** → Document the one-time setup clearly and use `fail_ci_if_error: true` so coverage publishing cannot silently regress.
+- **[A missing `codecov` Environment or invalid `CODECOV_TOKEN` blocks the test job]** → Document the one-time setup clearly, avoid environment protection rules that would pause CI for approval, and use `fail_ci_if_error: true` so coverage publishing cannot silently regress.
 - **[Fork pull requests cannot access the repository secret]** → Codecov's fork handling may upload tokenlessly for public repositories; if the repository's Codecov policy does not allow that, the owner must decide whether to enable tokenless uploads or accept/adjust fork behavior separately.
 - **[Replacing the text report removes coverage details from the job summary]** → Codecov becomes the durable presentation layer; the CI log still records `cargo-llvm-cov` and upload outcomes.
 - **[External service latency slightly increases CI duration]** → Upload in the existing job after the one test run and avoid artifacts or a separate coverage job.
 
 ## Migration Plan
 
-1. Merge the workflow and contract-test update after the repository has been enabled in Codecov and `CODECOV_TOKEN` has been configured.
+1. Merge the workflow and contract-test update after the repository has been enabled in Codecov and a `codecov` GitHub Environment with the `CODECOV_TOKEN` Environment secret has been configured.
 2. Confirm a pull-request upload and the resulting Codecov report/status.
 3. Roll back by reverting the workflow commit; the previous text-only coverage command can then be restored without application changes.
 

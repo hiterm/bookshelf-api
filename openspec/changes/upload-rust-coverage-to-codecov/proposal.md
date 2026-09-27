@@ -25,5 +25,5 @@ None.
 
 - `.github/workflows/ci.yml` gains LCOV generation and a Codecov upload step in the existing Rust test job.
 - `.github/scripts/test-coverage-workflow.sh` validates the revised workflow contract.
-- Codecov becomes an external CI integration and requires repository onboarding plus an upload token stored as a GitHub Actions secret.
+- Codecov becomes an external CI integration and requires repository onboarding plus an upload token stored as a GitHub Environment secret.
 - Application code, API behavior, and E2E workflows are unaffected.
