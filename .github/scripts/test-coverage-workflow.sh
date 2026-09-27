@@ -23,10 +23,10 @@ assert_absent() {
 }
 
 assert_contains "tool: cargo-llvm-cov@0.9.0"
-assert_contains "environment: codecov"
 assert_contains "cargo llvm-cov --all-features --locked --lcov --output-path lcov.info"
 assert_contains "uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1"
-assert_contains 'token: ${{ secrets.CODECOV_TOKEN }}'
+assert_contains "id-token: write"
+assert_contains "use_oidc: true"
 assert_contains "files: lcov.info"
 assert_contains "disable_search: true"
 assert_contains "fail_ci_if_error: true"
@@ -38,3 +38,4 @@ assert_absent "upload-artifact"
 assert_absent "--text"
 assert_absent "--html"
 assert_absent "e2e"
+assert_absent "CODECOV_TOKEN"
