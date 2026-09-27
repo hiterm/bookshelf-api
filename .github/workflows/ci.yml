@@ -33,14 +33,33 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-rust-toolchain
+      - uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+        with:
+          tool: cargo-llvm-cov@0.9.0
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: sudo systemctl start postgresql.service
       - run: pg_isready
       - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - run: sudo -u postgres createdb --owner=bookshelf bookshelf
-      - run: cargo test --all-features --locked
+      - name: Run tests with coverage
+        run: |
+          set -o pipefail
+          cargo llvm-cov --all-features --locked --show-missing-lines | tee coverage.txt
+
+          {
+            echo '## Rust test coverage'
+            echo '<details>'
+            echo '<summary>Overall and per-file line coverage</summary>'
+            echo
+            echo '```text'
+            cat coverage.txt
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Test release tag validation
         run: .github/scripts/test-validate-release-tag.sh
+      - name: Test coverage workflow configuration
+        run: .github/scripts/test-coverage-workflow.sh
 
   test-image-building:
     name: Test Image Building
