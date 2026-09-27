@@ -23,15 +23,17 @@ assert_absent() {
 }
 
 assert_contains "tool: cargo-llvm-cov@0.9.0"
-assert_contains "cargo llvm-cov --all-features --locked --show-missing-lines"
-assert_contains "tee coverage.txt"
-assert_contains "<details>"
-assert_contains 'cat coverage.txt'
-assert_contains 'GITHUB_STEP_SUMMARY'
+assert_contains "cargo llvm-cov --all-features --locked --lcov --output-path lcov.info"
+assert_contains "uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1"
+assert_contains 'token: ${{ secrets.CODECOV_TOKEN }}'
+assert_contains "files: lcov.info"
+assert_contains "disable_search: true"
+assert_contains "fail_ci_if_error: true"
+assert_contains "handle_no_reports_found: true"
 
 assert_absent "cargo llvm-cov --workspace"
 assert_absent "--fail-under"
-assert_absent "codecov"
 assert_absent "upload-artifact"
 assert_absent "--text"
 assert_absent "--html"
+assert_absent "e2e"
