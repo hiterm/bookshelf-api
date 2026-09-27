@@ -7,4 +7,4 @@
 
 - [x] 2.1 Update the focused workflow contract test for LCOV generation, explicit Codecov configuration, no thresholds or artifacts, and no E2E coverage integration.
 - [x] 2.2 Run OpenSpec validation and all mandatory formatting, lint, and locked test checks.
-- [ ] 2.3 Confirm the pull-request upload and all CI checks, document manual Codecov/GitHub secret setup, and address CodeRabbit feedback through approval.
+- [x] 2.3 Confirm the pull-request upload and all CI checks, document Codecov onboarding and OIDC authentication, and address CodeRabbit feedback through approval.
