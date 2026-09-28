@@ -45,7 +45,22 @@ jobs:
       - run: sudo -u postgres psql --command="CREATE USER bookshelf WITH SUPERUSER PASSWORD 'password'" --command="\du" postgres
       - run: sudo -u postgres createdb --owner=bookshelf bookshelf
       - name: Run tests with coverage
-        run: cargo llvm-cov --all-features --locked --lcov --output-path lcov.info
+        run: |
+          set -o pipefail
+          cargo llvm-cov --all-features --locked --no-report
+          cargo llvm-cov report --show-missing-lines | tee coverage.txt
+          cargo llvm-cov report --lcov --output-path lcov.info
+
+          {
+            echo '## Rust test coverage'
+            echo '<details>'
+            echo '<summary>Overall and per-file line coverage</summary>'
+            echo
+            echo '```text'
+            cat coverage.txt
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
@@ -55,8 +70,6 @@ jobs:
           fail_ci_if_error: true
       - name: Test release tag validation
         run: .github/scripts/test-validate-release-tag.sh
-      - name: Test coverage workflow configuration
-        run: .github/scripts/test-coverage-workflow.sh
 
   test-image-building:
     name: Test Image Building
