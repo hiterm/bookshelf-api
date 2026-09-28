@@ -2,9 +2,7 @@
 
 ## Purpose
 Define the unified pull request, release validation, and deployment pipeline.
-
 ## Requirements
-
 ### Requirement: Unified pull request validation
 The repository SHALL run CI, E2E, actionlint, and zizmor for ordinary pull requests and tagpr release pull requests through the `pull_request` event, without release-specific workflow dispatches or hand-written commit statuses.
 
@@ -65,14 +63,22 @@ The deployment workflow SHALL build the release image once and SHALL push the sa
 - **AND** the published image retains the release OCI labels applied before validation
 
 ### Requirement: Frontend compatibility does not gate deployment
-After successful image publication, the workflow SHALL notify `bookshelf-api-deploy` with the image version and registry digest and run `Integration tests (bookshelf frontend)` as independent jobs. A frontend integration failure SHALL fail the workflow without stopping or cancelling the deployment repository notification.
+
+After successful image publication, the workflow SHALL notify both `bookshelf-api-deploy` and `bookshelf` with the image version and registry digest and run `Integration tests (bookshelf frontend)` as an independent job. A frontend integration failure SHALL fail the workflow without stopping or cancelling either release consumer notification.
+
+#### Scenario: Publication succeeds
+
+- **WHEN** the validated release image is published with a valid digest
+- **THEN** the workflow sends the same `api-released` version-and-digest payload to `bookshelf-api-deploy` and `bookshelf`
 
 #### Scenario: Frontend integration fails
+
 - **WHEN** the published release image is incompatible with the frontend `main` branch
-- **THEN** the frontend integration job and workflow fail while the deployment repository notification remains eligible to complete
+- **THEN** the frontend integration job and workflow fail while both consumer notifications remain eligible to complete
 
 #### Scenario: Deployment repository notification fails
-- **WHEN** the deployment repository notification fails
+
+- **WHEN** one or more release consumer notifications fail
 - **THEN** the frontend integration job remains independently eligible to complete
 
 ### Requirement: Release runs are serialized
@@ -81,3 +87,14 @@ The release workflow SHALL use the `release` concurrency group and SHALL NOT can
 #### Scenario: A second release run starts
 - **WHEN** a release workflow is already in progress
 - **THEN** the newer run waits for the active run instead of cancelling it
+
+### Requirement: Release notification credentials are narrowly scoped
+
+The workflow SHALL obtain a delivery GitHub App token restricted to `bookshelf-api-deploy` and `bookshelf`.
+
+#### Scenario: A notification token is generated
+
+- **WHEN** post-publication notification begins
+- **THEN** the installation token names only those two repositories
+- **AND** the workflow token is not used for either dispatch
+
