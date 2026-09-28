@@ -262,12 +262,18 @@ jobs:
             --arg digest "${IMAGE_DIGEST}" \
             '{event_type: "api-released", client_payload: {version: $version, digest: $digest}}')
 
+          failed=0
           for repository in bookshelf-api-deploy bookshelf; do
-            gh api \
+            if ! gh api \
               --method POST \
               "repos/hiterm/${repository}/dispatches" \
-              --input - <<< "${payload}"
+              --input - <<< "${payload}"; then
+              echo "::error::Failed to notify ${repository}" >&2
+              failed=1
+            fi
           done
+
+          exit "${failed}"
 
   test-integration-bookshelf:
     name: Integration tests (bookshelf frontend)
