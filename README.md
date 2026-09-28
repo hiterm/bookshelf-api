@@ -100,9 +100,9 @@ release gate: if it fails, the image is not pushed to GHCR. After API E2E
 succeeds, the exact validated image is pushed without rebuilding it.
 
 After publication, the workflow sends the image version and registry digest to
-`bookshelf-api-deploy` in an `api-released` repository dispatch. That repository
-opens the deployment pull request; merging it approves the production
-deployment to Vercel.
+`bookshelf-api-deploy` and `bookshelf` in `api-released` repository dispatches.
+The deployment repository opens the production deployment pull request, while
+the frontend repository opens its API version update pull request.
 
 `Integration tests (bookshelf frontend)` runs independently after the image is
 published to GHCR. A frontend integration failure makes the release workflow

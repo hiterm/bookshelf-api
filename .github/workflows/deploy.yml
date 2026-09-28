@@ -232,9 +232,9 @@ jobs:
           echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
 
   # secrets-outside-env: this trusted release job uses the GitHub App key only
-  # to notify the deployment repository after the validated image is published.
-  notify_deploy_repository: # zizmor: ignore[secrets-outside-env]
-    name: Notify deployment repository
+  # to notify release consumers after the validated image is published.
+  notify_release_consumers: # zizmor: ignore[secrets-outside-env]
+    name: Notify release consumers
     needs: push_to_registry
     runs-on: ubuntu-latest
     permissions: {}
@@ -246,20 +246,28 @@ jobs:
           client-id: ${{ vars.BOOKSHELF_DELIVERY_APP_CLIENT_ID }}
           private-key: ${{ secrets.BOOKSHELF_DELIVERY_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: bookshelf-api-deploy
+          repositories: |
+            bookshelf-api-deploy
+            bookshelf
           permission-contents: write
 
-      - name: Dispatch API release
+      - name: Dispatch API release to consumers
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           IMAGE_DIGEST: ${{ needs.push_to_registry.outputs.image_digest }}
         run: |
-          jq -n \
+          payload=$(jq -n \
             --arg version "${RELEASE_TAG}" \
             --arg digest "${IMAGE_DIGEST}" \
-            '{event_type: "api-released", client_payload: {version: $version, digest: $digest}}' |
-            gh api --method POST repos/hiterm/bookshelf-api-deploy/dispatches --input -
+            '{event_type: "api-released", client_payload: {version: $version, digest: $digest}}')
+
+          for repository in bookshelf-api-deploy bookshelf; do
+            gh api \
+              --method POST \
+              "repos/hiterm/${repository}/dispatches" \
+              --input - <<< "${payload}"
+          done
 
   test-integration-bookshelf:
     name: Integration tests (bookshelf frontend)
