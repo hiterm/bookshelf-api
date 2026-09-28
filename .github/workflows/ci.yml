@@ -26,6 +26,9 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
       DATABASE_URL: postgres://bookshelf:password@localhost:5432/bookshelf
     steps:
@@ -44,7 +47,9 @@ jobs:
       - name: Run tests with coverage
         run: |
           set -o pipefail
-          cargo llvm-cov --all-features --locked --show-missing-lines | tee coverage.txt
+          cargo llvm-cov --all-features --locked --no-report
+          cargo llvm-cov report --show-missing-lines | tee coverage.txt
+          cargo llvm-cov report --lcov --output-path lcov.info
 
           {
             echo '## Rust test coverage'
@@ -56,10 +61,15 @@ jobs:
             echo '```'
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          files: lcov.info
+          disable_search: true
+          fail_ci_if_error: true
       - name: Test release tag validation
         run: .github/scripts/test-validate-release-tag.sh
-      - name: Test coverage workflow configuration
-        run: .github/scripts/test-coverage-workflow.sh
 
   test-image-building:
     name: Test Image Building

@@ -1,10 +1,4 @@
-# rust-coverage-reporting Specification
-
-## Purpose
-
-Define informational Rust coverage measurement and presentation in GitHub Actions together with publication to Codecov, without duplicating test execution or including E2E coverage.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: CI measures Rust test coverage
 The continuous integration workflow SHALL measure line coverage while running the existing Rust package test suite with all features and the locked dependency graph, and SHALL produce an LCOV report from that same test execution.
@@ -23,6 +17,21 @@ The continuous integration workflow SHALL expose a text report containing overal
 - **THEN** the test step log contains the complete text report
 - **AND** the test job summary contains a readable, collapsible copy of the complete text report
 - **AND** the report identifies the overall total, each covered source file, and uncovered line numbers
+
+### Requirement: Coverage remains informational
+The continuous integration workflow MUST NOT fail based on a coverage percentage and MUST NOT persist HTML or workflow coverage artifacts.
+
+#### Scenario: Coverage is below any particular percentage
+- **WHEN** the measured coverage has any valid percentage
+- **THEN** the percentage alone does not fail the job
+
+#### Scenario: Coverage reporting completes
+- **WHEN** the text and LCOV reports have been generated
+- **THEN** the text report is available in the GitHub Actions log and job summary
+- **AND** the LCOV report is sent to Codecov
+- **AND** no HTML report or workflow coverage artifact is saved
+
+## ADDED Requirements
 
 ### Requirement: CI publishes Rust coverage to Codecov
 The continuous integration workflow SHALL upload the generated Rust LCOV report to Codecov with the official Codecov GitHub Action.
@@ -45,15 +54,7 @@ The continuous integration workflow SHALL authenticate Codecov uploads with GitH
 - **AND** the Codecov action uses that OIDC identity for the upload
 - **AND** no Codecov token is required in GitHub Secrets or tracked files
 
-### Requirement: Coverage remains informational
-The continuous integration workflow MUST NOT fail based on a coverage percentage and MUST NOT persist HTML or workflow coverage artifacts.
+## RENAMED Requirements
 
-#### Scenario: Coverage is below any particular percentage
-- **WHEN** the measured coverage has any valid percentage
-- **THEN** the percentage alone does not fail the job
-
-#### Scenario: Coverage reporting completes
-- **WHEN** the text and LCOV reports have been generated
-- **THEN** the text report is available in the GitHub Actions log and job summary
-- **AND** the LCOV report is sent to Codecov
-- **AND** no HTML report or workflow coverage artifact is saved
+- FROM: `Coverage remains informational and local to GitHub Actions`
+- TO: `Coverage remains informational`
