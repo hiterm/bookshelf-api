@@ -9,6 +9,30 @@ The continuous integration workflow SHALL measure line coverage while running th
 - **AND** a failing test still fails the job
 - **AND** the job writes the resulting line coverage to an LCOV file
 
+### Requirement: CI exposes actionable text coverage
+The continuous integration workflow SHALL expose a text report containing overall line coverage, per-file line coverage, and uncovered line numbers in both the step log and GitHub Actions job summary.
+
+#### Scenario: Contributor inspects a completed coverage run
+- **WHEN** coverage measurement completes
+- **THEN** the test step log contains the complete text report
+- **AND** the test job summary contains a readable, collapsible copy of the complete text report
+- **AND** the report identifies the overall total, each covered source file, and uncovered line numbers
+
+### Requirement: Coverage remains informational
+The continuous integration workflow MUST NOT fail based on a coverage percentage and MUST NOT persist HTML or workflow coverage artifacts.
+
+#### Scenario: Coverage is below any particular percentage
+- **WHEN** the measured coverage has any valid percentage
+- **THEN** the percentage alone does not fail the job
+
+#### Scenario: Coverage reporting completes
+- **WHEN** the text and LCOV reports have been generated
+- **THEN** the text report is available in the GitHub Actions log and job summary
+- **AND** the LCOV report is sent to Codecov
+- **AND** no HTML report or workflow coverage artifact is saved
+
+## ADDED Requirements
+
 ### Requirement: CI publishes Rust coverage to Codecov
 The continuous integration workflow SHALL upload the generated Rust LCOV report to Codecov with the official Codecov GitHub Action.
 
@@ -30,14 +54,7 @@ The continuous integration workflow SHALL authenticate Codecov uploads with GitH
 - **AND** the Codecov action uses that OIDC identity for the upload
 - **AND** no Codecov token is required in GitHub Secrets or tracked files
 
-## REMOVED Requirements
+## RENAMED Requirements
 
-### Requirement: CI exposes actionable text coverage
-**Reason**: Codecov becomes the durable interface for overall, per-file, and pull-request coverage reporting, so duplicating the full report in the GitHub Actions summary is no longer required.
-
-**Migration**: Inspect coverage details and trends in the Codecov project and its pull-request report.
-
-### Requirement: Coverage remains informational and local to GitHub Actions
-**Reason**: The coverage report must now be uploaded to Codecov, superseding the previous prohibition on external reporting. Coverage remains informational because this change adds no percentage threshold.
-
-**Migration**: Enable the repository in Codecov; GitHub OIDC authenticates uploads without a Codecov token secret.
+- FROM: `Coverage remains informational and local to GitHub Actions`
+- TO: `Coverage remains informational`
