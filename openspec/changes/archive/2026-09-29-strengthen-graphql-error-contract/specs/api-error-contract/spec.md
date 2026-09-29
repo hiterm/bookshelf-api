@@ -1,22 +1,4 @@
-# api-error-contract Specification
-
-## Purpose
-Define context-aware API error classification, stable public GraphQL error codes, and the boundary that keeps internal diagnostic details private.
-## Requirements
-### Requirement: Expected database conflicts are classified in operation context
-The system SHALL translate a database constraint violation into a domain error only when the repository operation and exact named constraint establish a client-actionable meaning, and SHALL retain infrastructure classification for unexpected database errors.
-
-#### Scenario: Author name conflicts during creation
-- **WHEN** an author creation violates `author_user_id_name_unique`
-- **THEN** the operation fails with a Conflict error describing that the author name is already in use
-
-#### Scenario: Author name conflicts during update
-- **WHEN** an author update violates `author_user_id_name_unique`
-- **THEN** the operation fails with a Conflict error describing that the author name is already in use
-
-#### Scenario: An unknown database failure occurs
-- **WHEN** a repository receives a database error that is not an explicitly recognized constraint in that operation
-- **THEN** the error remains an InfrastructureError and is not inferred to be a client conflict from SQLSTATE alone
+## MODIFIED Requirements
 
 ### Requirement: GraphQL errors provide stable machine-readable codes
 The system SHALL add a stable `extensions.code` to every GraphQL error produced from a PresentationalError through query, mutation, or nested loader-backed resolver execution.
@@ -56,12 +38,7 @@ The system SHALL preserve actionable validation, conflict, entity type, and enti
 - **WHEN** an Unexpected error reaches the GraphQL boundary through a resolver
 - **THEN** the public message is `Internal server error` and does not contain the internal message
 
-### Requirement: Internal error causes remain diagnosable
-The system SHALL retain internal error causes and record internal GraphQL failures through server tracing without logging the same error in multiple conversion layers.
-
-#### Scenario: An internal error is sanitized
-- **WHEN** an InfrastructureError or Unexpected error is converted to its safe GraphQL representation
-- **THEN** the original diagnostic detail is emitted to server tracing while only the fixed public message is returned
+## ADDED Requirements
 
 ### Requirement: Business-error tests prove resolver execution
 HTTP tests for GraphQL business errors MUST use a valid operation document and selection set, require a non-empty errors array, assert the expected `extensions.code` and resolver `path`, and demonstrate with a valid control input that the target operation can succeed.
@@ -81,3 +58,4 @@ HTTP tests for GraphQL business errors MUST use a valid operation document and s
 #### Scenario: Valid control input succeeds
 - **WHEN** the corresponding operation is sent with valid non-conflicting input
 - **THEN** it completes without GraphQL errors
+

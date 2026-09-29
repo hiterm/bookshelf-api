@@ -383,7 +383,12 @@ async fn e2e_graphql_update_nonexistent_book_returns_error() -> Result<()> {
         nonexistent_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert_graphql_errors(&response, "updateBook for a non-existent book");
+    assert_graphql_error(
+        &response,
+        "updateBook for a non-existent book",
+        "NOT_FOUND",
+        &["updateBook"],
+    );
     Ok(())
 }
 
@@ -397,7 +402,12 @@ async fn e2e_graphql_delete_nonexistent_book_returns_error() -> Result<()> {
         nonexistent_id
     );
     let (_, response) = graphql_request(&query, Some(&token)).await?;
-    assert_graphql_errors(&response, "deleteBook for a non-existent book");
+    assert_graphql_error(
+        &response,
+        "deleteBook for a non-existent book",
+        "NOT_FOUND",
+        &["deleteBook"],
+    );
     Ok(())
 }
 
@@ -465,28 +475,48 @@ async fn e2e_graphql_books_authors_are_user_isolated() -> Result<()> {
         book_id
     );
     let (_, response) = graphql_request(&update_book_query, Some(&other_token)).await?;
-    assert_graphql_errors(&response, "other user's updateBook");
+    assert_graphql_error(
+        &response,
+        "other user's updateBook",
+        "NOT_FOUND",
+        &["updateBook"],
+    );
 
     let delete_book_query = format!(
         r#"mutation {{ deleteBook(bookId: "{}") {{ bookId }} }}"#,
         book_id
     );
     let (_, response) = graphql_request(&delete_book_query, Some(&other_token)).await?;
-    assert_graphql_errors(&response, "other user's deleteBook");
+    assert_graphql_error(
+        &response,
+        "other user's deleteBook",
+        "NOT_FOUND",
+        &["deleteBook"],
+    );
 
     let update_author_query = format!(
         r#"mutation {{ updateAuthor(authorData: {{ id: "{}", name: "Hijacked Author" }}) {{ author {{ id }} operationId }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&update_author_query, Some(&other_token)).await?;
-    assert_graphql_errors(&response, "other user's updateAuthor");
+    assert_graphql_error(
+        &response,
+        "other user's updateAuthor",
+        "NOT_FOUND",
+        &["updateAuthor"],
+    );
 
     let delete_author_query = format!(
         r#"mutation {{ deleteAuthor(authorId: "{}") {{ authorId }} }}"#,
         author_id
     );
     let (_, response) = graphql_request(&delete_author_query, Some(&other_token)).await?;
-    assert_graphql_errors(&response, "other user's deleteAuthor");
+    assert_graphql_error(
+        &response,
+        "other user's deleteAuthor",
+        "NOT_FOUND",
+        &["deleteAuthor"],
+    );
 
     let owner_book_query = format!(r#"{{ book(id: "{}") {{ title }} }}"#, book_id);
     let (_, response) = graphql_request(&owner_book_query, Some(&owner_token)).await?;
@@ -518,14 +548,24 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
         Some(&token),
     )
     .await?;
-    assert_graphql_errors(&response, "createAuthor with an empty name");
+    assert_graphql_error(
+        &response,
+        "createAuthor with an empty name",
+        "VALIDATION_ERROR",
+        &["createAuthor"],
+    );
 
     let (_, response) = graphql_request(
         r#"mutation { createAuthor(authorData: { name: "Invalid Yomi", yomi: "カタカナ" }) { author { id } } }"#,
         Some(&token),
     )
     .await?;
-    assert_graphql_errors(&response, "createAuthor with invalid yomi");
+    assert_graphql_error(
+        &response,
+        "createAuthor with invalid yomi",
+        "VALIDATION_ERROR",
+        &["createAuthor"],
+    );
 
     let invalid_book_queries = [
         r#"
@@ -573,7 +613,12 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
     ];
     for query in invalid_book_queries {
         let (_, response) = graphql_request(query, Some(&token)).await?;
-        assert_graphql_errors(&response, "createBook with invalid input");
+        assert_graphql_error(
+            &response,
+            "createBook with invalid input",
+            "VALIDATION_ERROR",
+            &["createBook"],
+        );
     }
 
     let (_, response) = graphql_request(
@@ -603,6 +648,32 @@ async fn e2e_graphql_create_mutations_validate_input() -> Result<()> {
         "invalid create requests should not create operations"
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn e2e_graphql_create_author_distinguishes_success_and_conflict() -> Result<()> {
+    let (_user_id, token) = create_test_user().await?;
+    let run_id = uuid::Uuid::new_v4();
+    let existing_name = format!("Conflict Author {run_id}");
+    let existing_author_id = create_test_author(&existing_name, &token).await?;
+
+    let duplicate = format!(
+        r#"mutation {{ createAuthor(authorData: {{ name: "{existing_name}" }}) {{ author {{ id }} operationId }} }}"#
+    );
+    let (_, response) = graphql_request(&duplicate, Some(&token)).await?;
+    assert_graphql_error(
+        &response,
+        "createAuthor with an existing name",
+        "CONFLICT",
+        &["createAuthor"],
+    );
+
+    let distinct_author_id =
+        create_test_author(&format!("Distinct Author {run_id}"), &token).await?;
+    delete_test_author(&existing_author_id, &token).await?;
+    delete_test_author(&distinct_author_id, &token).await?;
     Ok(())
 }
 
