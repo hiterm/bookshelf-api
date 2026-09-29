@@ -254,10 +254,28 @@ pub async fn create_test_book_with_event(
     Ok((id, revision_number, operation_id))
 }
 
-pub fn assert_graphql_errors(response: &serde_json::Value, context: &str) {
-    assert!(
-        response.get("errors").is_some(),
-        "{context} should return GraphQL errors: {response:?}"
+pub fn assert_graphql_error(
+    response: &serde_json::Value,
+    context: &str,
+    expected_code: &str,
+    expected_path: &[&str],
+) {
+    let errors = response
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .filter(|errors| !errors.is_empty())
+        .unwrap_or_else(|| {
+            panic!("{context} should return non-empty GraphQL errors: {response:?}")
+        });
+    assert_eq!(errors.len(), 1, "{context} returned unexpected errors");
+    assert_eq!(
+        errors[0]["extensions"]["code"], expected_code,
+        "{context} returned the wrong GraphQL error code"
+    );
+    assert_eq!(
+        errors[0]["path"],
+        serde_json::json!(expected_path),
+        "{context} returned the wrong GraphQL error path"
     );
 }
 

@@ -59,6 +59,12 @@ impl ErrorExtensions for PresentationalError {
     }
 }
 
+impl From<PresentationalError> for Error {
+    fn from(error: PresentationalError) -> Self {
+        error.extend()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

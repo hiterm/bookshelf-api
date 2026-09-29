@@ -66,7 +66,12 @@ async fn restore_author_uses_revision_and_is_tenant_scoped() -> Result<()> {
 
     let (_other_user, other_token) = create_test_user().await?;
     let (_, response) = graphql_request(&restore, Some(&other_token)).await?;
-    assert_graphql_errors(&response, "cross-tenant restoreAuthor");
+    assert_graphql_error(
+        &response,
+        "cross-tenant restoreAuthor",
+        "NOT_FOUND",
+        &["restoreAuthor"],
+    );
 
     delete_test_author(&author_id, &token).await?;
     Ok(())
@@ -77,16 +82,29 @@ async fn restore_author_uses_revision_and_is_tenant_scoped() -> Result<()> {
 async fn restore_rejects_invalid_or_missing_revision() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
     let missing_id = uuid::Uuid::new_v4();
-    for query in [
-        format!(
-            r#"mutation {{ restoreBook(bookId: "{missing_id}", revisionNumber: 0) {{ operationId }} }}"#
+    for (query, code, path) in [
+        (
+            format!(
+                r#"mutation {{ restoreBook(bookId: "{missing_id}", revisionNumber: 0) {{ operationId }} }}"#
+            ),
+            "VALIDATION_ERROR",
+            "restoreBook",
         ),
-        format!(
-            r#"mutation {{ restoreAuthor(authorId: "{missing_id}", revisionNumber: 999) {{ operationId }} }}"#
+        (
+            format!(
+                r#"mutation {{ restoreAuthor(authorId: "{missing_id}", revisionNumber: 999) {{ operationId }} }}"#
+            ),
+            "NOT_FOUND",
+            "restoreAuthor",
         ),
     ] {
         let (_, response) = graphql_request(&query, Some(&token)).await?;
-        assert_graphql_errors(&response, "invalid or missing revision restore");
+        assert_graphql_error(
+            &response,
+            "invalid or missing revision restore",
+            code,
+            &[path],
+        );
     }
     Ok(())
 }

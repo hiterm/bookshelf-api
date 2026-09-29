@@ -30,6 +30,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use async_graphql::{
+        ComplexObject, Context, EmptyMutation, EmptySubscription, Object, Response, Schema,
+        SimpleObject, dataloader::DataLoader,
+    };
     use mockall::predicate;
 
     use crate::{
@@ -43,6 +47,7 @@ mod tests {
                 history::{AuthorRevisionDto, BookRevisionDto, OperationDto},
                 mutation::SingleRevisionMutationResultDto,
             },
+            error::UseCaseError,
             traits::{
                 author::{MockAuthorCommandUseCase, MockAuthorQueryUseCase},
                 book::{MockBookCommandUseCase, MockBookQueryUseCase},
@@ -53,6 +58,63 @@ mod tests {
     };
 
     use super::build_schema;
+    use crate::presentation::graphql::{
+        loader::BookChangesByOperationLoader, object::BookOperationChange,
+    };
+
+    struct LoaderFailureQuery;
+
+    #[Object]
+    impl LoaderFailureQuery {
+        async fn operation(&self) -> LoaderFailureOperation {
+            LoaderFailureOperation {
+                id: "operation-with-failing-loader".to_owned(),
+            }
+        }
+    }
+
+    #[derive(SimpleObject)]
+    #[graphql(complex)]
+    struct LoaderFailureOperation {
+        id: String,
+    }
+
+    #[ComplexObject]
+    impl LoaderFailureOperation {
+        async fn book_changes(
+            &self,
+            ctx: &Context<'_>,
+        ) -> Result<Vec<BookOperationChange>, crate::presentation::error::PresentationalError>
+        {
+            let loader = ctx.data_unchecked::<
+                DataLoader<BookChangesByOperationLoader<MockHistoryQueryUseCase>>,
+            >();
+            Ok(loader.load_one(self.id.clone()).await?.unwrap_or_default())
+        }
+    }
+
+    fn assert_schema_error(
+        response: Response,
+        expected_code: &str,
+        expected_path: serde_json::Value,
+        expected_message: &str,
+        private_marker: Option<&str>,
+    ) {
+        let json = serde_json::to_value(response).unwrap();
+        let errors = json["errors"]
+            .as_array()
+            .expect("errors should be an array");
+        assert_eq!(errors.len(), 1, "unexpected GraphQL errors: {errors:?}");
+        assert_eq!(errors[0]["extensions"]["code"], expected_code);
+        assert_eq!(errors[0]["path"], expected_path);
+        assert_eq!(errors[0]["message"], expected_message);
+        if let Some(marker) = private_marker {
+            assert!(
+                !json.to_string().contains(marker),
+                "private marker must not be exposed: {json:?}"
+            );
+        }
+    }
 
     fn query() -> Query<
         MockUserQueryUseCase,
@@ -80,6 +142,179 @@ mod tests {
             MockAuthorCommandUseCase::new(),
             MockHistoryCommandUseCase::new(),
         )
+    }
+
+    async fn execute_import_error(error: UseCaseError) -> Response {
+        let mut book_command = MockBookCommandUseCase::new();
+        book_command
+            .expect_import()
+            .with(
+                predicate::eq("user1"),
+                predicate::function(|books: &Vec<_>| books.is_empty()),
+            )
+            .times(1)
+            .return_once(move |_, _| Err(error));
+        let schema = build_schema(
+            query(),
+            Mutation::new(
+                MockUserCommandUseCase::new(),
+                book_command,
+                MockAuthorCommandUseCase::new(),
+                MockHistoryCommandUseCase::new(),
+            ),
+        );
+
+        schema
+            .execute(
+                async_graphql::Request::from(
+                    "mutation { importBooks(books: []) { books { id } operationId } }",
+                )
+                .data(Claims {
+                    sub: "user1".to_owned(),
+                    _permissions: None,
+                }),
+            )
+            .await
+    }
+
+    #[tokio::test]
+    async fn mutation_validation_error_has_public_contract() {
+        let response = execute_import_error(UseCaseError::Validation(
+            "audit validation failure".to_owned(),
+        ))
+        .await;
+
+        assert_schema_error(
+            response,
+            "VALIDATION_ERROR",
+            serde_json::json!(["importBooks"]),
+            "audit validation failure",
+            None,
+        );
+    }
+
+    #[tokio::test]
+    async fn mutation_conflict_error_has_public_contract() {
+        let response =
+            execute_import_error(UseCaseError::Conflict("author already exists".to_owned())).await;
+
+        assert_schema_error(
+            response,
+            "CONFLICT",
+            serde_json::json!(["importBooks"]),
+            "author already exists",
+            None,
+        );
+    }
+
+    #[tokio::test]
+    async fn mutation_unexpected_error_hides_private_details() {
+        let marker = "audit-private-invariant-marker";
+        let response = execute_import_error(UseCaseError::Unexpected(marker.to_owned())).await;
+
+        assert_schema_error(
+            response,
+            "INTERNAL_ERROR",
+            serde_json::json!(["importBooks"]),
+            "Internal server error",
+            Some(marker),
+        );
+    }
+
+    #[tokio::test]
+    async fn mutation_infrastructure_error_hides_private_details() {
+        let marker = "audit-private-database-marker";
+        let response = execute_import_error(UseCaseError::Other(anyhow::anyhow!(marker))).await;
+
+        assert_schema_error(
+            response,
+            "INTERNAL_ERROR",
+            serde_json::json!(["importBooks"]),
+            "Internal server error",
+            Some(marker),
+        );
+    }
+
+    #[tokio::test]
+    async fn query_not_found_error_omits_owner_and_has_public_contract() {
+        let mut history_query = MockHistoryQueryUseCase::new();
+        history_query
+            .expect_operation()
+            .with(predicate::eq("user1"), predicate::eq("missing-operation"))
+            .times(1)
+            .return_once(|_, _| {
+                Err(UseCaseError::NotFound {
+                    entity_type: "operation",
+                    entity_id: "missing-operation".to_owned(),
+                    user_id: "private-owner-marker".to_owned(),
+                })
+            });
+        let schema = build_schema(
+            Query::new(
+                MockUserQueryUseCase::new(),
+                MockBookQueryUseCase::new(),
+                MockAuthorQueryUseCase::new(),
+                history_query,
+            ),
+            mutation(),
+        );
+        let response = schema
+            .execute(
+                async_graphql::Request::from(
+                    "query { operation(id: \"missing-operation\") { id } }",
+                )
+                .data(Claims {
+                    sub: "user1".to_owned(),
+                    _permissions: None,
+                }),
+            )
+            .await;
+
+        assert_schema_error(
+            response,
+            "NOT_FOUND",
+            serde_json::json!(["operation"]),
+            "operation was not found for entity_id \"missing-operation\".",
+            Some("private-owner-marker"),
+        );
+    }
+
+    #[tokio::test]
+    async fn loader_error_uses_public_contract_and_nested_path() {
+        let operation_id = "operation-with-failing-loader";
+        let marker = "audit-private-loader-marker";
+        let mut loader_history = MockHistoryQueryUseCase::new();
+        loader_history
+            .expect_book_changes()
+            .with(
+                predicate::eq("user1"),
+                predicate::eq(vec![operation_id.to_owned()]),
+            )
+            .times(1)
+            .return_once(move |_, _| Err(UseCaseError::Other(anyhow::anyhow!(marker))));
+        let claims = Claims {
+            sub: "user1".to_owned(),
+            _permissions: None,
+        };
+        let schema = Schema::build(LoaderFailureQuery, EmptyMutation, EmptySubscription).finish();
+        let response = schema
+            .execute(
+                async_graphql::Request::from("query { operation { id bookChanges { bookId } } }")
+                    .data(claims.clone())
+                    .data(DataLoader::new(
+                        BookChangesByOperationLoader::new(claims, loader_history),
+                        tokio::spawn,
+                    )),
+            )
+            .await;
+
+        assert_schema_error(
+            response,
+            "INTERNAL_ERROR",
+            serde_json::json!(["operation", "bookChanges"]),
+            "Internal server error",
+            Some(marker),
+        );
     }
 
     #[tokio::test]

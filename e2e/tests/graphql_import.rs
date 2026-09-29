@@ -414,12 +414,17 @@ async fn e2e_import_books_rolls_back_when_one_entry_is_invalid() -> Result<()> {
                     format: E_BOOK
                     store: KINDLE
                 }}
-            ]) {{ id }}
+            ]) {{ books {{ id }} operationId }}
         }}
         "#
     );
     let (_, response) = graphql_request(&import_query, Some(&token)).await?;
-    assert_graphql_errors(&response, "importBooks with one invalid entry");
+    assert_graphql_error(
+        &response,
+        "importBooks with one invalid entry",
+        "VALIDATION_ERROR",
+        &["importBooks"],
+    );
 
     let (_, response) = graphql_request(
         r#"{ books { title } authors { name } operations { type } }"#,
@@ -484,7 +489,12 @@ async fn e2e_import_books_rejects_more_than_max_batch() -> Result<()> {
         format!(r#"mutation {{ importBooks(books: [{imported_entries}]) {{ books {{ id }} }} }}"#);
 
     let (_, response) = graphql_request(&import_query, Some(&token)).await?;
-    assert_graphql_errors(&response, "importBooks above the max batch size");
+    assert_graphql_error(
+        &response,
+        "importBooks above the max batch size",
+        "VALIDATION_ERROR",
+        &["importBooks"],
+    );
 
     let (_, response) =
         graphql_request(r#"{ books { id } operations { type } }"#, Some(&token)).await?;
@@ -633,10 +643,11 @@ async fn e2e_import_books_empty_returns_error() -> Result<()> {
 
     let import_query = r#"mutation { importBooks(books: []) { books { id } } }"#;
     let (_, response) = graphql_request(import_query, Some(&token)).await?;
-    assert!(
-        response.get("errors").is_some(),
-        "importBooks with empty list should return errors: {:?}",
-        response.get("errors")
+    assert_graphql_error(
+        &response,
+        "importBooks with empty list",
+        "VALIDATION_ERROR",
+        &["importBooks"],
     );
 
     Ok(())
@@ -796,6 +807,11 @@ async fn e2e_preview_book_import_empty_returns_error() -> Result<()> {
     let (_user_id, token) = create_test_user().await?;
     let query = "mutation { previewBookImport(books: []) { books { title } } }";
     let (_, response) = graphql_request(query, Some(&token)).await?;
-    assert_graphql_errors(&response, "previewBookImport with empty list");
+    assert_graphql_error(
+        &response,
+        "previewBookImport with empty list",
+        "VALIDATION_ERROR",
+        &["previewBookImport"],
+    );
     Ok(())
 }

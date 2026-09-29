@@ -87,7 +87,12 @@ async fn undo_update_ignores_unrelated_changes_but_rejects_target_conflicts() ->
     let (_, response) = graphql_request(&update("Conflicting"), Some(&token)).await?;
     assert_no_graphql_errors(&response, "conflicting update");
     let response = undo(&second_operation, &token).await?;
-    assert!(response.get("errors").is_some());
+    assert_graphql_error(
+        &response,
+        "undo operation with a newer conflicting change",
+        "CONFLICT",
+        &["undoOperation"],
+    );
 
     delete_test_book(&book_id, &token).await?;
     delete_test_author(&author_id, &token).await?;
