@@ -30,10 +30,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use async_graphql::{
-        ComplexObject, Context, EmptyMutation, EmptySubscription, Object, Response, Schema,
-        SimpleObject, dataloader::DataLoader,
-    };
+    use std::time::Duration;
+
+    use async_graphql::{Response, dataloader::DataLoader};
     use mockall::predicate;
 
     use crate::{
@@ -58,40 +57,7 @@ mod tests {
     };
 
     use super::build_schema;
-    use crate::presentation::graphql::{
-        loader::BookChangesByOperationLoader, object::BookOperationChange,
-    };
-
-    struct LoaderFailureQuery;
-
-    #[Object]
-    impl LoaderFailureQuery {
-        async fn operation(&self) -> LoaderFailureOperation {
-            LoaderFailureOperation {
-                id: "operation-with-failing-loader".to_owned(),
-            }
-        }
-    }
-
-    #[derive(SimpleObject)]
-    #[graphql(complex)]
-    struct LoaderFailureOperation {
-        id: String,
-    }
-
-    #[ComplexObject]
-    impl LoaderFailureOperation {
-        async fn book_changes(
-            &self,
-            ctx: &Context<'_>,
-        ) -> Result<Vec<BookOperationChange>, crate::presentation::error::PresentationalError>
-        {
-            let loader = ctx.data_unchecked::<
-                DataLoader<BookChangesByOperationLoader<MockHistoryQueryUseCase>>,
-            >();
-            Ok(loader.load_one(self.id.clone()).await?.unwrap_or_default())
-        }
-    }
+    use crate::presentation::graphql::loader::BookChangesByOperationLoader;
 
     fn assert_schema_error(
         response: Response,
@@ -281,25 +247,43 @@ mod tests {
 
     #[tokio::test]
     async fn loader_error_uses_public_contract_and_nested_path() {
-        let operation_id = "operation-with-failing-loader";
-        let marker = "audit-private-loader-marker";
-        let mut loader_history = MockHistoryQueryUseCase::new();
-        loader_history
-            .expect_book_changes()
-            .with(
-                predicate::eq("user1"),
-                predicate::eq(vec![operation_id.to_owned()]),
-            )
+        let operation_id = "e77df9d5-b7bf-47f2-8753-03f285d440e3";
+        let mut query_history = MockHistoryQueryUseCase::new();
+        query_history
+            .expect_operations()
             .times(1)
-            .return_once(move |_, _| Err(UseCaseError::Other(anyhow::anyhow!(marker))));
+            .return_once(move |_| {
+                Ok(vec![OperationDto {
+                    id: operation_id.to_owned(),
+                    operation_type: "create_book".to_owned(),
+                    detail: None,
+                    undo_of_operation_id: None,
+                    created_at: time::OffsetDateTime::UNIX_EPOCH,
+                }])
+            });
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .acquire_timeout(Duration::from_millis(100))
+            .connect_lazy("postgres://bookshelf:password@127.0.0.1:1/unreachable")
+            .unwrap();
+        let loader_history = crate::use_case::interactor::history::HistoryQueryInteractor::new(
+            crate::infrastructure::history_repository::PgHistoryRepository::new(pool),
+        );
         let claims = Claims {
             sub: "user1".to_owned(),
             _permissions: None,
         };
-        let schema = Schema::build(LoaderFailureQuery, EmptyMutation, EmptySubscription).finish();
+        let schema = build_schema(
+            Query::new(
+                MockUserQueryUseCase::new(),
+                MockBookQueryUseCase::new(),
+                MockAuthorQueryUseCase::new(),
+                query_history,
+            ),
+            mutation(),
+        );
         let response = schema
             .execute(
-                async_graphql::Request::from("query { operation { id bookChanges { bookId } } }")
+                async_graphql::Request::from("query { operations { id bookChanges { bookId } } }")
                     .data(claims.clone())
                     .data(DataLoader::new(
                         BookChangesByOperationLoader::new(claims, loader_history),
@@ -311,9 +295,9 @@ mod tests {
         assert_schema_error(
             response,
             "INTERNAL_ERROR",
-            serde_json::json!(["operation", "bookChanges"]),
+            serde_json::json!(["operations", 0, "bookChanges"]),
             "Internal server error",
-            Some(marker),
+            None,
         );
     }
 
