@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use async_graphql::dataloader::Loader;
 
@@ -14,9 +14,9 @@ use super::object::{
     Author, AuthorOperationChange, AuthorRevision, Book, BookOperationChange, BookRevision,
 };
 
-pub struct BookChangesByOperationLoader<HQ> {
+pub struct BookChangesByOperationLoader {
     claims: Claims,
-    history_query: HQ,
+    history_query: Arc<dyn HistoryQueryUseCase>,
 }
 
 pub struct AuthorChangesByOperationLoader<HQ> {
@@ -34,11 +34,11 @@ pub struct AuthorRevisionLoader<HQ> {
     history_query: HQ,
 }
 
-impl<HQ> BookChangesByOperationLoader<HQ> {
-    pub fn new(claims: Claims, history_query: HQ) -> Self {
+impl BookChangesByOperationLoader {
+    pub fn new<HQ: HistoryQueryUseCase>(claims: Claims, history_query: HQ) -> Self {
         Self {
             claims,
-            history_query,
+            history_query: Arc::new(history_query),
         }
     }
 }
@@ -70,7 +70,7 @@ impl<HQ> AuthorRevisionLoader<HQ> {
     }
 }
 
-impl<HQ: HistoryQueryUseCase> Loader<String> for BookChangesByOperationLoader<HQ> {
+impl Loader<String> for BookChangesByOperationLoader {
     type Value = Vec<BookOperationChange>;
     type Error = PresentationalError;
 
