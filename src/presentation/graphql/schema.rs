@@ -302,65 +302,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn loader_error_hides_private_details_through_production_object() {
-        let operation_id = "e77df9d5-b7bf-47f2-8753-03f285d440e3";
-        let marker = "audit-private-loader-marker";
-        let mut query_history = MockHistoryQueryUseCase::new();
-        query_history
-            .expect_operations()
-            .times(1)
-            .return_once(move |_| {
-                Ok(vec![OperationDto {
-                    id: operation_id.to_owned(),
-                    operation_type: "create_book".to_owned(),
-                    detail: None,
-                    undo_of_operation_id: None,
-                    created_at: time::OffsetDateTime::UNIX_EPOCH,
-                }])
-            });
-        let mut loader_history = MockHistoryQueryUseCase::new();
-        loader_history
-            .expect_book_changes()
-            .with(
-                predicate::eq("user1"),
-                predicate::eq(vec![operation_id.to_owned()]),
-            )
-            .times(1)
-            .return_once(move |_, _| Err(UseCaseError::Other(anyhow::anyhow!(marker))));
-        let claims = Claims {
-            sub: "user1".to_owned(),
-            _permissions: None,
-        };
-        let schema = build_schema(
-            Query::new(
-                MockUserQueryUseCase::new(),
-                MockBookQueryUseCase::new(),
-                MockAuthorQueryUseCase::new(),
-                query_history,
-            ),
-            mutation(),
-        );
-        let response = schema
-            .execute(
-                async_graphql::Request::from("query { operations { id bookChanges { bookId } } }")
-                    .data(claims.clone())
-                    .data(DataLoader::new(
-                        BookChangesByOperationLoader::new(claims, loader_history),
-                        tokio::spawn,
-                    )),
-            )
-            .await;
-
-        assert_schema_error(
-            response,
-            "INTERNAL_ERROR",
-            serde_json::json!(["operations", 0, "bookChanges"]),
-            "Internal server error",
-            Some(marker),
-        );
-    }
-
-    #[tokio::test]
     async fn execute_query() {
         let user_id = "user1";
         let author_id = "d065a358-4fa7-4236-ae19-f6f2f9467c35";

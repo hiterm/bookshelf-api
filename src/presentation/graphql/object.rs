@@ -49,7 +49,7 @@ impl From<OperationDto> for Operation {
 #[ComplexObject]
 impl Operation {
     async fn book_changes(&self, ctx: &Context<'_>) -> Result<Vec<BookOperationChange>> {
-        let loader = ctx.data_unchecked::<DataLoader<BookChangesByOperationLoader>>();
+        let loader = ctx.data_unchecked::<DataLoader<BookChangesByOperationLoader<HQ>>>();
         Ok(loader
             .load_one(self.id.to_string())
             .await?
