@@ -297,7 +297,7 @@ where
             .transaction_manager
             .begin_operation(&user_id, &NewOperation::simple(OperationType::CreateBook))
             .await?;
-        let _event_id = self.book_repository.create(&mut tx, &book).await?;
+        let _revision_number = self.book_repository.create(&mut tx, &book).await?;
         let operation_id = tx.operation_id().to_string();
         let revision_number = tx.revision_number().ok_or_else(|| {
             UseCaseError::Unexpected("Book mutation did not record a revision".to_string())
@@ -373,7 +373,7 @@ where
         };
         book.update(update, OffsetDateTime::now_utc());
 
-        let _event_id = self.book_repository.update(&mut tx, &book).await?;
+        let _revision_number = self.book_repository.update(&mut tx, &book).await?;
         let operation_id = tx.operation_id().to_string();
         let revision_number = tx.revision_number().ok_or_else(|| {
             UseCaseError::Unexpected("Book mutation did not record a revision".to_string())

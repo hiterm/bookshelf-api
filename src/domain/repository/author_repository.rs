@@ -13,11 +13,6 @@ use crate::domain::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DeleteAuthorExtra {
-    Merge { destination_author_id: AuthorId },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindOrCreateAuthorsResult {
     pub authors_by_name: HashMap<String, AuthorId>,
     pub created_author_ids: HashSet<AuthorId>,
@@ -66,14 +61,6 @@ pub trait AuthorRepository: Send + Sync + 'static {
         user_id: &UserId,
         author_ids: &[AuthorId],
     ) -> Result<HashMap<AuthorId, Author>, DomainError>;
-    // Resolves an author by name within the transaction, creating it if absent.
-    // A newly inserted author records one revision; an existing one records none.
-    async fn find_or_create_by_name(
-        &self,
-        tx: &mut Self::Transaction,
-        name: &AuthorName,
-        created_at: OffsetDateTime,
-    ) -> Result<AuthorId, DomainError>;
     async fn find_or_create_by_names(
         &self,
         tx: &mut Self::Transaction,
@@ -91,7 +78,6 @@ pub trait AuthorRepository: Send + Sync + 'static {
         &self,
         tx: &mut Self::Transaction,
         author_id: &AuthorId,
-        extra: Option<DeleteAuthorExtra>,
     ) -> Result<(), DomainError>;
     async fn restore_revision(
         &self,

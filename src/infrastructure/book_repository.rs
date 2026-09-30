@@ -1046,9 +1046,9 @@ mod tests {
     ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::CreateBook).await?;
-        let event_id = book_repository.create(&mut tx, book).await?;
+        let revision_number = book_repository.create(&mut tx, book).await?;
         tm.commit(tx).await?;
-        Ok(i64::from(event_id))
+        Ok(i64::from(revision_number))
     }
 
     async fn update_book(
@@ -1059,9 +1059,9 @@ mod tests {
     ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::UpdateBook).await?;
-        let event_id = book_repository.update(&mut tx, book).await?;
+        let revision_number = book_repository.update(&mut tx, book).await?;
         tm.commit(tx).await?;
-        Ok(i64::from(event_id))
+        Ok(i64::from(revision_number))
     }
 
     async fn delete_book(
@@ -2000,7 +2000,7 @@ mod tests {
 
         delete_book(&pool, &repository, &user_id, original.id()).await?;
         let mut tx = manager.begin(&user_id, OperationType::DeleteAuthor).await?;
-        authors.delete(&mut tx, &author_ids[0], None).await?;
+        authors.delete(&mut tx, &author_ids[0]).await?;
         manager.commit(tx).await?;
         let mut tx = manager
             .begin_operation(&user_id, &NewOperation::restore_book(1))

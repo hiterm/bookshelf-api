@@ -12,9 +12,7 @@ use crate::domain::{
         user::UserId,
     },
     error::DomainError,
-    repository::author_repository::{
-        AuthorRepository, DeleteAuthorExtra, FindOrCreateAuthorsResult,
-    },
+    repository::author_repository::{AuthorRepository, FindOrCreateAuthorsResult},
 };
 use crate::infrastructure::{
     history_recording::{
@@ -27,16 +25,6 @@ use crate::infrastructure::{
 struct AuthorRow {
     id: Uuid,
     name: String,
-    yomi: String,
-    created_at: OffsetDateTime,
-    updated_at: OffsetDateTime,
-}
-
-// Used by find_or_create_by_name to read the DB-generated id and timestamps
-// after an ON CONFLICT DO NOTHING insert.
-#[derive(sqlx::FromRow)]
-struct AuthorIdSnapshotRow {
-    id: Uuid,
     yomi: String,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
@@ -101,72 +89,6 @@ impl AuthorRepository for PgAuthorRepository {
 
         let revision_number = append_author_revision(tx, author, None).await?;
         Ok(revision_number)
-    }
-
-    async fn find_or_create_by_name(
-        &self,
-        tx: &mut Self::Transaction,
-        name: &AuthorName,
-        created_at: OffsetDateTime,
-    ) -> Result<AuthorId, DomainError> {
-        let user_id = tx.user_id().clone();
-        let name = name.as_str();
-        let candidate_id = Uuid::new_v4();
-
-        let result = sqlx::query(
-            "INSERT INTO author (id, user_id, name, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $4)
-             ON CONFLICT (user_id, name) DO NOTHING",
-        )
-        .bind(candidate_id)
-        .bind(user_id.as_str())
-        .bind(name)
-        .bind(created_at)
-        .execute(tx.as_mut())
-        .await?;
-
-        let rows_affected = result.rows_affected();
-
-        let snap: AuthorIdSnapshotRow = sqlx::query_as(
-            "SELECT id, yomi, created_at, updated_at
-             FROM author
-             WHERE user_id = $1 AND name = $2",
-        )
-        .bind(user_id.as_str())
-        .bind(name)
-        .fetch_one(tx.as_mut())
-        .await?;
-
-        let author_id = AuthorId::new(snap.id);
-
-        if rows_affected == 1 {
-            sqlx::query(
-                "WITH inserted_revision AS (
-                   INSERT INTO author_revision (
-                     author_id, revision_number, user_id, name, yomi,
-                     author_created_at, author_updated_at
-                   ) VALUES ($1, 1, $2, $3, $4, $5, $6)
-                   RETURNING author_id, revision_number
-                 )
-                 INSERT INTO author_operation_change (
-                   operation_id, user_id, author_id, before_revision_number,
-                   after_revision_number
-                 )
-                 SELECT $7, $2, author_id, NULL, revision_number
-                 FROM inserted_revision",
-            )
-            .bind(author_id.to_uuid())
-            .bind(user_id.as_str())
-            .bind(name)
-            .bind(&snap.yomi)
-            .bind(snap.created_at)
-            .bind(snap.updated_at)
-            .bind(tx.operation_id().to_uuid())
-            .execute(tx.as_mut())
-            .await?;
-        }
-
-        Ok(author_id)
     }
 
     async fn find_or_create_by_names(
@@ -377,7 +299,6 @@ impl AuthorRepository for PgAuthorRepository {
         &self,
         tx: &mut Self::Transaction,
         author_id: &AuthorId,
-        extra: Option<DeleteAuthorExtra>,
     ) -> Result<(), DomainError> {
         let user_id = tx.user_id().clone();
         // Lock the author row to prevent concurrent inserts into book_author after the count check.
@@ -434,8 +355,6 @@ impl AuthorRepository for PgAuthorRepository {
                 )));
             }
         }
-
-        let _ = extra;
 
         append_author_deletion(tx, author_id.to_uuid(), before_revision_number).await?;
 
@@ -656,9 +575,9 @@ mod database_tests {
     ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::CreateAuthor).await?;
-        let event_id = author_repository.create(&mut tx, author).await?;
+        let revision_number = author_repository.create(&mut tx, author).await?;
         tm.commit(tx).await?;
-        Ok(i64::from(event_id))
+        Ok(i64::from(revision_number))
     }
 
     async fn update_author(
@@ -669,9 +588,9 @@ mod database_tests {
     ) -> Result<i64, DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::UpdateAuthor).await?;
-        let event_id = author_repository.update(&mut tx, author).await?;
+        let revision_number = author_repository.update(&mut tx, author).await?;
         tm.commit(tx).await?;
-        Ok(i64::from(event_id))
+        Ok(i64::from(revision_number))
     }
 
     async fn delete_author(
@@ -682,7 +601,7 @@ mod database_tests {
     ) -> Result<(), DomainError> {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::DeleteAuthor).await?;
-        author_repository.delete(&mut tx, author_id, None).await?;
+        author_repository.delete(&mut tx, author_id).await?;
         tm.commit(tx).await
     }
 

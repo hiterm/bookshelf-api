@@ -55,7 +55,7 @@ pub trait BookRepository: Send + Sync + 'static {
     async fn delete(&self, tx: &mut Self::Transaction, book_id: &BookId)
     -> Result<(), DomainError>;
     // Upserts or deletes the entity and records a restore event in one transaction.
-    // book=Some means upsert; book=None means delete (only book_id is used).
+    // The requested revision is restored as a new current revision.
     async fn restore_revision(
         &self,
         tx: &mut Self::Transaction,

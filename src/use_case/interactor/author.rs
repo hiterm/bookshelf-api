@@ -13,7 +13,7 @@ use crate::{
             user::UserId,
         },
         repository::{
-            author_repository::{AuthorRepository, DeleteAuthorExtra},
+            author_repository::AuthorRepository,
             book_repository::BookRepository,
             transaction::{TransactionManager, TransactionOperation},
         },
@@ -211,13 +211,7 @@ where
             .await?;
 
         self.author_repository
-            .delete(
-                &mut tx,
-                source_author.id(),
-                Some(DeleteAuthorExtra::Merge {
-                    destination_author_id: destination_id.clone(),
-                }),
-            )
+            .delete(&mut tx, source_author.id())
             .await?;
         let operation_id = tx.operation_id().to_string();
         self.transaction_manager.commit(tx).await?;
@@ -245,7 +239,7 @@ where
             .transaction_manager
             .begin_operation(&user_id, &NewOperation::simple(OperationType::CreateAuthor))
             .await?;
-        let _event_id = self.author_repository.create(&mut tx, &author).await?;
+        let _revision_number = self.author_repository.create(&mut tx, &author).await?;
         let operation_id = tx.operation_id().to_string();
         let revision_number = tx.revision_number().ok_or_else(|| {
             UseCaseError::Unexpected("Author mutation did not record a revision".to_string())
@@ -296,7 +290,7 @@ where
             OffsetDateTime::now_utc(),
         );
 
-        let _event_id = self.author_repository.update(&mut tx, &author).await?;
+        let _revision_number = self.author_repository.update(&mut tx, &author).await?;
         let operation_id = tx.operation_id().to_string();
         let revision_number = tx.revision_number().ok_or_else(|| {
             UseCaseError::Unexpected("Author mutation did not record a revision".to_string())
@@ -323,9 +317,7 @@ where
             .transaction_manager
             .begin_operation(&user_id, &NewOperation::simple(OperationType::DeleteAuthor))
             .await?;
-        self.author_repository
-            .delete(&mut tx, &author_id, None)
-            .await?;
+        self.author_repository.delete(&mut tx, &author_id).await?;
         let operation_id = tx.operation_id().to_string();
         self.transaction_manager.commit(tx).await?;
 
@@ -383,8 +375,7 @@ mod tests {
             },
             error::DomainError,
             repository::{
-                author_repository::{DeleteAuthorExtra, MockAuthorRepository},
-                book_repository::MockBookRepository,
+                author_repository::MockAuthorRepository, book_repository::MockBookRepository,
                 transaction::MockTransactionManager,
             },
         },
@@ -863,8 +854,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always(), always())
-            .returning(|_, _, _| Ok(()));
+            .with(always(), always())
+            .returning(|_, _| Ok(()));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
 
@@ -883,8 +874,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always(), always())
-            .returning(|_, _, _| {
+            .with(always(), always())
+            .returning(|_, _| {
                 Err(DomainError::NotFound {
                     entity_type: "author",
                     entity_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
@@ -909,8 +900,8 @@ mod tests {
         let mut author_repository = MockAuthorRepository::new();
         author_repository
             .expect_delete()
-            .with(always(), always(), always())
-            .returning(|_, _, _| {
+            .with(always(), always())
+            .returning(|_, _| {
                 Err(DomainError::HasAssociatedBooks {
                     author_id: "006099b4-6c42-4ec4-8645-f6bd5b63eddc".to_string(),
                     user_id: "user1".to_string(),
@@ -1017,16 +1008,8 @@ mod tests {
             .returning(|_, _| Ok(()));
         author_repository
             .expect_delete()
-            .withf(move |_, author_id, extra| {
-                author_id.to_string() == source_id
-                    && matches!(
-                        extra,
-                        Some(DeleteAuthorExtra::Merge {
-                            destination_author_id
-                        }) if destination_author_id.to_string() == destination_id
-                    )
-            })
-            .returning(|_, _, _| Ok(()));
+            .withf(move |_, author_id| author_id.to_string() == source_id)
+            .returning(|_, _| Ok(()));
         let interactor = AuthorCommandInteractor::new(
             author_repository,
             book_repository,
@@ -1113,16 +1096,8 @@ mod tests {
             .returning(|_, _| Ok(()));
         author_repository
             .expect_delete()
-            .withf(move |_, author_id, extra| {
-                author_id.to_string() == source_id
-                    && matches!(
-                        extra,
-                        Some(DeleteAuthorExtra::Merge {
-                            destination_author_id
-                        }) if destination_author_id.to_string() == destination_id
-                    )
-            })
-            .returning(|_, _, _| Ok(()));
+            .withf(move |_, author_id| author_id.to_string() == source_id)
+            .returning(|_, _| Ok(()));
         let mut book_repository = MockBookRepository::new();
         book_repository
             .expect_find_by_author_id_with_tx()
