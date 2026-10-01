@@ -47,7 +47,8 @@ pub trait BookRepository: Send + Sync + 'static {
     ) -> Result<Option<Book>, DomainError>;
     /// Returns all current books belonging to the given user.
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError>;
-    /// Groups the given user's books by matching author ID; authors without books have no entry.
+    /// Groups the given user's books by requested author ID.
+    /// Every requested ID remains in the map, with an empty list when no books match.
     async fn find_by_author_ids_as_hash_map(
         &self,
         user_id: &UserId,
