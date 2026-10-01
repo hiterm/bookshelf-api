@@ -13,16 +13,11 @@ use crate::domain::{
 
 pub trait TransactionOperation {
     fn operation_id(&self) -> OperationId;
-    fn revision_number(&self) -> Option<i32>;
 }
 
 impl TransactionOperation for () {
     fn operation_id(&self) -> OperationId {
         OperationId::from(Uuid::nil())
-    }
-
-    fn revision_number(&self) -> Option<i32> {
-        Some(1)
     }
 }
 

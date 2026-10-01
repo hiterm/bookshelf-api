@@ -1,7 +1,7 @@
 use sqlx::Row;
 
 use crate::domain::{
-    entity::{author::Author, book::Book},
+    entity::{author::Author, book::Book, revision::RevisionNumber},
     error::DomainError,
 };
 
@@ -11,7 +11,7 @@ pub async fn append_book_revision(
     tx: &mut PgTransaction,
     book: &Book,
     before_revision_number: Option<i32>,
-) -> Result<i32, DomainError> {
+) -> Result<RevisionNumber, DomainError> {
     let user_id = tx.user_id().clone();
     let latest: Option<i32> = sqlx::query(
         "SELECT MAX(revision_number) AS revision_number
@@ -82,9 +82,7 @@ pub async fn append_book_revision(
     .execute(tx.as_mut())
     .await?;
 
-    tx.set_revision_number(revision_number);
-
-    Ok(revision_number)
+    RevisionNumber::try_from(revision_number)
 }
 
 pub async fn append_book_deletion(
@@ -111,7 +109,7 @@ pub async fn append_author_revision(
     tx: &mut PgTransaction,
     author: &Author,
     before_revision_number: Option<i32>,
-) -> Result<i32, DomainError> {
+) -> Result<RevisionNumber, DomainError> {
     let user_id = tx.user_id().clone();
     let latest: Option<i32> = sqlx::query(
         "SELECT MAX(revision_number) AS revision_number
@@ -157,9 +155,7 @@ pub async fn append_author_revision(
     .execute(tx.as_mut())
     .await?;
 
-    tx.set_revision_number(revision_number);
-
-    Ok(revision_number)
+    RevisionNumber::try_from(revision_number)
 }
 
 pub async fn append_author_deletion(

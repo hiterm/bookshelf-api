@@ -7,9 +7,11 @@ use crate::domain::{
     entity::{
         author::AuthorId,
         book::{Book, BookId},
+        revision::RevisionNumber,
         user::UserId,
     },
     error::DomainError,
+    repository::RevisionMutationResult,
 };
 
 #[automock(type Transaction = ();)]
@@ -17,7 +19,11 @@ use crate::domain::{
 pub trait BookRepository: Send + Sync + 'static {
     type Transaction: Send;
 
-    async fn create(&self, tx: &mut Self::Transaction, book: &Book) -> Result<i32, DomainError>;
+    async fn create(
+        &self,
+        tx: &mut Self::Transaction,
+        book: &Book,
+    ) -> Result<RevisionNumber, DomainError>;
     async fn create_all(
         &self,
         tx: &mut Self::Transaction,
@@ -46,7 +52,11 @@ pub trait BookRepository: Send + Sync + 'static {
         user_id: &UserId,
         author_id: &AuthorId,
     ) -> Result<Vec<Book>, DomainError>;
-    async fn update(&self, tx: &mut Self::Transaction, book: &Book) -> Result<i32, DomainError>;
+    async fn update(
+        &self,
+        tx: &mut Self::Transaction,
+        book: &Book,
+    ) -> Result<RevisionNumber, DomainError>;
     async fn update_all(
         &self,
         tx: &mut Self::Transaction,
@@ -61,5 +71,5 @@ pub trait BookRepository: Send + Sync + 'static {
         tx: &mut Self::Transaction,
         book_id: &BookId,
         revision_number: i32,
-    ) -> Result<Book, DomainError>;
+    ) -> Result<RevisionMutationResult<Book>, DomainError>;
 }

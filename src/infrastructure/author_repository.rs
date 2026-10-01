@@ -9,10 +9,14 @@ use uuid::Uuid;
 use crate::domain::{
     entity::{
         author::{Author, AuthorId, AuthorName},
+        revision::RevisionNumber,
         user::UserId,
     },
     error::DomainError,
-    repository::author_repository::{AuthorRepository, FindOrCreateAuthorsResult},
+    repository::{
+        RevisionMutationResult,
+        author_repository::{AuthorRepository, FindOrCreateAuthorsResult},
+    },
 };
 use crate::infrastructure::{
     history_recording::{
@@ -71,7 +75,7 @@ impl AuthorRepository for PgAuthorRepository {
         &self,
         tx: &mut Self::Transaction,
         author: &Author,
-    ) -> Result<i32, DomainError> {
+    ) -> Result<RevisionNumber, DomainError> {
         let user_id = tx.user_id().clone();
         sqlx::query(
             "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
@@ -245,7 +249,7 @@ impl AuthorRepository for PgAuthorRepository {
         &self,
         tx: &mut Self::Transaction,
         author: &Author,
-    ) -> Result<i32, DomainError> {
+    ) -> Result<RevisionNumber, DomainError> {
         let user_id = tx.user_id().clone();
         let result = sqlx::query(
             "UPDATE author SET name = $1, yomi = $2, updated_at = $3
@@ -366,7 +370,7 @@ impl AuthorRepository for PgAuthorRepository {
         tx: &mut Self::Transaction,
         author_id: &AuthorId,
         revision_number: i32,
-    ) -> Result<Author, DomainError> {
+    ) -> Result<RevisionMutationResult<Author>, DomainError> {
         let user_id = tx.user_id().clone();
         let source: Option<(String, String, OffsetDateTime)> = sqlx::query_as(
             "SELECT name, yomi, author_created_at
@@ -445,8 +449,11 @@ impl AuthorRepository for PgAuthorRepository {
             )));
         }
         upsert_result?;
-        append_author_revision(tx, &author, before_revision_number).await?;
-        Ok(author)
+        let revision_number = append_author_revision(tx, &author, before_revision_number).await?;
+        Ok(RevisionMutationResult {
+            entity: author,
+            revision_number,
+        })
     }
 
     async fn find_by_ids_as_hash_map(
@@ -576,8 +583,24 @@ mod database_tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::CreateAuthor).await?;
         let revision_number = author_repository.create(&mut tx, author).await?;
+        let operation_id = tx.operation_id();
         tm.commit(tx).await?;
-        Ok(i64::from(revision_number))
+        let recorded: i32 = sqlx::query_scalar(
+            "SELECT revision.revision_number FROM author_revision revision
+             JOIN author_operation_change change
+               ON change.user_id = revision.user_id
+              AND change.author_id = revision.author_id
+              AND change.after_revision_number = revision.revision_number
+             WHERE change.operation_id = $1 AND change.user_id = $2
+               AND change.author_id = $3",
+        )
+        .bind(operation_id.to_uuid())
+        .bind(user_id.as_str())
+        .bind(author.id().to_uuid())
+        .fetch_one(pool)
+        .await?;
+        assert_eq!(recorded, revision_number.value());
+        Ok(i64::from(revision_number.value()))
     }
 
     async fn update_author(
@@ -589,8 +612,24 @@ mod database_tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::UpdateAuthor).await?;
         let revision_number = author_repository.update(&mut tx, author).await?;
+        let operation_id = tx.operation_id();
         tm.commit(tx).await?;
-        Ok(i64::from(revision_number))
+        let recorded: i32 = sqlx::query_scalar(
+            "SELECT revision.revision_number FROM author_revision revision
+             JOIN author_operation_change change
+               ON change.user_id = revision.user_id
+              AND change.author_id = revision.author_id
+              AND change.after_revision_number = revision.revision_number
+             WHERE change.operation_id = $1 AND change.user_id = $2
+               AND change.author_id = $3",
+        )
+        .bind(operation_id.to_uuid())
+        .bind(user_id.as_str())
+        .bind(author.id().to_uuid())
+        .fetch_one(pool)
+        .await?;
+        assert_eq!(recorded, revision_number.value());
+        Ok(i64::from(revision_number.value()))
     }
 
     async fn delete_author(
@@ -1085,6 +1124,42 @@ mod database_tests {
     }
 
     #[sqlx::test]
+    async fn mutation_results_keep_independent_entity_revisions(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let users = PgUserRepository::new(pool.clone());
+        let repository = PgAuthorRepository::new(pool.clone());
+        let user_id = prepare_user(&users, "independent-revisions-user").await?;
+        let original = new_author(
+            AuthorId::new(Uuid::new_v4()),
+            AuthorName::new("Existing".to_string())?,
+        )?;
+        assert_eq!(
+            create_author(&pool, &repository, &user_id, &original).await?,
+            1
+        );
+        let other = new_author(
+            AuthorId::new(Uuid::new_v4()),
+            AuthorName::new("New".to_string())?,
+        )?;
+        let manager = PgTransactionManager::new(pool.clone());
+        let mut tx = manager.begin(&user_id, OperationType::ImportBooks).await?;
+        let updated_revision = repository.update(&mut tx, &original).await?;
+        let created_revision = repository.create(&mut tx, &other).await?;
+        let operation_id = tx.operation_id();
+        manager.commit(tx).await?;
+        assert_eq!(updated_revision.value(), 2);
+        assert_eq!(created_revision.value(), 1);
+        let changes: Vec<(Uuid, i32)> = sqlx::query_as(
+            "SELECT author_id, after_revision_number FROM author_operation_change WHERE operation_id = $1 AND user_id = $2",
+        ).bind(operation_id.to_uuid()).bind(user_id.as_str()).fetch_all(&pool).await?;
+        assert_eq!(changes.len(), 2);
+        assert!(changes.contains(&(original.id().to_uuid(), updated_revision.value())));
+        assert!(changes.contains(&(other.id().to_uuid(), created_revision.value())));
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn restore_revision_appends_fresh_owned_revision(pool: PgPool) -> anyhow::Result<()> {
         let users = PgUserRepository::new(pool.clone());
         let repository = PgAuthorRepository::new(pool.clone());
@@ -1110,7 +1185,7 @@ mod database_tests {
         let operation_id = tx.operation_id();
         manager.commit(tx).await?;
 
-        assert_eq!(restored.name().as_str(), "Original");
+        assert_eq!(restored.entity.name().as_str(), "Original");
         let change: (Option<i32>, Option<i32>) = sqlx::query_as(
             "SELECT before_revision_number, after_revision_number
              FROM author_operation_change WHERE operation_id = $1 AND user_id = $2",
@@ -1119,7 +1194,8 @@ mod database_tests {
         .bind(user_id.as_str())
         .fetch_one(&pool)
         .await?;
-        assert_eq!(change, (Some(2), Some(3)));
+        assert_eq!(change, (Some(2), Some(restored.revision_number.value())));
+        assert_eq!(restored.revision_number.value(), 3);
         Ok(())
     }
 

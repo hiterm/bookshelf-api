@@ -297,17 +297,14 @@ where
             .transaction_manager
             .begin_operation(&user_id, &NewOperation::simple(OperationType::CreateBook))
             .await?;
-        let _revision_number = self.book_repository.create(&mut tx, &book).await?;
+        let revision_number = self.book_repository.create(&mut tx, &book).await?;
         let operation_id = tx.operation_id().to_string();
-        let revision_number = tx.revision_number().ok_or_else(|| {
-            UseCaseError::Unexpected("Book mutation did not record a revision".to_string())
-        })?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(SingleRevisionMutationResultDto::new(
             book.into(),
             operation_id,
-            revision_number,
+            revision_number.value(),
         ))
     }
     async fn update(
@@ -373,17 +370,14 @@ where
         };
         book.update(update, OffsetDateTime::now_utc());
 
-        let _revision_number = self.book_repository.update(&mut tx, &book).await?;
+        let revision_number = self.book_repository.update(&mut tx, &book).await?;
         let operation_id = tx.operation_id().to_string();
-        let revision_number = tx.revision_number().ok_or_else(|| {
-            UseCaseError::Unexpected("Book mutation did not record a revision".to_string())
-        })?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(SingleRevisionMutationResultDto::new(
             book.into(),
             operation_id,
-            revision_number,
+            revision_number.value(),
         ))
     }
     async fn delete(
@@ -466,14 +460,11 @@ where
             .restore_revision(&mut tx, &book_id, revision_number)
             .await?;
         let operation_id = tx.operation_id().to_string();
-        let restored_revision_number = tx.revision_number().ok_or_else(|| {
-            UseCaseError::Unexpected("Book restore did not record a revision".to_string())
-        })?;
         self.transaction_manager.commit(tx).await?;
         Ok(SingleRevisionMutationResultDto::new(
-            Some(restored.into()),
+            Some(restored.entity.into()),
             operation_id,
-            restored_revision_number,
+            restored.revision_number.value(),
         ))
     }
 }
@@ -489,6 +480,7 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::Uuid;
 
+    use crate::domain::{entity::revision::RevisionNumber, repository::RevisionMutationResult};
     use crate::{
         common::{
             time::normalize_timestamp_for_persistence,
@@ -670,7 +662,7 @@ mod tests {
         book_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(101));
+            .returning(|_, _| Ok(RevisionNumber::try_from(101).unwrap()));
 
         let interactor = CreateBookTestCommand::build(book_repository, make_transaction_manager());
         let book_data = CreateBookDto::new(
@@ -693,7 +685,7 @@ mod tests {
         assert_eq!(dto.value.title, "New Book");
         assert!(dto.value.owned);
         assert_eq!(dto.value.created_at, dto.value.updated_at);
-        assert_eq!(dto.revision_number, 1);
+        assert_eq!(dto.revision_number, 101);
     }
 
     #[tokio::test]
@@ -728,7 +720,9 @@ mod tests {
     #[tokio::test]
     async fn create_book_commit_failure_returns_no_result() {
         let mut book_repository = MockBookRepository::new();
-        book_repository.expect_create().returning(|_, _| Ok(101));
+        book_repository
+            .expect_create()
+            .returning(|_, _| Ok(RevisionNumber::try_from(101).unwrap()));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin_operation().returning(|_, _| Ok(()));
@@ -790,7 +784,7 @@ mod tests {
         book_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(202));
+            .returning(|_, _| Ok(RevisionNumber::try_from(202).unwrap()));
 
         let interactor = UpdateBookTestCommand::build(book_repository, make_transaction_manager());
         let book_data = UpdateBookDto::new(
@@ -813,7 +807,7 @@ mod tests {
         let dto = result.unwrap();
         assert_eq!(dto.value.title, "Updated Book");
         assert_eq!(dto.value.priority, 70);
-        assert_eq!(dto.revision_number, 1);
+        assert_eq!(dto.revision_number, 202);
     }
 
     #[tokio::test]
@@ -824,7 +818,9 @@ mod tests {
         book_repository
             .expect_find_by_id_with_tx()
             .return_once(move |_, _, _| Ok(Some(book)));
-        book_repository.expect_update().returning(|_, _| Ok(202));
+        book_repository
+            .expect_update()
+            .returning(|_, _| Ok(RevisionNumber::try_from(202).unwrap()));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin_operation().returning(|_, _| Ok(()));
@@ -1411,7 +1407,12 @@ mod tests {
         book_repository
             .expect_restore_revision()
             .withf(|_, _, revision| *revision == 1)
-            .return_once(move |_, _, _| Ok(restored_book));
+            .return_once(move |_, _, _| {
+                Ok(RevisionMutationResult {
+                    entity: restored_book,
+                    revision_number: RevisionNumber::try_from(203).unwrap(),
+                })
+            });
         let interactor = BookCommandInteractor::new(
             book_repository,
             MockAuthorRepository::new(),
@@ -1423,6 +1424,7 @@ mod tests {
             .await
             .unwrap();
 
+        assert_eq!(result.revision_number, 203);
         let restored = result.value.unwrap();
         assert_eq!(restored.title, "Old Title");
     }

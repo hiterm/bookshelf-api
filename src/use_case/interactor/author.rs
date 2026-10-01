@@ -239,17 +239,14 @@ where
             .transaction_manager
             .begin_operation(&user_id, &NewOperation::simple(OperationType::CreateAuthor))
             .await?;
-        let _revision_number = self.author_repository.create(&mut tx, &author).await?;
+        let revision_number = self.author_repository.create(&mut tx, &author).await?;
         let operation_id = tx.operation_id().to_string();
-        let revision_number = tx.revision_number().ok_or_else(|| {
-            UseCaseError::Unexpected("Author mutation did not record a revision".to_string())
-        })?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(SingleRevisionMutationResultDto::new(
             author.into(),
             operation_id,
-            revision_number,
+            revision_number.value(),
         ))
     }
 
@@ -290,17 +287,14 @@ where
             OffsetDateTime::now_utc(),
         );
 
-        let _revision_number = self.author_repository.update(&mut tx, &author).await?;
+        let revision_number = self.author_repository.update(&mut tx, &author).await?;
         let operation_id = tx.operation_id().to_string();
-        let revision_number = tx.revision_number().ok_or_else(|| {
-            UseCaseError::Unexpected("Author mutation did not record a revision".to_string())
-        })?;
         self.transaction_manager.commit(tx).await?;
 
         Ok(SingleRevisionMutationResultDto::new(
             author.into(),
             operation_id,
-            revision_number,
+            revision_number.value(),
         ))
     }
 
@@ -343,14 +337,11 @@ where
             .restore_revision(&mut tx, &author_id, revision_number)
             .await?;
         let operation_id = tx.operation_id().to_string();
-        let restored_revision_number = tx.revision_number().ok_or_else(|| {
-            UseCaseError::Unexpected("Author restore did not record a revision".to_string())
-        })?;
         self.transaction_manager.commit(tx).await?;
         Ok(SingleRevisionMutationResultDto::new(
-            Some(restored.into()),
+            Some(restored.entity.into()),
             operation_id,
-            restored_revision_number,
+            restored.revision_number.value(),
         ))
     }
 }
@@ -363,6 +354,7 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::Uuid;
 
+    use crate::domain::{entity::revision::RevisionNumber, repository::RevisionMutationResult};
     use crate::{
         common::{
             time::normalize_timestamp_for_persistence,
@@ -474,7 +466,12 @@ mod tests {
         authors
             .expect_restore_revision()
             .withf(move |_, id, revision| id == &expected_author_id && *revision == 2)
-            .return_once(move |_, _, _| Ok(restored_author));
+            .return_once(move |_, _, _| {
+                Ok(RevisionMutationResult {
+                    entity: restored_author,
+                    revision_number: RevisionNumber::try_from(406).unwrap(),
+                })
+            });
         let interactor = AuthorCommandInteractor::new(
             authors,
             MockBookRepository::new(),
@@ -486,6 +483,7 @@ mod tests {
             .await
             .unwrap();
 
+        assert_eq!(restored.revision_number, 406);
         assert_eq!(restored.value.unwrap().name, "Old Name");
     }
 
@@ -532,7 +530,7 @@ mod tests {
         author_repository
             .expect_create()
             .with(always(), always())
-            .returning(|_, _| Ok(303));
+            .returning(|_, _| Ok(RevisionNumber::try_from(303).unwrap()));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let mut author_data = CreateAuthorDto::new("Test Author".to_string());
@@ -551,7 +549,7 @@ mod tests {
         assert_eq!(dto.value.created_at, dto.value.updated_at);
         assert!(dto.value.created_at >= before);
         assert!(dto.value.created_at <= after);
-        assert_eq!(dto.revision_number, 1);
+        assert_eq!(dto.revision_number, 303);
     }
 
     #[tokio::test]
@@ -577,7 +575,9 @@ mod tests {
     #[tokio::test]
     async fn create_author_commit_failure_returns_no_result() {
         let mut author_repository = MockAuthorRepository::new();
-        author_repository.expect_create().returning(|_, _| Ok(303));
+        author_repository
+            .expect_create()
+            .returning(|_, _| Ok(RevisionNumber::try_from(303).unwrap()));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin_operation().returning(|_, _| Ok(()));
@@ -655,7 +655,7 @@ mod tests {
         author_repository
             .expect_update()
             .with(always(), always())
-            .returning(|_, _| Ok(404));
+            .returning(|_, _| Ok(RevisionNumber::try_from(404).unwrap()));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let author_data = UpdateAuthorDto::new(author_id_str.to_string(), "New Name".to_string());
@@ -674,7 +674,7 @@ mod tests {
         assert!(updated.value.updated_at >= previous_updated_at);
         assert!(updated.value.updated_at >= before);
         assert!(updated.value.updated_at <= after);
-        assert_eq!(updated.revision_number, 1);
+        assert_eq!(updated.revision_number, 404);
     }
 
     #[tokio::test]
@@ -690,7 +690,9 @@ mod tests {
         author_repository
             .expect_find_by_id_with_tx()
             .return_once(move |_, _, _| Ok(Some(author)));
-        author_repository.expect_update().returning(|_, _| Ok(404));
+        author_repository
+            .expect_update()
+            .returning(|_, _| Ok(RevisionNumber::try_from(404).unwrap()));
 
         let mut tm = MockTransactionManager::new();
         tm.expect_begin_operation().returning(|_, _| Ok(()));
@@ -750,7 +752,7 @@ mod tests {
         author_repository
             .expect_update()
             .withf(|_, author| author.yomi() == "")
-            .returning(|_, _| Ok(405));
+            .returning(|_, _| Ok(RevisionNumber::try_from(405).unwrap()));
 
         let interactor = command_interactor(author_repository, make_transaction_manager());
         let mut author_data =
