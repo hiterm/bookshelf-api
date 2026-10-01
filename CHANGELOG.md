@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.5](https://github.com/hiterm/bookshelf-api/compare/2.17.4...2.17.5) - 2026-10-01
+
+### Other Changes
+- Fix GraphQL error contract tests by @hiterm in https://github.com/hiterm/bookshelf-api/pull/365
+- Clean up unused author repository APIs by @hiterm in https://github.com/hiterm/bookshelf-api/pull/368
+- Return explicit mutation revision results by @hiterm in https://github.com/hiterm/bookshelf-api/pull/369
+
 ## [2.17.4](https://github.com/hiterm/bookshelf-api/compare/2.17.3...2.17.4) - 2026-09-28
 
 ### Other Changes
