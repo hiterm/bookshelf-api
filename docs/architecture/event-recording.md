@@ -36,6 +36,12 @@ records its item count, merge records source and destination Author IDs, and
 restore records the source revision number. Mutation responses expose the
 Operation ID and, for a single resulting entity revision, its revision number.
 
+Single-entity create/update repositories return a validated `RevisionNumber`.
+Restore returns the entity together with its newly appended revision number.
+Use cases build response metadata directly from these explicit results after
+commit. Transactions retain user/Operation context without a last-revision
+slot; bulk mutations have no last-revision result.
+
 ## Tenant-aware identity
 
 GraphQL identifies a revision as `(entityId, revisionNumber)`. The server adds

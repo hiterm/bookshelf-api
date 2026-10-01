@@ -12,10 +12,11 @@ use crate::{
         entity::{
             author::AuthorId,
             book::{Book, BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+            revision::RevisionNumber,
             user::UserId,
         },
         error::DomainError,
-        repository::book_repository::BookRepository,
+        repository::{RevisionMutationResult, book_repository::BookRepository},
     },
     infrastructure::{
         history_recording::{
@@ -138,7 +139,11 @@ impl PgBookRepository {
 impl BookRepository for PgBookRepository {
     type Transaction = PgTransaction;
 
-    async fn create(&self, tx: &mut Self::Transaction, book: &Book) -> Result<i32, DomainError> {
+    async fn create(
+        &self,
+        tx: &mut Self::Transaction,
+        book: &Book,
+    ) -> Result<RevisionNumber, DomainError> {
         let user_id = tx.user_id().clone();
         sqlx::query(
             "INSERT INTO book (
@@ -536,7 +541,11 @@ impl BookRepository for PgBookRepository {
         rows.into_iter().map(book_from_row).collect()
     }
 
-    async fn update(&self, tx: &mut Self::Transaction, book: &Book) -> Result<i32, DomainError> {
+    async fn update(
+        &self,
+        tx: &mut Self::Transaction,
+        book: &Book,
+    ) -> Result<RevisionNumber, DomainError> {
         let user_id = tx.user_id().clone();
         let result = sqlx::query(
             "UPDATE book SET
@@ -880,7 +889,7 @@ impl BookRepository for PgBookRepository {
         tx: &mut Self::Transaction,
         book_id: &BookId,
         revision_number: i32,
-    ) -> Result<Book, DomainError> {
+    ) -> Result<RevisionMutationResult<Book>, DomainError> {
         let user_id = tx.user_id().clone();
         let source: Option<BookRow> = sqlx::query_as(
             "SELECT revision.book_id AS id, revision.title,
@@ -1000,8 +1009,11 @@ impl BookRepository for PgBookRepository {
             .execute(tx.as_mut())
             .await?;
         }
-        append_book_revision(tx, &book, before_revision_number).await?;
-        Ok(book)
+        let revision_number = append_book_revision(tx, &book, before_revision_number).await?;
+        Ok(RevisionMutationResult {
+            entity: book,
+            revision_number,
+        })
     }
 }
 
@@ -1047,8 +1059,24 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::CreateBook).await?;
         let revision_number = book_repository.create(&mut tx, book).await?;
+        let operation_id = tx.operation_id();
         tm.commit(tx).await?;
-        Ok(i64::from(revision_number))
+        let recorded: i32 = sqlx::query_scalar(
+            "SELECT revision.revision_number FROM book_revision revision
+             JOIN book_operation_change change
+               ON change.user_id = revision.user_id
+              AND change.book_id = revision.book_id
+              AND change.after_revision_number = revision.revision_number
+             WHERE change.operation_id = $1 AND change.user_id = $2
+               AND change.book_id = $3",
+        )
+        .bind(operation_id.to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.id().to_uuid())
+        .fetch_one(pool)
+        .await?;
+        assert_eq!(recorded, revision_number.value());
+        Ok(i64::from(revision_number.value()))
     }
 
     async fn update_book(
@@ -1060,8 +1088,24 @@ mod tests {
         let tm = PgTransactionManager::new(pool.clone());
         let mut tx = tm.begin(user_id, OperationType::UpdateBook).await?;
         let revision_number = book_repository.update(&mut tx, book).await?;
+        let operation_id = tx.operation_id();
         tm.commit(tx).await?;
-        Ok(i64::from(revision_number))
+        let recorded: i32 = sqlx::query_scalar(
+            "SELECT revision.revision_number FROM book_revision revision
+             JOIN book_operation_change change
+               ON change.user_id = revision.user_id
+              AND change.book_id = revision.book_id
+              AND change.after_revision_number = revision.revision_number
+             WHERE change.operation_id = $1 AND change.user_id = $2
+               AND change.book_id = $3",
+        )
+        .bind(operation_id.to_uuid())
+        .bind(user_id.as_str())
+        .bind(book.id().to_uuid())
+        .fetch_one(pool)
+        .await?;
+        assert_eq!(recorded, revision_number.value());
+        Ok(i64::from(revision_number.value()))
     }
 
     async fn delete_book(
@@ -1986,8 +2030,8 @@ mod tests {
         let operation_id = tx.operation_id();
         manager.commit(tx).await?;
 
-        assert_eq!(restored.title(), original.title());
-        assert_eq!(restored.purchase_date(), original.purchase_date());
+        assert_eq!(restored.entity.title(), original.title());
+        assert_eq!(restored.entity.purchase_date(), original.purchase_date());
         let change: (Option<i32>, Option<i32>) = sqlx::query_as(
             "SELECT before_revision_number, after_revision_number
              FROM book_operation_change WHERE operation_id = $1 AND user_id = $2",
@@ -1996,7 +2040,8 @@ mod tests {
         .bind(user_id.as_str())
         .fetch_one(&pool)
         .await?;
-        assert_eq!(change, (Some(2), Some(3)));
+        assert_eq!(change, (Some(2), Some(restored.revision_number.value())));
+        assert_eq!(restored.revision_number.value(), 3);
 
         delete_book(&pool, &repository, &user_id, original.id()).await?;
         let mut tx = manager.begin(&user_id, OperationType::DeleteAuthor).await?;
