@@ -49,6 +49,7 @@ struct AuthorBookRow {
     book: BookRow,
 }
 
+/// Validates database fields and reconstructs a book, treating missing author links as an empty list.
 fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
     let book_id = BookId::new(row.id)?;
     let title = BookTitle::new(row.title)?;
@@ -79,6 +80,7 @@ fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
     )
 }
 
+/// Loads a user-owned book and its author links using the supplied SQL executor.
 async fn find_book_by_id_with_executor<'e, E>(
     executor: E,
     user_id: &UserId,
@@ -130,6 +132,7 @@ pub struct PgBookRepository {
 }
 
 impl PgBookRepository {
+    /// Creates a PostgreSQL book repository backed by the supplied connection pool.
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -139,6 +142,8 @@ impl PgBookRepository {
 impl BookRepository for PgBookRepository {
     type Transaction = PgTransaction;
 
+    /// Creates the book for the transaction owner and records its initial revision.
+    /// Returns the revision number recorded by this mutation; the caller commits the transaction.
     async fn create(
         &self,
         tx: &mut Self::Transaction,
@@ -198,6 +203,7 @@ impl BookRepository for PgBookRepository {
         Ok(revision_number)
     }
 
+    /// Creates the books, author links, initial revisions, and operation changes in the supplied transaction.
     async fn create_all(
         &self,
         tx: &mut Self::Transaction,
@@ -346,6 +352,7 @@ impl BookRepository for PgBookRepository {
         Ok(())
     }
 
+    /// Returns the book belonging to the given user, or `None` when absent.
     async fn find_by_id(
         &self,
         user_id: &UserId,
@@ -354,6 +361,7 @@ impl BookRepository for PgBookRepository {
         find_book_by_id_with_executor(&self.pool, user_id, book_id).await
     }
 
+    /// Looks up the book for the explicit user within the supplied transaction.
     async fn find_by_id_with_tx(
         &self,
         tx: &mut Self::Transaction,
@@ -380,6 +388,7 @@ impl BookRepository for PgBookRepository {
         row.map(book_from_row).transpose()
     }
 
+    /// Returns all current books belonging to the given user.
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Book>, DomainError> {
         let books: Result<Vec<Book>, DomainError> = sqlx::query_as(
             "WITH book_of_user AS(
@@ -422,6 +431,8 @@ impl BookRepository for PgBookRepository {
         books
     }
 
+    /// Groups the given user's books by requested author ID.
+    /// Every requested ID remains in the map, with an empty list when no books match.
     async fn find_by_author_ids_as_hash_map(
         &self,
         user_id: &UserId,
@@ -483,6 +494,7 @@ impl BookRepository for PgBookRepository {
         Ok(books_by_author)
     }
 
+    /// Locks the given user's matching books in ID order and reads their current author links.
     async fn find_by_author_id_with_tx(
         &self,
         tx: &mut Self::Transaction,
@@ -541,6 +553,8 @@ impl BookRepository for PgBookRepository {
         rows.into_iter().map(book_from_row).collect()
     }
 
+    /// Updates the transaction owner's book and records a new revision.
+    /// Returns the revision number recorded by this mutation; the caller commits the transaction.
     async fn update(
         &self,
         tx: &mut Self::Transaction,
@@ -628,6 +642,7 @@ impl BookRepository for PgBookRepository {
         Ok(revision_number)
     }
 
+    /// Updates owned books and author links and records their revisions in the supplied transaction.
     async fn update_all(
         &self,
         tx: &mut Self::Transaction,
@@ -842,6 +857,8 @@ impl BookRepository for PgBookRepository {
         Ok(())
     }
 
+    /// Deletes the transaction owner's book and records the operation change.
+    /// The caller commits the transaction; missing or inaccessible entities return an error.
     async fn delete(
         &self,
         tx: &mut Self::Transaction,
@@ -884,6 +901,9 @@ impl BookRepository for PgBookRepository {
         Ok(())
     }
 
+    /// Restores an owned historical book snapshot as a new current revision.
+    /// Returns the restored entity and newly recorded revision number, not the source number.
+    /// The caller commits the transaction.
     async fn restore_revision(
         &self,
         tx: &mut Self::Transaction,

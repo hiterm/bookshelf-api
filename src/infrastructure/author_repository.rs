@@ -45,6 +45,7 @@ struct BulkAuthorRow {
 
 const AUTHOR_NAME_UNIQUE_CONSTRAINT: &str = "author_user_id_name_unique";
 
+/// Maps the author-name uniqueness violation to a conflict and preserves other database errors.
 fn classify_author_name_write_error(error: sqlx::Error, name: &str) -> DomainError {
     if let sqlx::Error::Database(database_error) = &error
         && database_error.code().as_deref() == Some("23505")
@@ -62,6 +63,7 @@ pub struct PgAuthorRepository {
 }
 
 impl PgAuthorRepository {
+    /// Creates a PostgreSQL author repository backed by the supplied connection pool.
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -71,6 +73,8 @@ impl PgAuthorRepository {
 impl AuthorRepository for PgAuthorRepository {
     type Transaction = PgTransaction;
 
+    /// Creates the author for the transaction owner and records its initial revision.
+    /// Returns the revision number recorded by this mutation; the caller commits the transaction.
     async fn create(
         &self,
         tx: &mut Self::Transaction,
@@ -95,6 +99,8 @@ impl AuthorRepository for PgAuthorRepository {
         Ok(revision_number)
     }
 
+    /// Resolves author names for the transaction owner, creating missing authors with the supplied timestamp.
+    /// Returns the name-to-ID mapping and newly created IDs, recording initial revisions for new authors.
     async fn find_or_create_by_names(
         &self,
         tx: &mut Self::Transaction,
@@ -195,6 +201,7 @@ impl AuthorRepository for PgAuthorRepository {
         })
     }
 
+    /// Returns the author belonging to the given user, or `None` when absent.
     async fn find_by_id(
         &self,
         user_id: &UserId,
@@ -203,6 +210,7 @@ impl AuthorRepository for PgAuthorRepository {
         find_author_by_id_with_executor(&self.pool, user_id, author_id).await
     }
 
+    /// Looks up the author for the explicit user within the supplied transaction.
     async fn find_by_id_with_tx(
         &self,
         tx: &mut Self::Transaction,
@@ -219,6 +227,7 @@ impl AuthorRepository for PgAuthorRepository {
         author_from_optional_row(row)
     }
 
+    /// Returns all current authors belonging to the given user.
     async fn find_all(&self, user_id: &UserId) -> Result<Vec<Author>, DomainError> {
         let authors: Result<Vec<Author>, DomainError> =
             sqlx::query_as("SELECT * FROM author WHERE user_id = $1 ORDER BY name ASC")
@@ -245,6 +254,8 @@ impl AuthorRepository for PgAuthorRepository {
         authors
     }
 
+    /// Updates the transaction owner's author and records a new revision.
+    /// Returns the revision number recorded by this mutation; the caller commits the transaction.
     async fn update(
         &self,
         tx: &mut Self::Transaction,
@@ -288,6 +299,7 @@ impl AuthorRepository for PgAuthorRepository {
         Ok(revision_number)
     }
 
+    /// Records the author's unchanged snapshot as a new revision in the supplied operation.
     async fn record_unchanged_revision(
         &self,
         tx: &mut Self::Transaction,
@@ -299,6 +311,8 @@ impl AuthorRepository for PgAuthorRepository {
         Ok(())
     }
 
+    /// Deletes the transaction owner's author and records the operation change.
+    /// The caller commits the transaction; missing or inaccessible entities return an error.
     async fn delete(
         &self,
         tx: &mut Self::Transaction,
@@ -365,6 +379,9 @@ impl AuthorRepository for PgAuthorRepository {
         Ok(())
     }
 
+    /// Restores an owned historical author snapshot as a new current revision.
+    /// Returns the restored entity and newly recorded revision number, not the source number.
+    /// The caller commits the transaction.
     async fn restore_revision(
         &self,
         tx: &mut Self::Transaction,
@@ -456,6 +473,7 @@ impl AuthorRepository for PgAuthorRepository {
         })
     }
 
+    /// Returns matching authors belonging to the given user, keyed by author ID.
     async fn find_by_ids_as_hash_map(
         &self,
         user_id: &UserId,
@@ -494,6 +512,7 @@ impl AuthorRepository for PgAuthorRepository {
     }
 }
 
+/// Loads an author belonging to the explicit user using the supplied SQL executor.
 async fn find_author_by_id_with_executor<'e, E>(
     executor: E,
     user_id: &UserId,
@@ -512,6 +531,7 @@ where
     author_from_optional_row(row)
 }
 
+/// Validates and reconstructs an optional author row, preserving absence as `None`.
 fn author_from_optional_row(row: Option<AuthorRow>) -> Result<Option<Author>, DomainError> {
     row.map(|row| -> Result<Author, DomainError> {
         let author_id: AuthorId = row.id.into();

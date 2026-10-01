@@ -37,6 +37,7 @@ pub struct AuthorQueryInteractor<AR> {
 }
 
 impl<AR> AuthorQueryInteractor<AR> {
+    /// Creates a author query interactor with the supplied repository.
     pub fn new(author_repository: AR) -> Self {
         Self { author_repository }
     }
@@ -47,6 +48,7 @@ impl<AR> AuthorQueryUseCase for AuthorQueryInteractor<AR>
 where
     AR: AuthorRepository,
 {
+    /// Returns the author belonging to the given user, or `None` when absent.
     async fn find_by_id(
         &self,
         user_id: &str,
@@ -61,6 +63,7 @@ where
             .map(AuthorDto::from))
     }
 
+    /// Returns all current authors belonging to the given user.
     async fn find_all(&self, user_id: &str) -> Result<Vec<AuthorDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         Ok(self
@@ -72,6 +75,7 @@ where
             .collect())
     }
 
+    /// Validates identifiers and returns owned author DTOs keyed by ID, omitting missing authors.
     async fn find_by_ids(
         &self,
         user_id: &str,
@@ -99,6 +103,7 @@ pub struct AuthorCommandInteractor<AR, BR, TM> {
 }
 
 impl<AR, BR, TM> AuthorCommandInteractor<AR, BR, TM> {
+    /// Creates a author command interactor with repositories and a transaction manager.
     pub fn new(author_repository: AR, book_repository: BR, transaction_manager: TM) -> Self {
         Self {
             author_repository,
@@ -115,6 +120,8 @@ where
     AR: AuthorRepository<Transaction = TM::Transaction>,
     BR: BookRepository<Transaction = TM::Transaction>,
 {
+    /// Moves the source author's books to the destination and deletes the source in one operation.
+    /// Rejects identical IDs and commits book revisions, the destination snapshot, and source deletion together.
     async fn merge(
         &self,
         user_id: &str,
@@ -222,6 +229,8 @@ where
         ))
     }
 
+    /// Validates input and creates an owned author in a new operation.
+    /// Commits before returning the entity, operation ID, and recorded revision number.
     async fn create(
         &self,
         user_id: &str,
@@ -250,6 +259,8 @@ where
         ))
     }
 
+    /// Validates input and updates an owned author in a new operation.
+    /// Commits before returning the entity, operation ID, and recorded revision number.
     async fn update(
         &self,
         user_id: &str,
@@ -298,6 +309,8 @@ where
         ))
     }
 
+    /// Validates identifiers and deletes an owned author in a new operation.
+    /// Returns the operation ID only after committing successfully.
     async fn delete(
         &self,
         user_id: &str,
@@ -318,6 +331,8 @@ where
         Ok(MutationResultDto::new(author_id_value, operation_id))
     }
 
+    /// Validates identifiers and restores an owned author revision in a new operation.
+    /// Commits before returning the restored entity and newly recorded revision number.
     async fn restore(
         &self,
         user_id: &str,
