@@ -7,6 +7,9 @@ use crate::domain::{
 
 use super::transaction::PgTransaction;
 
+/// Appends an owned book snapshot and its operation change in the supplied transaction.
+/// Returns the next revision number; `None` as the prior revision denotes creation.
+/// Database failures and revision-number overflow return an error.
 pub async fn append_book_revision(
     tx: &mut PgTransaction,
     book: &Book,
@@ -85,6 +88,8 @@ pub async fn append_book_revision(
     RevisionNumber::try_from(revision_number)
 }
 
+/// Records an owned book deletion by linking the prior revision to a null after-revision.
+/// Does not delete the current entity; the repository performs that write in the same transaction.
 pub async fn append_book_deletion(
     tx: &mut PgTransaction,
     book_id: uuid::Uuid,
@@ -105,6 +110,9 @@ pub async fn append_book_deletion(
     Ok(())
 }
 
+/// Appends an owned author snapshot and its operation change in the supplied transaction.
+/// Returns the next revision number; `None` as the prior revision denotes creation.
+/// Database failures and revision-number overflow return an error.
 pub async fn append_author_revision(
     tx: &mut PgTransaction,
     author: &Author,
@@ -158,6 +166,8 @@ pub async fn append_author_revision(
     RevisionNumber::try_from(revision_number)
 }
 
+/// Records an owned author deletion by linking the prior revision to a null after-revision.
+/// Does not delete the current entity; the repository performs that write in the same transaction.
 pub async fn append_author_deletion(
     tx: &mut PgTransaction,
     author_id: uuid::Uuid,
@@ -178,6 +188,8 @@ pub async fn append_author_deletion(
     Ok(())
 }
 
+/// Returns the latest recorded book revision for the transaction owner.
+/// Returns an error when no revision exists.
 pub async fn latest_book_revision_number(
     tx: &mut PgTransaction,
     book_id: uuid::Uuid,
@@ -195,6 +207,8 @@ pub async fn latest_book_revision_number(
     .ok_or_else(|| DomainError::Unexpected("Book has no current revision".to_owned()))
 }
 
+/// Returns the latest recorded author revision for the transaction owner.
+/// Returns an error when no revision exists.
 pub async fn latest_author_revision_number(
     tx: &mut PgTransaction,
     author_id: uuid::Uuid,
