@@ -45,6 +45,7 @@ pub struct BookQueryInteractor<BR> {
 }
 
 impl<BR> BookQueryInteractor<BR> {
+    /// Creates a book query interactor with the supplied repository.
     pub fn new(book_repository: BR) -> Self {
         Self { book_repository }
     }
@@ -55,6 +56,7 @@ impl<BR> BookQueryUseCase for BookQueryInteractor<BR>
 where
     BR: BookRepository,
 {
+    /// Returns the book belonging to the given user, or `None` when absent.
     async fn find_by_id(
         &self,
         user_id: &str,
@@ -69,6 +71,7 @@ where
             .map(BookDto::from))
     }
 
+    /// Returns all current books belonging to the given user.
     async fn find_all(&self, user_id: &str) -> Result<Vec<BookDto>, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         Ok(self
@@ -80,6 +83,7 @@ where
             .collect())
     }
 
+    /// Validates identifiers and returns owned book DTOs grouped by author ID.
     async fn find_by_author_ids(
         &self,
         user_id: &str,
@@ -134,6 +138,7 @@ pub struct BookCommandInteractor<BR, AR, TM> {
 }
 
 impl<BR, AR, TM> BookCommandInteractor<BR, AR, TM> {
+    /// Creates a book command interactor with repositories and a transaction manager.
     pub fn new(book_repository: BR, author_repository: AR, transaction_manager: TM) -> Self {
         Self {
             book_repository,
@@ -149,6 +154,7 @@ where
     BR: BookRepository<Transaction = TM::Transaction>,
     AR: AuthorRepository<Transaction = TM::Transaction>,
 {
+    /// Validates a nonempty import batch within the size limit and assigns book IDs and shared timestamps.
     fn prepare_import(
         books: Vec<ImportBookEntryDto>,
     ) -> Result<Vec<ImportBookInput>, UseCaseError> {
@@ -189,6 +195,8 @@ where
             .collect()
     }
 
+    /// Resolves authors and creates books and history within the supplied transaction.
+    /// Requires nonempty validated inputs from `prepare_import`; leaves commit or rollback to the caller.
     async fn execute_import(
         &self,
         tx: &mut TM::Transaction,
@@ -282,6 +290,8 @@ where
     BR: BookRepository<Transaction = TM::Transaction>,
     AR: AuthorRepository<Transaction = TM::Transaction>,
 {
+    /// Validates input and creates an owned book in a new operation.
+    /// Commits before returning the entity, operation ID, and recorded revision number.
     async fn create(
         &self,
         user_id: &str,
@@ -307,6 +317,8 @@ where
             revision_number.value(),
         ))
     }
+    /// Validates input and updates an owned book in a new operation.
+    /// Commits before returning the entity, operation ID, and recorded revision number.
     async fn update(
         &self,
         user_id: &str,
@@ -380,6 +392,8 @@ where
             revision_number.value(),
         ))
     }
+    /// Validates identifiers and deletes an owned book in a new operation.
+    /// Returns the operation ID only after committing successfully.
     async fn delete(
         &self,
         user_id: &str,
@@ -399,6 +413,7 @@ where
 
         Ok(MutationResultDto::new(book_id_value, operation_id))
     }
+    /// Validates and imports a book batch and its authors in one committed operation.
     async fn import(
         &self,
         user_id: &str,
@@ -421,6 +436,7 @@ where
         ))
     }
 
+    /// Executes a validated import and rolls it back, returning proposed books and author creation statuses.
     async fn preview_import(
         &self,
         user_id: &str,
@@ -441,6 +457,8 @@ where
         })
     }
 
+    /// Validates identifiers and restores an owned book revision in a new operation.
+    /// Commits before returning the restored entity and newly recorded revision number.
     async fn restore(
         &self,
         user_id: &str,
