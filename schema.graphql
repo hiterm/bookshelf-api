@@ -90,6 +90,7 @@ input CreateAuthorInput {
 }
 
 input CreateBookInput {
+	newAuthorNames: [String!]! = []
 	title: String!
 	authorIds: [String!]!
 	isbn: String!
@@ -281,6 +282,7 @@ input UpdateAuthorInput {
 }
 
 input UpdateBookInput {
+	newAuthorNames: [String!]! = []
 	id: String!
 	title: String!
 	authorIds: [String!]!

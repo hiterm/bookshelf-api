@@ -377,6 +377,8 @@ impl From<BookDto> for Book {
 
 #[derive(InputObject)]
 pub struct CreateBookInput {
+    #[graphql(default)]
+    pub new_author_names: Vec<String>,
     pub title: String,
     pub author_ids: Vec<String>,
     pub isbn: String,
@@ -391,6 +393,7 @@ pub struct CreateBookInput {
 impl From<CreateBookInput> for CreateBookDto {
     fn from(book_input: CreateBookInput) -> Self {
         let CreateBookInput {
+            new_author_names,
             title,
             author_ids,
             isbn,
@@ -403,6 +406,7 @@ impl From<CreateBookInput> for CreateBookDto {
         } = book_input;
 
         CreateBookDto {
+            new_author_names,
             title,
             author_ids,
             isbn,
@@ -418,6 +422,8 @@ impl From<CreateBookInput> for CreateBookDto {
 
 #[derive(InputObject)]
 pub struct UpdateBookInput {
+    #[graphql(default)]
+    pub new_author_names: Vec<String>,
     pub id: String,
     pub title: String,
     pub author_ids: Vec<String>,
@@ -433,6 +439,7 @@ pub struct UpdateBookInput {
 impl From<UpdateBookInput> for UpdateBookDto {
     fn from(book_input: UpdateBookInput) -> Self {
         let UpdateBookInput {
+            new_author_names,
             id,
             title,
             author_ids,
@@ -446,6 +453,7 @@ impl From<UpdateBookInput> for UpdateBookDto {
         } = book_input;
 
         UpdateBookDto {
+            new_author_names,
             id,
             title,
             author_ids,

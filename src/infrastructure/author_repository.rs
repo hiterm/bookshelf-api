@@ -51,7 +51,7 @@ fn classify_author_name_write_error(error: sqlx::Error, name: &str) -> DomainErr
         && database_error.code().as_deref() == Some("23505")
         && database_error.constraint() == Some(AUTHOR_NAME_UNIQUE_CONSTRAINT)
     {
-        return DomainError::Conflict(format!("author name '{name}' is already in use"));
+        return DomainError::AuthorNameConflict(name.to_owned());
     }
 
     error.into()
@@ -882,7 +882,7 @@ mod database_tests {
         let result = create_author(&pool, &author_repository, &user_id, &duplicate).await;
 
         assert!(
-            matches!(result, Err(DomainError::Conflict(message)) if message.contains("duplicate name"))
+            matches!(result, Err(DomainError::AuthorNameConflict(message)) if message.contains("duplicate name"))
         );
         Ok(())
     }
@@ -908,7 +908,7 @@ mod database_tests {
         let result = update_author(&pool, &author_repository, &user_id, &conflicting).await;
 
         assert!(
-            matches!(result, Err(DomainError::Conflict(message)) if message.contains("existing name"))
+            matches!(result, Err(DomainError::AuthorNameConflict(message)) if message.contains("existing name"))
         );
         Ok(())
     }

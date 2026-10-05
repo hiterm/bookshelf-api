@@ -8,7 +8,7 @@ use crate::{
     common::types::{BookFormat, BookStore},
     domain::{
         entity::{
-            author::{AuthorId, AuthorName},
+            author::{Author, AuthorId, AuthorName},
             book::{Book, BookId, BookTitle, BookUpdate, Isbn, OwnedFlag, Priority, ReadFlag},
             operation::{NewOperation, OperationType},
             user::UserId,
@@ -38,6 +38,40 @@ use crate::{
 };
 
 const MAX_BOOK_BATCH: usize = 1000;
+
+/// Validates and deterministically orders the distinct new authors before any writes.
+fn prepare_new_authors(
+    names: Vec<String>,
+    now: OffsetDateTime,
+) -> Result<Vec<Author>, UseCaseError> {
+    let mut names = names;
+    names.sort();
+    names.dedup();
+    names
+        .into_iter()
+        .map(|name| {
+            Ok(Author::new_with_yomi(
+                AuthorId::new(Uuid::new_v4()),
+                AuthorName::new(name)?,
+                String::new(),
+                now,
+            )?)
+        })
+        .collect()
+}
+
+fn deduplicate_author_ids(ids: &mut Vec<String>) -> Result<(), UseCaseError> {
+    let mut seen = HashSet::new();
+    let canonical = ids
+        .iter()
+        .map(|id| AuthorId::try_from(id.as_str()).map(|id| id.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    *ids = canonical
+        .into_iter()
+        .filter(|id| seen.insert(id.clone()))
+        .collect();
+    Ok(())
+}
 
 #[derive(Debug, Clone)]
 pub struct BookQueryInteractor<BR> {
@@ -195,6 +229,34 @@ where
             .collect()
     }
 
+    /// Checks owned references and creates new authors inside the book operation.
+    async fn save_authors(
+        &self,
+        tx: &mut TM::Transaction,
+        user_id: &UserId,
+        author_ids: &[AuthorId],
+        new_authors: &[Author],
+    ) -> Result<(), UseCaseError> {
+        for id in author_ids {
+            if self
+                .author_repository
+                .find_by_id_with_tx(tx, user_id, id)
+                .await?
+                .is_none()
+            {
+                return Err(UseCaseError::NotFound {
+                    entity_type: "author",
+                    entity_id: id.to_string(),
+                    user_id: user_id.as_str().to_owned(),
+                });
+            }
+        }
+        for author in new_authors {
+            self.author_repository.create(tx, author).await?;
+        }
+        Ok(())
+    }
+
     /// Resolves authors and creates books and history within the supplied transaction.
     /// Requires nonempty validated inputs from `prepare_import`; leaves commit or rollback to the caller.
     async fn execute_import(
@@ -295,11 +357,18 @@ where
     async fn create(
         &self,
         user_id: &str,
-        book_data: CreateBookDto,
+        mut book_data: CreateBookDto,
     ) -> Result<BookMutationResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let uuid = Uuid::new_v4();
         let now = OffsetDateTime::now_utc();
+        let new_authors =
+            prepare_new_authors(std::mem::take(&mut book_data.new_author_names), now)?;
+        deduplicate_author_ids(&mut book_data.author_ids)?;
+        let existing_count = book_data.author_ids.len();
+        book_data
+            .author_ids
+            .extend(new_authors.iter().map(|author| author.id().to_string()));
         let time_info = TimeInfo::new(now, now);
         let book = Book::try_from((uuid, book_data, time_info))?;
 
@@ -307,6 +376,13 @@ where
             .transaction_manager
             .begin_operation(&user_id, &NewOperation::simple(OperationType::CreateBook))
             .await?;
+        self.save_authors(
+            &mut tx,
+            &user_id,
+            &book.author_ids()[..existing_count],
+            &new_authors,
+        )
+        .await?;
         let revision_number = self.book_repository.create(&mut tx, &book).await?;
         let operation_id = tx.operation_id().to_string();
         self.transaction_manager.commit(tx).await?;
@@ -326,9 +402,10 @@ where
     ) -> Result<BookMutationResultDto, UseCaseError> {
         let user_id = UserId::new(user_id.to_string())?;
         let UpdateBookDto {
+            new_author_names,
             id,
             title,
-            author_ids,
+            mut author_ids,
             isbn,
             read,
             owned,
@@ -338,6 +415,10 @@ where
             purchase_date,
         } = book_data;
 
+        let new_authors = prepare_new_authors(new_author_names, OffsetDateTime::now_utc())?;
+        deduplicate_author_ids(&mut author_ids)?;
+        let existing_count = author_ids.len();
+        author_ids.extend(new_authors.iter().map(|author| author.id().to_string()));
         let book_id = BookId::try_from(id.as_str())?;
         let title = BookTitle::new(title)?;
         let author_ids: Result<Vec<AuthorId>, DomainError> = author_ids
@@ -368,6 +449,14 @@ where
                 });
             }
         };
+
+        self.save_authors(
+            &mut tx,
+            &user_id,
+            &author_ids[..existing_count],
+            &new_authors,
+        )
+        .await?;
 
         let update = BookUpdate {
             title,
@@ -671,6 +760,35 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(UseCaseError::Validation(_))));
+    }
+
+    #[test]
+    fn pending_authors_are_validated_deduplicated_and_sorted() {
+        let authors = super::prepare_new_authors(
+            vec!["B".into(), "A".into(), "A".into()],
+            OffsetDateTime::now_utc(),
+        )
+        .unwrap();
+        assert_eq!(
+            authors
+                .iter()
+                .map(|a| a.name().as_str())
+                .collect::<Vec<_>>(),
+            vec!["A", "B"]
+        );
+        assert!(authors.iter().all(|a| a.yomi().is_empty()));
+        assert!(
+            super::prepare_new_authors(vec![String::new()], OffsetDateTime::now_utc()).is_err()
+        );
+    }
+
+    #[test]
+    fn existing_author_ids_deduplicate_by_identity_and_reject_invalid_values() {
+        let id = Uuid::new_v4().to_string();
+        let mut ids = vec![id.clone(), id.to_uppercase()];
+        super::deduplicate_author_ids(&mut ids).unwrap();
+        assert_eq!(ids, vec![id]);
+        assert!(super::deduplicate_author_ids(&mut vec!["invalid".into()]).is_err());
     }
 
     #[tokio::test]

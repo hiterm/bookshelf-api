@@ -36,6 +36,14 @@ records its item count, merge records source and destination Author IDs, and
 restore records the source revision number. Mutation responses expose the
 Operation ID and, for a single resulting entity revision, its revision number.
 
+Book create/update accept existing author IDs and optional new author names.
+New authors, the book, relationships and every history row share the same
+CreateBook/UpdateBook operation and transaction. An author-name conflict aborts
+the whole save; import alone retains find-or-create semantics. Existing authors
+are not revised merely because a book references them. The response revision
+number always identifies the resulting book revision, even when authors were
+created alongside it.
+
 Single-entity create/update repositories return a validated `RevisionNumber`.
 Restore returns the entity together with its newly appended revision number.
 Use cases build response metadata directly from these explicit results after
