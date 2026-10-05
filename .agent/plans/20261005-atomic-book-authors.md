@@ -11,10 +11,10 @@ Issue hiterm/bookshelf#404 concerns author creation partially succeeding before 
 - [x] (2026-10-05 JST) Inspect repositories and update from latest main; create codex/atomic-book-authors branches.
 - [x] (2026-10-05 JST) Milestone 1: Implement backend contract and atomic persistence; verify unit and real database rollback tests.
   - [x] plan updated
-- [ ] Milestone 2: Implement browser recovery, generated schema and mock contracts; verify UI and E2E behavior.
-  - [ ] plan updated
-- [ ] Milestone 3: Complete required checks and publish mutually linked PRs referencing issue 404.
-  - [ ] plan updated
+- [x] (2026-10-05 JST) Milestone 2: Implement browser recovery, generated schema and mock contracts; verify UI and E2E behavior.
+  - [x] plan updated
+- [x] (2026-10-05 JST) Milestone 3: Complete required checks and publish mutually linked PRs referencing issue 404.
+  - [x] plan updated
 
 ## Surprises & Discoveries
 
@@ -26,7 +26,7 @@ The repositories are symlinks outside the virtual workspace, so writes and Git o
 
 ## Outcomes & Retrospective
 
-Backend implementation is complete: 179 unit tests, five dedicated real-DB atomic-save tests, and 52 HTTP E2E tests passed. Earlier full database-feature validation passed 236 library tests plus the five new tests. Frontend unit/type/mock/demo checks have passed; real-API UI validation and PR publication are pending. Do not merge or deploy these PRs as part of this work.
+Backend implementation is complete: 179 unit tests, five dedicated real-DB atomic-save tests, and 52 HTTP E2E tests passed. Earlier full database-feature validation passed 236 library tests plus the five new tests. Frontend validation is complete: 304 unit tests, typecheck/lint/format, two Mock API E2Es, one Demo Mode E2E and two real-API UI E2Es passed. API PR https://github.com/hiterm/bookshelf-api/pull/371 and frontend draft https://github.com/hiterm/bookshelf/pull/411 are published and mutually linked. Frontend merge remains gated on the backend release and API version pin update. Do not merge or deploy these PRs as part of this work.
 
 ## Context and Orientation
 
@@ -56,7 +56,7 @@ No migration or destructive data cleanup is needed. Test users/databases are iso
 
 ## Artifacts and Notes
 
-Initial main revisions: frontend fdd6784; API 232ae40. Verification: cargo fmt --check, cargo clippy --all-targets --locked -- -D warnings, cargo test --locked (179), DATABASE_URL=postgres://postgres:password@localhost:55404/postgres cargo test --locked --features test-with-database --test atomic_books (5), and TEST_SERVER_URL=http://localhost:8080 cargo test --locked -p bookshelf-e2e -- --test-threads=1 (52) passed. The dedicated test container is bookshelf-404-postgres. PR URLs will be recorded after publication.
+Initial main revisions: frontend fdd6784; API 232ae40. Verification: cargo fmt --check, cargo clippy --all-targets --locked -- -D warnings, cargo test --locked (179), DATABASE_URL=postgres://postgres:password@localhost:55404/postgres cargo test --locked --features test-with-database --test atomic_books (5), and TEST_SERVER_URL=http://localhost:8080 cargo test --locked -p bookshelf-e2e -- --test-threads=1 (52) passed. The dedicated test container is bookshelf-404-postgres. PR URLs: API https://github.com/hiterm/bookshelf-api/pull/371; frontend draft https://github.com/hiterm/bookshelf/pull/411. API uses Refs hiterm/bookshelf#404; frontend uses Closes #404. Native attach_artifact was attempted for both but the host reports that tool unavailable; provide both links in the chat.
 
 ## Interfaces and Dependencies
 
@@ -65,3 +65,5 @@ Use existing Rust transaction/repository traits and React Query hooks; add no de
 Revision note: initialized from the approved design on 2026-10-05.
 
 Revision note: completed backend atomic-save milestone and recorded verification evidence on 2026-10-05. Canonical UUID strings are deduplicated by identity, including case variants.
+
+Revision note: published and cross-linked both issue-associated PRs on 2026-10-05. Local implementation and validation are complete; backend release and frontend version-pin update remain the documented merge gate.
