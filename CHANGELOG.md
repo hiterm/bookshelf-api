@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.17.6](https://github.com/hiterm/bookshelf-api/compare/2.17.5...2.17.6) - 2026-10-09
+
+### Other Changes
+- Save books and new authors atomically by @hiterm in https://github.com/hiterm/bookshelf-api/pull/371
+
 ## [2.17.5](https://github.com/hiterm/bookshelf-api/compare/2.17.4...2.17.5) - 2026-10-04
 
 ### Other Changes
