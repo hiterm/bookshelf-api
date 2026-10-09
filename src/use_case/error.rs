@@ -14,6 +14,8 @@ pub enum UseCaseError {
     },
     #[error("{0}")]
     Conflict(String),
+    #[error("author name '{0}' is already in use")]
+    AuthorNameConflict(String),
     #[error(transparent)]
     Other(anyhow::Error),
     #[error("{0}")]
@@ -34,6 +36,7 @@ impl From<DomainError> for UseCaseError {
                 user_id,
             },
             DomainError::HasAssociatedBooks { .. } => UseCaseError::Conflict(err.to_string()),
+            DomainError::AuthorNameConflict(name) => UseCaseError::AuthorNameConflict(name),
             DomainError::Conflict(message) => UseCaseError::Conflict(message),
             DomainError::InfrastructureError(_) => UseCaseError::Other(anyhow::Error::new(err)),
             DomainError::Unexpected(message) => UseCaseError::Unexpected(message),

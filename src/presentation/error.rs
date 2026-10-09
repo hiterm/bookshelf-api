@@ -13,6 +13,8 @@ pub enum PresentationalError {
     Validation(String),
     #[error("{0}")]
     Conflict(String),
+    #[error("author name '{0}' is already in use")]
+    AuthorNameConflict(String),
     #[error(transparent)]
     OtherError(Arc<anyhow::Error>),
     #[error("{0}")]
@@ -30,6 +32,7 @@ impl From<UseCaseError> for PresentationalError {
                 r#"{entity_type} was not found for entity_id "{entity_id}"."#
             )),
             UseCaseError::Validation(_) => PresentationalError::Validation(err.to_string()),
+            UseCaseError::AuthorNameConflict(name) => PresentationalError::AuthorNameConflict(name),
             UseCaseError::Conflict(_) => PresentationalError::Conflict(err.to_string()),
             UseCaseError::Other(_) => {
                 PresentationalError::OtherError(Arc::new(anyhow::Error::new(err)))
@@ -41,9 +44,16 @@ impl From<UseCaseError> for PresentationalError {
 
 impl ErrorExtensions for PresentationalError {
     fn extend(&self) -> Error {
+        if let Self::AuthorNameConflict(_) = self {
+            return Error::new(self.to_string()).extend_with(|_, extensions| {
+                extensions.set("code", "CONFLICT");
+                extensions.set("reason", "AUTHOR_NAME_CONFLICT");
+            });
+        }
         let (message, code) = match self {
             PresentationalError::NotFound(message) => (message.as_str(), "NOT_FOUND"),
             PresentationalError::Validation(message) => (message.as_str(), "VALIDATION_ERROR"),
+            PresentationalError::AuthorNameConflict(_) => unreachable!("handled above"),
             PresentationalError::Conflict(message) => (message.as_str(), "CONFLICT"),
             PresentationalError::OtherError(error) => {
                 tracing::error!(error = ?error, "internal GraphQL error");
@@ -116,6 +126,20 @@ mod tests {
             "CONFLICT",
         );
         assert!(error.message.contains("already in use"));
+    }
+
+    #[test]
+    fn author_name_conflict_preserves_reason_through_all_layers() {
+        let error = PresentationalError::from(UseCaseError::from(
+            crate::domain::error::DomainError::AuthorNameConflict("A".into()),
+        ))
+        .extend();
+        let extensions = error.extensions.unwrap();
+        assert_eq!(extensions.get("code"), Some(&Value::from("CONFLICT")));
+        assert_eq!(
+            extensions.get("reason"),
+            Some(&Value::from("AUTHOR_NAME_CONFLICT"))
+        );
     }
 
     #[test]

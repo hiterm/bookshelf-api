@@ -17,6 +17,8 @@ pub enum DomainError {
     HasAssociatedBooks { author_id: String, user_id: String },
     #[error("{0}")]
     Conflict(String),
+    #[error("author name '{0}' is already in use")]
+    AuthorNameConflict(String),
     #[error(transparent)]
     InfrastructureError(anyhow::Error),
     #[error("{0}")]

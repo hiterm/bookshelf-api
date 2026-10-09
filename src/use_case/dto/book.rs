@@ -82,6 +82,7 @@ impl TimeInfo {
 
 #[derive(Debug, Clone)]
 pub struct CreateBookDto {
+    pub new_author_names: Vec<String>,
     pub title: String,
     pub author_ids: Vec<String>,
     pub isbn: String,
@@ -115,6 +116,7 @@ impl CreateBookDto {
             format,
             store,
             purchase_date: None,
+            new_author_names: Vec::new(),
         }
     }
 }
@@ -153,6 +155,7 @@ impl TryFrom<(Uuid, CreateBookDto, TimeInfo)> for Book {
 
 #[derive(Debug, Clone)]
 pub struct UpdateBookDto {
+    pub new_author_names: Vec<String>,
     pub id: String,
     pub title: String,
     pub author_ids: Vec<String>,
@@ -232,6 +235,7 @@ impl UpdateBookDto {
             format,
             store,
             purchase_date: None,
+            new_author_names: Vec::new(),
         }
     }
 }
