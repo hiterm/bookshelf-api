@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-rust-toolchain
-      - uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-edit
       - name: Generate GitHub App token
@@ -40,7 +40,7 @@ jobs:
           private-key: ${{ secrets.BOOKSHELF_DELIVERY_APP_PRIVATE_KEY }}
       - name: Run tagpr
         id: tagpr
-        uses: Songmu/tagpr@d1b8138b7a31075141b6cd64103de9485ced7ac9 # v1.20.1
+        uses: Songmu/tagpr@0c4eb5a3b0862693702acea436a7c68bd586530d # v1.21.2
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
       - name: Determine release tag
