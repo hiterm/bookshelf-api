@@ -17,8 +17,8 @@ Users should receive the same actionable error when an author name is already us
   - [x] plan updated
 - [x] (2026-10-11 JST) Milestone 2: Share author-name constraint classification across writes, restore, and Undo; prove conflict rollback and HTTP behavior.
   - [x] plan updated
-- [ ] Milestone 3: Complete reviewable delivery and CodeRabbit review/response.
-  - [ ] plan updated
+- [x] (2026-10-11 JST) Milestone 3: Complete verification, publish the reviewable PR, and request CodeRabbit review.
+  - [x] plan updated
 
 ## Surprises & Discoveries
 
@@ -49,7 +49,7 @@ Historical decision: Stop after saving this plan. Rationale: the user's latest i
 ## Outcomes & Retrospective
 
 
-Implementation and local verification are complete. The typed author-name conflict is shared across all four write paths; stored-data validation is separated from input validation. Mandatory fmt/clippy/tests passed (188 unit tests). The database-feature suite passed 250 library tests with one pre-existing ignored test, five atomic-save tests, three new conflict/rollback tests, and one new persisted-read test. Feature-enabled clippy passed. HTTP targeted tests passed nine cases and full API E2E passed 53 cases. Regenerating schema.graphql produced no diff. Four decoding regressions and three conflict regressions failed on the original baseline as expected. PR publication and CodeRabbit review/response remain pending.
+Implementation and local verification are complete. The typed author-name conflict is shared across all four write paths; stored-data validation is separated from input validation. Mandatory fmt/clippy/tests passed (188 unit tests). The database-feature suite passed 250 library tests with one pre-existing ignored test, five atomic-save tests, three new conflict/rollback tests, and one new persisted-read test. Feature-enabled clippy passed. HTTP targeted tests passed nine cases and full API E2E passed 53 cases. Regenerating schema.graphql produced no diff. Four decoding regressions and three conflict regressions failed on the original baseline as expected. PR #375 is published at https://github.com/hiterm/bookshelf-api/pull/375 and Issue #367 R3 is marked review-in-progress. CodeRabbit review was requested; its live review result and any responses are tracked on the PR. At publication its OSS review capacity was exhausted, with the next slot reported available in 19 minutes. This is a historical delivery observation, not a completed review claim. Continue through the review and handle any findings before reporting the overall user request complete.
 
 ## Context and Orientation
 
@@ -161,3 +161,5 @@ Revision note (2026-10-11 JST): implementation, PR creation, and CodeRabbit revi
 Revision note (2026-10-11 JST): milestone 1 implements current/history/restore/backup decoding and owner/revision reconstruction. fmt, clippy, 187 unit tests, and the complete database-feature suite passed; separate baseline regression verification remains running. User repository owner reconstruction also uses the shared decoder.
 
 Revision note (2026-10-11 JST): milestone 2 completes author-name constraint classification, actual post-precheck constraint injection, multi-author Undo rollback, resolver contracts, and combined restore/Undo HTTP conflict/recovery. A combined E2E in graphql_restore.rs exercises both endpoints instead of duplicating fixtures across two files. SQL classifier tests use a separate schema because named unique constraints create schema-scoped indexes. All verification counts above are actual current results; baseline regressions were independently demonstrated.
+
+Revision note (2026-10-11 JST): milestone 3 publishes PR #375, updates only Issue #367 R3, and requests CodeRabbit. Local checks and schema verification are complete. CodeRabbit reported a temporary review-capacity limit; review execution/response continue on the PR. Any ensuing code fix must rerun required checks and update this plan in its fix commit. No merge or deployment has occurred.
