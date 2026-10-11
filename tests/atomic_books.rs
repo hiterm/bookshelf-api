@@ -1,11 +1,11 @@
 #![cfg(feature = "test-with-database")]
-use bookshelf_api::domain::repository::history_repository::HistoryRepository;
+use bookshelf_api::use_case::port::undo::UndoCommand;
 use bookshelf_api::{
     common::types::{BookFormat, BookStore},
     domain::entity::{operation::OperationId, user::UserId},
     infrastructure::{
         author_repository::PgAuthorRepository, book_repository::PgBookRepository,
-        history_repository::PgHistoryRepository, transaction::PgTransactionManager,
+        transaction::PgTransactionManager, undo::PgUndoCommand,
     },
     use_case::{
         dto::book::{CreateBookDto, UpdateBookDto},
@@ -83,7 +83,7 @@ async fn create_update_history_and_undo(pool: PgPool) -> anyhow::Result<()> {
     let edited = cmd.update("u", dto).await?;
     assert_eq!(edited.value.author_ids.len(), 2);
     assert_eq!(edited.revision_number, 2);
-    PgHistoryRepository::new(pool.clone())
+    PgUndoCommand::new(pool.clone())
         .undo_operation(
             &UserId::new("u".into())?,
             &OperationId::try_from(edited.operation_id.as_str()).map_err(anyhow::Error::msg)?,

@@ -31,11 +31,6 @@ pub trait HistoryRepository: Send + Sync + 'static {
         user_id: &UserId,
         operation_id: &OperationId,
     ) -> Result<bool, DomainError>;
-    async fn undo_operation(
-        &self,
-        user_id: &UserId,
-        operation_id: &OperationId,
-    ) -> Result<OperationId, DomainError>;
     async fn find_book_revisions(
         &self,
         user_id: &UserId,

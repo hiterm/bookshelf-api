@@ -1,11 +1,39 @@
+use async_trait::async_trait;
+
 use super::error::{classify_author_name_write_error, persisted_value};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-use crate::domain::{
-    entity::{author::AuthorName, operation::OperationId, user::UserId},
-    error::DomainError,
+use crate::{
+    domain::{
+        entity::{author::AuthorName, operation::OperationId, user::UserId},
+        error::DomainError,
+    },
+    use_case::port::undo::UndoCommand,
 };
+
+/// PostgreSQL implementation of the complete atomic Undo command.
+#[derive(Debug, Clone)]
+pub struct PgUndoCommand {
+    pool: PgPool,
+}
+
+impl PgUndoCommand {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl UndoCommand for PgUndoCommand {
+    async fn undo_operation(
+        &self,
+        user_id: &UserId,
+        operation_id: &OperationId,
+    ) -> Result<OperationId, DomainError> {
+        undo_operation(&self.pool, user_id, operation_id).await
+    }
+}
 
 #[derive(Debug, FromRow)]
 struct BookChange {
@@ -21,7 +49,7 @@ struct AuthorChange {
     after_revision_number: Option<i32>,
 }
 
-pub async fn undo_operation(
+async fn undo_operation(
     pool: &PgPool,
     user_id: &UserId,
     target_id: &OperationId,
@@ -477,9 +505,12 @@ mod tests {
             repository::{history_repository::HistoryRepository, user_repository::UserRepository},
         },
         infrastructure::{
-            history_repository::PgHistoryRepository, user_repository::PgUserRepository,
+            history_repository::PgHistoryRepository, undo::PgUndoCommand,
+            user_repository::PgUserRepository,
         },
     };
+
+    use crate::use_case::port::undo::UndoCommand;
 
     async fn owner(pool: &PgPool) -> anyhow::Result<UserId> {
         let user_id = UserId::new("undo-owner".to_owned())?;
@@ -530,8 +561,8 @@ mod tests {
         sqlx::query("INSERT INTO book_operation_change (operation_id, user_id, book_id, after_revision_number) VALUES ($1, $2, $3, 1)")
             .bind(target_id).bind(user_id.as_str()).bind(book_id).execute(&pool).await?;
 
-        let repository = PgHistoryRepository::new(pool.clone());
-        let undo_id = repository
+        let command = PgUndoCommand::new(pool.clone());
+        let undo_id = command
             .undo_operation(&user_id, &OperationId::from(target_id))
             .await?;
 
@@ -542,7 +573,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await?;
         assert!(!current);
-        let undo = repository
+        let undo = PgHistoryRepository::new(pool.clone())
             .find_operation(&user_id, &undo_id)
             .await?
             .expect("recorded undo");
@@ -580,8 +611,8 @@ mod tests {
         sqlx::query("INSERT INTO book_operation_change (operation_id, user_id, book_id, before_revision_number, after_revision_number) VALUES ($1, $2, $3, 1, 2)")
             .bind(target_id).bind(user_id.as_str()).bind(book_id).execute(&pool).await?;
 
-        let repository = PgHistoryRepository::new(pool.clone());
-        let undo_id = repository
+        let command = PgUndoCommand::new(pool.clone());
+        let undo_id = command
             .undo_operation(&user_id, &OperationId::from(target_id))
             .await?;
 
@@ -649,7 +680,7 @@ mod tests {
         sqlx::query("INSERT INTO author_operation_change (operation_id, user_id, author_id, after_revision_number) VALUES ($1, $2, $3, 1)")
             .bind(target_id).bind(user_id.as_str()).bind(author_id).execute(&pool).await?;
 
-        PgHistoryRepository::new(pool.clone())
+        PgUndoCommand::new(pool.clone())
             .undo_operation(&user_id, &OperationId::from(target_id))
             .await?;
 
@@ -684,7 +715,7 @@ mod tests {
         sqlx::query("INSERT INTO book_operation_change (operation_id, user_id, book_id, before_revision_number, after_revision_number) VALUES ($1, $2, $3, 1, 2)")
             .bind(target_id).bind(user_id.as_str()).bind(book_id).execute(&pool).await?;
 
-        let result = PgHistoryRepository::new(pool.clone())
+        let result = PgUndoCommand::new(pool.clone())
             .undo_operation(&user_id, &OperationId::from(target_id))
             .await;
         assert!(result.is_err());
