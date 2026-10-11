@@ -12,34 +12,36 @@ Undo must reject stale operations without changing any current or historical row
 
 - [x] (2026-10-12) Milestone 1: Add and validate Undo contract tests; prepare the PR against main.
   - [x] plan updated
-- [ ] Milestone 2: Share restoration/history primitives; validate and open a dependent PR.
-  - [ ] plan updated
+- [x] (2026-10-12) Milestone 2: Share restoration/history primitives and validate; prepare the dependent PR.
+  - [x] plan updated
 - [ ] Milestone 3: Address CodeRabbit review and CI, approve when sound, and stop before merge.
   - [ ] plan updated
 
 ## Surprises & Discoveries
 
 
-Eligibility checks only target ownership/type, nonempty changes, current existence, and latest revision equality. Missing source authors and restored author-name collisions are intentionally detected when executing Undo. Existing `tests/persistence_conflicts.rs` already proves rollback after partial inverse writes and corrupt persisted names; new contract tests complement these rather than replacing them.
+Eligibility checks only target ownership/type, nonempty changes, current existence, and latest revision equality. Missing source authors and restored author-name collisions are intentionally detected when executing Undo. PostgreSQL foreign keys keep source revision references present; shared helpers nevertheless reject a zero-row INSERT SELECT rather than silently write misleading history. Existing `tests/persistence_conflicts.rs` already proves rollback after partial inverse writes and corrupt persisted names; new contract tests complement these rather than replacing them.
 
 ## Decision Log
 
 
 Decision: Preserve the advisory contract rather than expand the query into an execution simulation. Rationale: state can change between query and command, so authoritative revalidation must remain inside the SERIALIZABLE transaction. Date/author: 2026-10-12, Codex.
 
+Decision: Record fresh snapshots from owned current rows after restoration and use the same source-to-current SQL in ordinary restore and Undo. Rationale: both paths preserve exactly the persisted fields and links, while ordinary callers keep decoding and their supplied update timestamp. The enum parsers only accept exact canonical strings, so copying validated source enums does not alter ordinary normalization. Allocation now uniformly uses checked integer addition, making Undo overflow an internal error with full rollback. Date/author: 2026-10-12, Codex.
+
 Decision: Use separate stacked PRs. Rationale: tests can be reviewed independently before the refactor; neither PR needs merging to review the second. Date/author: 2026-10-12, Codex.
 
 ## Outcomes & Retrospective
 
 
-Milestone 1 is implemented: five PostgreSQL contract tests cover both entities and real lock contention. Required fmt/clippy/unit checks pass (190 unit tests); database library tests pass (252 plus one existing ignored), with 15 integration tests passing. Existing API E2E passes all 53 tests and generated GraphQL schema is unchanged. PR creation follows this commit. The existing command extraction was merged as PR #376; this plan covers Issue #367 R2's remaining work. No schema migration or new endpoint is intended. Stop before merging both PRs.
+Milestone 1 is implemented: five PostgreSQL contract tests cover both entities and real lock contention. Required fmt/clippy/unit checks pass (190 unit tests); database library tests pass (252 plus one existing ignored), with 15 integration tests passing. Existing API E2E passes all 53 tests and generated GraphQL schema is unchanged. PR #377 targets main; its reviewed restoration-field nitpick is fixed in `1073bbd`. Milestone 2 now shares source-to-current restoration, persisted snapshot recording, checked revision allocation, and change inserts. The SERIALIZABLE command orchestration is unchanged. Three new PostgreSQL round-trip/overflow tests pass, covering update/resurrection, populated/empty links, nullable purchase dates, all payload fields, source creation times, ordinary returned timestamps, Undo transaction timestamps, owner-scoped allocation, and rollback after an earlier inverse. Complete validation passes: 191 unit tests, 253 database library tests (one existing ignored), 18 integration tests, and 53 API E2E tests. Generated schema is unchanged. The existing command extraction was merged as PR #376; this plan covers Issue #367 R2's remaining work. No schema migration or new endpoint is intended. Stop before merging both PRs.
 
 ## Context and Orientation
 
 
 `src/infrastructure/history_repository.rs` implements the read-only eligibility query. `src/infrastructure/undo.rs` owns the complete command: begin SERIALIZABLE transaction, lock the owned operation, lock all entity advisory keys in sorted order, lock current rows, compare after revisions, restore authors before books, delete books before authors, record a new inverse operation, commit. A revision is an immutable numbered entity snapshot; a change links an operation to its before/after revisions, using NULL for absence.
 
-Ordinary mutations use `PgTransaction` in `src/infrastructure/transaction.rs`, with immutable owner and operation context. `src/infrastructure/history_recording.rs` allocates revisions and records snapshots/changes; book and author repositories restore old snapshots before calling it. Keep domain decoding and repository-specific failure categories in callers. Shared primitives take a PostgreSQL connection plus explicit owned context and never commit or begin transactions. Every query must scope by owner as well as UUID. Preserve ordinary restore's application timestamp and Undo's transaction timestamp.
+Ordinary mutations use `PgTransaction` in `src/infrastructure/transaction.rs`, with immutable owner and operation context. `src/infrastructure/history_recording.rs` allocates revisions and records snapshots/changes; book and author repositories restore old snapshots before calling it. Keep domain decoding and repository-specific failure categories in callers. Shared current-row restoration lives in `src/infrastructure/revision_restoration.rs`; shared snapshot recording reads the just-persisted owned entity and author links in the same transaction. Shared primitives take a PostgreSQL connection plus explicit owned context and never commit or begin transactions. Every query must scope by owner as well as UUID. Preserve ordinary restore's application timestamp and Undo's transaction timestamp.
 
 ## Plan of Work and Milestones
 
@@ -85,7 +87,7 @@ Tests are isolated and repeatable. Restart the disposable database if needed wit
 
 PR #377 review follow-up: CodeRabbit approved with a valid nitpick that equal fixture attributes hid incorrect restoration. Success cases now use distinct before attributes and compare restored book/author fields and lifecycle start against the source. Added function documentation to address its coverage warning.
 
-Milestone 1 evidence: `cargo test --features test-with-database --test undo_contract` reports `5 passed; 0 failed`; complete validation reports `All Undo validation checks passed`. Scratch logs use `/workspace/work/undo-contract-*.log`. Scratch logs and service scripts remain outside the repository in `/workspace/work`.
+Milestone 1 evidence: `cargo test --features test-with-database --test undo_contract` reports `5 passed; 0 failed`; complete validation reports `All Undo validation checks passed`. Scratch logs use `/workspace/work/undo-contract-*.log`. Milestone 2 logs use `/workspace/work/shared-history-*.log` and finish with `All Undo validation checks passed`. CodeRabbit reviewed and approved the original #377 head, but re-review of the nitpick/docstring follow-up hit the included one-review-per-hour quota; that external limitation remains explicitly distinguished from local validation. Scratch logs and service scripts remain outside the repository in `/workspace/work`.
 
 ## Interfaces and Dependencies
 

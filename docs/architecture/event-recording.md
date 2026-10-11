@@ -66,9 +66,25 @@ Revisions and OperationChanges, and commit. Any error rolls back the whole
 command. `is_operation_undoable` is an advisory read; the command never trusts
 an earlier eligibility result and always revalidates after locking.
 
-This explicit command port preserves Undo's existing isolation and set-based
-SQL. It does not replace SERIALIZABLE with the ordinary mutation transaction
-or share revision-writing internals yet; those are later stages of API #367 R2.
+Eligibility compares current existence and latest revision numbers with every
+change's after state. It does not predict missing source Authors or restored
+Author-name collisions; execution checks those constraints and rolls back on
+failure. Advice can also become stale before execution. PostgreSQL contract
+tests cover both entity types, tenant isolation, rollback, and contending Undo
+commands with exactly one committed inverse.
+
+Ordinary restore and Undo share owned source-to-current writes in
+`infrastructure::revision_restoration`. Caller-specific decoding and dependency
+errors remain at their original boundaries. Ordinary restore supplies the
+returned entity's update timestamp; Undo uses the SERIALIZABLE transaction's
+current timestamp. Both retain the source creation timestamp and Author links.
+
+`infrastructure::history_recording` allocates the next revision with checked
+integer overflow, copies the persisted current row and Book-Author links into
+fresh history, and records the before/after change. Ordinary transaction
+wrappers and Undo call the same connection-based helpers. Helpers never begin
+or commit transactions; Undo retains its isolation, locks, revalidation, and
+Author-before-Book restoration / Book-before-Author deletion order.
 
 ## Tenant-aware identity
 

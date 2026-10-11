@@ -4,6 +4,7 @@ pub mod book_repository;
 pub mod error;
 mod history_recording;
 pub mod history_repository;
+mod revision_restoration;
 pub mod transaction;
 pub mod undo;
 pub mod user_repository;

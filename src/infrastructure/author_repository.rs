@@ -23,6 +23,7 @@ use crate::infrastructure::{
     history_recording::{
         append_author_deletion, append_author_revision, latest_author_revision_number,
     },
+    revision_restoration::restore_author_current,
     transaction::PgTransaction,
 };
 
@@ -82,7 +83,7 @@ impl AuthorRepository for PgAuthorRepository {
         .await
         .map_err(|error| classify_author_name_write_error(error, author.name().as_str()))?;
 
-        let revision_number = append_author_revision(tx, author, None).await?;
+        let revision_number = append_author_revision(tx, author.id().to_uuid(), None).await?;
         Ok(revision_number)
     }
 
@@ -283,7 +284,7 @@ impl AuthorRepository for PgAuthorRepository {
             latest_author_revision_number(tx, author.id().to_uuid()).await?;
 
         let revision_number =
-            append_author_revision(tx, author, Some(before_revision_number)).await?;
+            append_author_revision(tx, author.id().to_uuid(), Some(before_revision_number)).await?;
         Ok(revision_number)
     }
 
@@ -295,7 +296,7 @@ impl AuthorRepository for PgAuthorRepository {
     ) -> Result<(), DomainError> {
         let before_revision_number =
             latest_author_revision_number(tx, author.id().to_uuid()).await?;
-        append_author_revision(tx, author, Some(before_revision_number)).await?;
+        append_author_revision(tx, author.id().to_uuid(), Some(before_revision_number)).await?;
         Ok(())
     }
 
@@ -429,23 +430,17 @@ impl AuthorRepository for PgAuthorRepository {
                 author.name().as_str().to_owned(),
             ));
         }
-        sqlx::query(
-            "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (id, user_id) DO UPDATE SET
-               name = EXCLUDED.name, yomi = EXCLUDED.yomi,
-               created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at",
+        restore_author_current(
+            tx.as_mut(),
+            &user_id,
+            author.id().to_uuid(),
+            revision_number,
+            author.name().as_str(),
+            Some(*author.updated_at()),
         )
-        .bind(author.id().to_uuid())
-        .bind(user_id.as_str())
-        .bind(author.name().as_str())
-        .bind(author.yomi())
-        .bind(author.created_at())
-        .bind(author.updated_at())
-        .execute(tx.as_mut())
-        .await
-        .map_err(|error| classify_author_name_write_error(error, author.name().as_str()))?;
-        let revision_number = append_author_revision(tx, &author, before_revision_number).await?;
+        .await?;
+        let revision_number =
+            append_author_revision(tx, author.id().to_uuid(), before_revision_number).await?;
         Ok(RevisionMutationResult {
             entity: author,
             revision_number,

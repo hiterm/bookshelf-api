@@ -1,191 +1,180 @@
-use super::error::persisted_value;
-use sqlx::Row;
+use sqlx::PgConnection;
+use uuid::Uuid;
 
+use super::{error::persisted_value, transaction::PgTransaction};
 use crate::domain::{
-    entity::{author::Author, book::Book, revision::RevisionNumber},
+    entity::{operation::OperationId, revision::RevisionNumber, user::UserId},
     error::DomainError,
 };
 
-use super::transaction::PgTransaction;
-
-/// Appends an owned book snapshot and its operation change in the supplied transaction.
-/// Returns the next revision number; `None` as the prior revision denotes creation.
-/// Database failures and revision-number overflow return an error.
+/// Appends the persisted book snapshot and change in the caller's transaction.
+/// The repository must have written the entity and author links first.
+/// Returns an error for a missing current row, invalid revision, or overflow.
 pub async fn append_book_revision(
     tx: &mut PgTransaction,
-    book: &Book,
-    before_revision_number: Option<i32>,
+    id: Uuid,
+    before: Option<i32>,
 ) -> Result<RevisionNumber, DomainError> {
-    let user_id = tx.user_id().clone();
-    let latest: Option<i32> = sqlx::query(
-        "SELECT MAX(revision_number) AS revision_number
-         FROM book_revision
-         WHERE book_id = $1 AND user_id = $2",
-    )
-    .bind(book.id().to_uuid())
-    .bind(user_id.as_str())
-    .fetch_one(tx.as_mut())
-    .await?
-    .try_get("revision_number")?;
-    let revision_number = latest
-        .unwrap_or(0)
-        .checked_add(1)
-        .ok_or_else(|| DomainError::Unexpected("Book revision number overflow".to_owned()))?;
+    let user = tx.user_id().clone();
+    let operation = tx.operation_id();
+    record_book_revision(tx.as_mut(), &user, &operation, id, before).await
+}
 
-    sqlx::query(
+/// Records a deletion after the repository removes the owned current book.
+pub async fn append_book_deletion(
+    tx: &mut PgTransaction,
+    id: Uuid,
+    before: i32,
+) -> Result<(), DomainError> {
+    let user = tx.user_id().clone();
+    let operation = tx.operation_id();
+    insert_book_change(tx.as_mut(), &user, &operation, id, Some(before), None).await
+}
+
+/// Appends the persisted author snapshot and change in the caller's transaction.
+/// The repository must have written the entity first; no transaction is committed here.
+pub async fn append_author_revision(
+    tx: &mut PgTransaction,
+    id: Uuid,
+    before: Option<i32>,
+) -> Result<RevisionNumber, DomainError> {
+    let user = tx.user_id().clone();
+    let operation = tx.operation_id();
+    record_author_revision(tx.as_mut(), &user, &operation, id, before).await
+}
+
+/// Records a deletion after the repository removes the owned current author.
+pub async fn append_author_deletion(
+    tx: &mut PgTransaction,
+    id: Uuid,
+    before: i32,
+) -> Result<(), DomainError> {
+    let user = tx.user_id().clone();
+    let operation = tx.operation_id();
+    insert_author_change(tx.as_mut(), &user, &operation, id, Some(before), None).await
+}
+
+/// Records the current owned book and its author links, preserving its persisted timestamps.
+/// The caller provides serialization/locking and owns commit or rollback.
+pub(crate) async fn record_book_revision(
+    connection: &mut PgConnection,
+    user: &UserId,
+    operation: &OperationId,
+    id: Uuid,
+    before: Option<i32>,
+) -> Result<RevisionNumber, DomainError> {
+    let latest: Option<i32> = sqlx::query_scalar(
+        "SELECT MAX(revision_number) FROM book_revision WHERE user_id=$1 AND book_id=$2",
+    )
+    .bind(user.as_str())
+    .bind(id)
+    .fetch_one(&mut *connection)
+    .await?;
+    let next = next_revision(latest, "Book")?;
+    let result = sqlx::query(
         "INSERT INTO book_revision (
            book_id, revision_number, user_id, title, isbn, read, owned,
            priority, format, store, purchase_date, book_created_at, book_updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+         ) SELECT id, $3, user_id, title, isbn, read, owned, priority, format, store,
+                  purchase_date, created_at, updated_at
+           FROM book WHERE user_id=$1 AND id=$2",
     )
-    .bind(book.id().to_uuid())
-    .bind(revision_number)
-    .bind(user_id.as_str())
-    .bind(book.title().as_str())
-    .bind(book.isbn().as_str())
-    .bind(book.read().to_bool())
-    .bind(book.owned().to_bool())
-    .bind(book.priority().to_i32())
-    .bind(book.format().to_string())
-    .bind(book.store().to_string())
-    .bind(book.purchase_date())
-    .bind(book.created_at())
-    .bind(book.updated_at())
-    .execute(tx.as_mut())
+    .bind(user.as_str())
+    .bind(id)
+    .bind(next.value())
+    .execute(&mut *connection)
     .await?;
-
-    let author_ids: Vec<_> = book
-        .author_ids()
-        .iter()
-        .map(|author_id| author_id.to_uuid())
-        .collect();
-    if !author_ids.is_empty() {
-        sqlx::query(
-            "INSERT INTO book_revision_author (user_id, book_id, revision_number, author_id)
-             SELECT $1, $2, $3, author_id
-             FROM UNNEST($4::uuid[]) AS input(author_id)",
-        )
-        .bind(user_id.as_str())
-        .bind(book.id().to_uuid())
-        .bind(revision_number)
-        .bind(&author_ids)
-        .execute(tx.as_mut())
-        .await?;
-    }
-
+    require_current_row(result.rows_affected(), "Book")?;
     sqlx::query(
-        "INSERT INTO book_operation_change (
-           operation_id, user_id, book_id, before_revision_number, after_revision_number
-         ) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO book_revision_author (user_id,book_id,revision_number,author_id)
+         SELECT user_id,book_id,$3,author_id FROM book_author WHERE user_id=$1 AND book_id=$2",
     )
-    .bind(tx.operation_id().to_uuid())
-    .bind(user_id.as_str())
-    .bind(book.id().to_uuid())
-    .bind(before_revision_number)
-    .bind(revision_number)
-    .execute(tx.as_mut())
+    .bind(user.as_str())
+    .bind(id)
+    .bind(next.value())
+    .execute(&mut *connection)
     .await?;
-
-    persisted_value("revision number", RevisionNumber::try_from(revision_number))
+    insert_book_change(connection, user, operation, id, before, Some(next.value())).await?;
+    Ok(next)
 }
 
-/// Records an owned book deletion by linking the prior revision to a null after-revision.
-/// Does not delete the current entity; the repository performs that write in the same transaction.
-pub async fn append_book_deletion(
-    tx: &mut PgTransaction,
-    book_id: uuid::Uuid,
-    before_revision_number: i32,
-) -> Result<(), DomainError> {
-    let user_id = tx.user_id().clone();
-    sqlx::query(
-        "INSERT INTO book_operation_change (
-           operation_id, user_id, book_id, before_revision_number, after_revision_number
-         ) VALUES ($1, $2, $3, $4, NULL)",
+/// Records the current owned author without decoding or changing its persisted values.
+/// The caller provides serialization/locking and owns commit or rollback.
+pub(crate) async fn record_author_revision(
+    connection: &mut PgConnection,
+    user: &UserId,
+    operation: &OperationId,
+    id: Uuid,
+    before: Option<i32>,
+) -> Result<RevisionNumber, DomainError> {
+    let latest: Option<i32> = sqlx::query_scalar(
+        "SELECT MAX(revision_number) FROM author_revision WHERE user_id=$1 AND author_id=$2",
     )
-    .bind(tx.operation_id().to_uuid())
-    .bind(user_id.as_str())
-    .bind(book_id)
-    .bind(before_revision_number)
-    .execute(tx.as_mut())
+    .bind(user.as_str())
+    .bind(id)
+    .fetch_one(&mut *connection)
     .await?;
+    let next = next_revision(latest, "Author")?;
+    let result = sqlx::query(
+        "INSERT INTO author_revision (
+           author_id, revision_number, user_id, name, yomi, author_created_at, author_updated_at
+         ) SELECT id,$3,user_id,name,yomi,created_at,updated_at
+           FROM author WHERE user_id=$1 AND id=$2",
+    )
+    .bind(user.as_str())
+    .bind(id)
+    .bind(next.value())
+    .execute(&mut *connection)
+    .await?;
+    require_current_row(result.rows_affected(), "Author")?;
+    insert_author_change(connection, user, operation, id, before, Some(next.value())).await?;
+    Ok(next)
+}
+
+/// Allocates a positive revision with checked overflow before any snapshot insert.
+fn next_revision(latest: Option<i32>, entity: &str) -> Result<RevisionNumber, DomainError> {
+    let next = latest
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| DomainError::Unexpected(format!("{entity} revision number overflow")))?;
+    persisted_value("revision number", RevisionNumber::try_from(next))
+}
+
+/// Rejects silent INSERT SELECT skips so an operation never records a nonexistent snapshot.
+fn require_current_row(rows: u64, entity: &str) -> Result<(), DomainError> {
+    if rows != 1 {
+        return Err(DomainError::Unexpected(format!(
+            "{entity} snapshot requires one owned current row"
+        )));
+    }
     Ok(())
 }
 
-/// Appends an owned author snapshot and its operation change in the supplied transaction.
-/// Returns the next revision number; `None` as the prior revision denotes creation.
-/// Database failures and revision-number overflow return an error.
-pub async fn append_author_revision(
-    tx: &mut PgTransaction,
-    author: &Author,
-    before_revision_number: Option<i32>,
-) -> Result<RevisionNumber, DomainError> {
-    let user_id = tx.user_id().clone();
-    let latest: Option<i32> = sqlx::query(
-        "SELECT MAX(revision_number) AS revision_number
-         FROM author_revision
-         WHERE author_id = $1 AND user_id = $2",
-    )
-    .bind(author.id().to_uuid())
-    .bind(user_id.as_str())
-    .fetch_one(tx.as_mut())
-    .await?
-    .try_get("revision_number")?;
-    let revision_number = latest
-        .unwrap_or(0)
-        .checked_add(1)
-        .ok_or_else(|| DomainError::Unexpected("Author revision number overflow".to_owned()))?;
-
-    sqlx::query(
-        "INSERT INTO author_revision (
-           author_id, revision_number, user_id, name, yomi,
-           author_created_at, author_updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-    )
-    .bind(author.id().to_uuid())
-    .bind(revision_number)
-    .bind(user_id.as_str())
-    .bind(author.name().as_str())
-    .bind(author.yomi())
-    .bind(author.created_at())
-    .bind(author.updated_at())
-    .execute(tx.as_mut())
-    .await?;
-
-    sqlx::query(
-        "INSERT INTO author_operation_change (
-           operation_id, user_id, author_id, before_revision_number, after_revision_number
-         ) VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(tx.operation_id().to_uuid())
-    .bind(user_id.as_str())
-    .bind(author.id().to_uuid())
-    .bind(before_revision_number)
-    .bind(revision_number)
-    .execute(tx.as_mut())
-    .await?;
-
-    persisted_value("revision number", RevisionNumber::try_from(revision_number))
+/// Records one owned book change; `None` represents absence before or after.
+pub(crate) async fn insert_book_change(
+    connection: &mut PgConnection,
+    user: &UserId,
+    operation: &OperationId,
+    id: Uuid,
+    before: Option<i32>,
+    after: Option<i32>,
+) -> Result<(), DomainError> {
+    sqlx::query("INSERT INTO book_operation_change (operation_id,user_id,book_id,before_revision_number,after_revision_number) VALUES ($1,$2,$3,$4,$5)")
+        .bind(operation.to_uuid()).bind(user.as_str()).bind(id).bind(before).bind(after).execute(connection).await?;
+    Ok(())
 }
 
-/// Records an owned author deletion by linking the prior revision to a null after-revision.
-/// Does not delete the current entity; the repository performs that write in the same transaction.
-pub async fn append_author_deletion(
-    tx: &mut PgTransaction,
-    author_id: uuid::Uuid,
-    before_revision_number: i32,
+/// Records one owned author change; `None` represents absence before or after.
+pub(crate) async fn insert_author_change(
+    connection: &mut PgConnection,
+    user: &UserId,
+    operation: &OperationId,
+    id: Uuid,
+    before: Option<i32>,
+    after: Option<i32>,
 ) -> Result<(), DomainError> {
-    let user_id = tx.user_id().clone();
-    sqlx::query(
-        "INSERT INTO author_operation_change (
-           operation_id, user_id, author_id, before_revision_number, after_revision_number
-         ) VALUES ($1, $2, $3, $4, NULL)",
-    )
-    .bind(tx.operation_id().to_uuid())
-    .bind(user_id.as_str())
-    .bind(author_id)
-    .bind(before_revision_number)
-    .execute(tx.as_mut())
-    .await?;
+    sqlx::query("INSERT INTO author_operation_change (operation_id,user_id,author_id,before_revision_number,after_revision_number) VALUES ($1,$2,$3,$4,$5)")
+        .bind(operation.to_uuid()).bind(user.as_str()).bind(id).bind(before).bind(after).execute(connection).await?;
     Ok(())
 }
 
@@ -225,4 +214,23 @@ pub async fn latest_author_revision_number(
     .fetch_one(tx.as_mut())
     .await?
     .ok_or_else(|| DomainError::Unexpected("Author has no current revision".to_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Exercises initial allocation, increments, overflow, and invalid persisted revision values.
+    #[test]
+    fn revision_allocation_handles_absence_and_overflow() {
+        assert_eq!(next_revision(None, "Book").unwrap().value(), 1);
+        assert_eq!(next_revision(Some(42), "Author").unwrap().value(), 43);
+        assert!(
+            matches!(next_revision(Some(i32::MAX), "Book"), Err(DomainError::Unexpected(message)) if message == "Book revision number overflow")
+        );
+        assert!(matches!(
+            next_revision(Some(-1), "Author"),
+            Err(DomainError::Unexpected(_))
+        ));
+    }
 }
