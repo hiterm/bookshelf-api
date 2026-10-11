@@ -18,7 +18,7 @@ operation ID, and observe fresh history or the existing conflict response.
 - [x] (2026-10-11) Inspect current main and existing Undo tests; create feature branch.
 - [x] (2026-10-11) Milestone 1: Separate command interface, implementation and application wiring; all verification passed.
 - [x] Milestone 1 plan updated.
-- [ ] Create a reviewable PR and record partial R2 status in Issue #367.
+- [x] (2026-10-11) Create draft PR #376 and record partial R2 status in Issue #367.
 
 ## Surprises & Discoveries
 
@@ -48,7 +48,9 @@ behavior; no new endpoint or duplicated E2E scenario is required.
 ## Outcomes & Retrospective
 
 
-Implementation and verification are complete; PR creation remains pending.
+Implementation and verification are complete. Commit 6830cdb is published in
+draft PR https://github.com/hiterm/bookshelf-api/pull/376. Issue #367 records R2
+as in progress, with this first stage and remaining work explicitly separated.
 Format and both clippy configurations passed. Unit tests: 190 passed.
 PostgreSQL library tests: 252 passed and one existing ignored; integration tests:
 5 atomic-save, 4 persistence-conflict and 1 decoding passed. API E2E: 53 passed.
@@ -158,3 +160,6 @@ Revision note (2026-10-11): completed implementation and validation. DB-feature
 compilation found a test whose post-command read still used the old local
 variable; explicitly use PgHistoryRepository for that read and PgUndoCommand for
 the write. All checks passed after the correction.
+
+Revision note (2026-10-11): created draft PR #376 and updated the tracking
+Issue; task-owned test processes and PostgreSQL container have been stopped.
