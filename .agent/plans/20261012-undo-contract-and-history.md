@@ -83,6 +83,8 @@ Tests are isolated and repeatable. Restart the disposable database if needed wit
 ## Artifacts and Notes
 
 
+PR #377 review follow-up: CodeRabbit approved with a valid nitpick that equal fixture attributes hid incorrect restoration. Success cases now use distinct before attributes and compare restored book/author fields and lifecycle start against the source. Added function documentation to address its coverage warning.
+
 Milestone 1 evidence: `cargo test --features test-with-database --test undo_contract` reports `5 passed; 0 failed`; complete validation reports `All Undo validation checks passed`. Scratch logs use `/workspace/work/undo-contract-*.log`. Scratch logs and service scripts remain outside the repository in `/workspace/work`.
 
 ## Interfaces and Dependencies

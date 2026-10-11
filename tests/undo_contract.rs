@@ -19,6 +19,7 @@ enum Entity {
 }
 
 impl Entity {
+    /// Returns a fixed fixture entity name; no user-controlled identifier is interpolated.
     fn table(self) -> &'static str {
         match self {
             Self::Book => "book",
@@ -27,6 +28,7 @@ impl Entity {
     }
 }
 
+/// Captures every current/history table for one tenant or the complete isolated test database.
 async fn state(pool: &PgPool, owner: Option<&str>) -> anyhow::Result<Vec<serde_json::Value>> {
     let mut rows = Vec::new();
     for query in [
@@ -50,6 +52,7 @@ async fn state(pool: &PgPool, owner: Option<&str>) -> anyhow::Result<Vec<serde_j
     Ok(rows)
 }
 
+/// Inserts an immutable owned fixture snapshot at the supplied revision.
 async fn revision(
     pool: &PgPool,
     entity: Entity,
@@ -74,6 +77,7 @@ async fn revision(
     Ok(())
 }
 
+/// Inserts the current fixture entity without affecting existing history.
 async fn current(pool: &PgPool, entity: Entity, id: Uuid, owner: &str) -> anyhow::Result<()> {
     let query = match entity {
         Entity::Book => {
@@ -89,6 +93,7 @@ async fn current(pool: &PgPool, entity: Entity, id: Uuid, owner: &str) -> anyhow
     Ok(())
 }
 
+/// Seeds an owned target and a separate tenant sharing the same entity UUID.
 async fn setup(
     pool: &PgPool,
     entity: Entity,
@@ -130,6 +135,7 @@ async fn setup(
     Ok((UserId::new("owner".into())?, operation.into(), id))
 }
 
+/// Checks inverse links, restored persisted values, and tenant independence for both entities.
 #[sqlx::test]
 async fn eligible_create_update_delete_record_owned_inverse(pool: PgPool) -> anyhow::Result<()> {
     // Separate owners are unnecessary: clear these isolated test fixtures between cases.
@@ -139,6 +145,12 @@ async fn eligible_create_update_delete_record_owned_inverse(pool: PgPool) -> any
                 .execute(&pool)
                 .await?;
             let (owner, target, id) = setup(&pool, entity, before, after).await?;
+            if before.is_some() {
+                sqlx::query(match entity {
+                    Entity::Book => "UPDATE book_revision SET title='Before Book',isbn='9784873115658',read=true,owned=false,priority=99,format='eBook',store='Kindle',purchase_date=DATE '2020-02-29',book_created_at='2001-02-03' WHERE user_id='owner' AND book_id=$1 AND revision_number=1",
+                    Entity::Author => "UPDATE author_revision SET name='Before Author',yomi='よみ',author_created_at='2001-02-03' WHERE user_id='owner' AND author_id=$1 AND revision_number=1",
+                }).bind(id).execute(&pool).await?;
+            }
             let other_before = state(&pool, Some("other")).await?;
             let history = PgHistoryRepository::new(pool.clone());
             assert!(
@@ -175,6 +187,17 @@ async fn eligible_create_update_delete_record_owned_inverse(pool: PgPool) -> any
             .fetch_one(&pool)
             .await?;
             assert_eq!(exists, before.is_some());
+            if before.is_some() {
+                let matches_source: bool = sqlx::query_scalar(match entity {
+                    Entity::Book => "SELECT ROW(b.title,b.isbn,b.read,b.owned,b.priority,b.format,b.store,b.purchase_date,b.created_at) IS NOT DISTINCT FROM ROW(r.title,r.isbn,r.read,r.owned,r.priority,r.format,r.store,r.purchase_date,r.book_created_at) FROM book b JOIN book_revision r ON r.user_id=b.user_id AND r.book_id=b.id AND r.revision_number=1 WHERE b.user_id='owner' AND b.id=$1",
+                    Entity::Author => "SELECT ROW(a.name,a.yomi,a.created_at) IS NOT DISTINCT FROM ROW(r.name,r.yomi,r.author_created_at) FROM author a JOIN author_revision r ON r.user_id=a.user_id AND r.author_id=a.id AND r.revision_number=1 WHERE a.user_id='owner' AND a.id=$1",
+                }).bind(id).fetch_one(&pool).await?;
+                assert!(
+                    matches_source,
+                    "{entity:?} restored fields must match the before snapshot"
+                );
+            }
+
             assert!(!history.is_operation_undoable(&owner, &target).await?);
             assert!(history.is_operation_undoable(&owner, &inverse).await?);
             assert_eq!(state(&pool, Some("other")).await?, other_before);
@@ -183,6 +206,7 @@ async fn eligible_create_update_delete_record_owned_inverse(pool: PgPool) -> any
     Ok(())
 }
 
+/// Checks execution revalidation after every existence/revision mismatch invalidates advice.
 #[sqlx::test]
 async fn stale_advice_is_revalidated_without_writes(pool: PgPool) -> anyhow::Result<()> {
     for entity in [Entity::Book, Entity::Author] {
@@ -225,6 +249,7 @@ async fn stale_advice_is_revalidated_without_writes(pool: PgPool) -> anyhow::Res
     Ok(())
 }
 
+/// Checks inaccessible or ineligible targets never produce partial writes.
 #[sqlx::test]
 async fn missing_foreign_baseline_and_empty_targets_are_rejected(
     pool: PgPool,
@@ -269,6 +294,7 @@ async fn missing_foreign_baseline_and_empty_targets_are_rejected(
     Ok(())
 }
 
+/// Fixes the distinction between advisory revision checks and execution-only constraints.
 #[sqlx::test]
 async fn eligibility_does_not_guarantee_dependency_or_name_availability(
     pool: PgPool,
@@ -303,6 +329,7 @@ async fn eligibility_does_not_guarantee_dependency_or_name_availability(
     Ok(())
 }
 
+/// Uses observable lock contention to verify one committed inverse and an allowed loser error.
 #[sqlx::test]
 async fn contending_commands_commit_only_one_inverse(pool: PgPool) -> anyhow::Result<()> {
     let (owner, target, _) = setup(&pool, Entity::Book, Some(1), Some(2)).await?;
