@@ -27,7 +27,7 @@ presentation ──> use_case ──> domain
                          infrastructure
 
 exception: infrastructure ──> use_case::port
-           (dedicated use-case I/O/query projections only)
+           (explicit use-case I/O ports only)
 ```
 
 In particular:
@@ -39,8 +39,8 @@ In particular:
 - `infrastructure` normally depends on and implements abstractions owned by
   `domain`.
 - `infrastructure` MAY depend on `use_case::port` only to implement explicit,
-  use-case-specific I/O or query projections that would be unnatural domain
-  abstractions.
+  use-case-specific I/O commands or query projections that would be unnatural
+  domain abstractions.
 - `infrastructure` MUST NOT depend on interactors, workflow implementations,
   presentation-facing DTO modules, or other general `use_case` implementation
   details.
@@ -83,6 +83,13 @@ A use-case query port may guarantee an atomic, consistent projection when
 splitting the query into independently callable repository methods would break
 that guarantee. This exception does not permit domain code to depend on
 use-case DTOs.
+
+A use-case command port may guarantee a complete atomic workflow when its
+locking, revalidation and writes must execute together. Undo uses this boundary:
+the use case validates inputs and invokes an explicit atomic command; the
+PostgreSQL implementation owns SERIALIZABLE isolation and database locks. A
+history read repository must not expose that command. This does not move general
+application orchestration into infrastructure or allow importing interactors.
 
 For mutation-specific transaction invariants, see
 [`event-recording.md`](event-recording.md).

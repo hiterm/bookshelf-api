@@ -1,5 +1,6 @@
 #![cfg(feature = "test-with-database")]
 
+use bookshelf_api::use_case::port::undo::UndoCommand;
 use bookshelf_api::{
     domain::{
         entity::{
@@ -8,14 +9,11 @@ use bookshelf_api::{
             user::UserId,
         },
         error::DomainError,
-        repository::{
-            author_repository::AuthorRepository, history_repository::HistoryRepository,
-            transaction::TransactionManager,
-        },
+        repository::{author_repository::AuthorRepository, transaction::TransactionManager},
     },
     infrastructure::{
-        author_repository::PgAuthorRepository, history_repository::PgHistoryRepository,
-        transaction::PgTransactionManager,
+        author_repository::PgAuthorRepository, transaction::PgTransactionManager,
+        undo::PgUndoCommand,
     },
 };
 use sqlx::PgPool;
@@ -123,7 +121,7 @@ async fn undo_later_name_conflict_rolls_back_earlier_inverse_and_history(
 ) -> anyhow::Result<()> {
     let (operation, ids) = setup(&pool, true).await?;
     let owner = UserId::new("owner".into())?;
-    let history = PgHistoryRepository::new(pool.clone());
+    let history = PgUndoCommand::new(pool.clone());
     let before = state(&pool).await?;
     let result = history.undo_operation(&owner, &operation).await;
     assert!(
@@ -176,7 +174,7 @@ async fn undo_corrupt_author_name_rolls_back_earlier_inverse_and_history(
     sqlx::query("UPDATE author_revision SET name='' WHERE user_id='owner' AND author_id=$1 AND revision_number=1")
         .bind(ids[1]).execute(&pool).await?;
     let owner = UserId::new("owner".into())?;
-    let history = PgHistoryRepository::new(pool.clone());
+    let history = PgUndoCommand::new(pool.clone());
     let before = state(&pool).await?;
     assert!(matches!(
         history.undo_operation(&owner, &operation).await,

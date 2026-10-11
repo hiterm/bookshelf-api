@@ -19,6 +19,7 @@ use crate::{
             BookOperationChangeDto, BookRevisionDto, BookRevisionKeyDto, OperationDto,
         },
         error::UseCaseError,
+        port::undo::UndoCommand,
         traits::history::{HistoryCommandUseCase, HistoryQueryUseCase},
     },
 };
@@ -28,8 +29,23 @@ pub struct HistoryQueryInteractor<HR> {
     repository: HR,
 }
 
+/// Validates command inputs and delegates the complete atomic Undo workflow.
+#[derive(Debug, Clone)]
+pub struct HistoryCommandInteractor<UC> {
+    command: UC,
+}
+
+impl<UC> HistoryCommandInteractor<UC> {
+    /// Creates a command interactor backed by one complete atomic Undo executor.
+    pub fn new(command: UC) -> Self {
+        Self { command }
+    }
+}
+
 #[async_trait]
-impl<HR: HistoryRepository> HistoryCommandUseCase for HistoryQueryInteractor<HR> {
+impl<UC: UndoCommand> HistoryCommandUseCase for HistoryCommandInteractor<UC> {
+    /// Validates owner and target identifiers before executing Undo, preserving
+    /// domain failure categories and returning the new Operation ID as a string.
     async fn undo_operation(
         &self,
         user_id: &str,
@@ -38,7 +54,7 @@ impl<HR: HistoryRepository> HistoryCommandUseCase for HistoryQueryInteractor<HR>
         let user_id = UserId::new(user_id.to_owned())?;
         let operation_id = OperationId::try_from(operation_id).map_err(UseCaseError::Validation)?;
         Ok(self
-            .repository
+            .command
             .undo_operation(&user_id, &operation_id)
             .await?
             .to_string())
@@ -286,7 +302,8 @@ mod tests {
         },
         use_case::{
             dto::history::BookRevisionKeyDto,
-            interactor::history::HistoryQueryInteractor,
+            interactor::history::{HistoryCommandInteractor, HistoryQueryInteractor},
+            port::undo::MockUndoCommand,
             traits::history::{HistoryCommandUseCase, HistoryQueryUseCase},
         },
     };
@@ -329,24 +346,94 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Ensures command execution uses the authenticated owner and target, while
+    /// the response identifies the newly recorded Undo rather than its target.
     #[tokio::test]
     async fn undo_returns_the_new_operation_id() {
         let target_id = OperationId::from(Uuid::new_v4());
         let undo_id = OperationId::from(Uuid::new_v4());
         let expected_target = target_id.clone();
         let expected_undo = undo_id.clone();
-        let mut repository = MockHistoryRepository::new();
-        repository
+        let mut command = MockUndoCommand::new();
+        command
             .expect_undo_operation()
             .withf(move |user_id, id| user_id.as_str() == "user1" && id == &expected_target)
             .return_once(move |_, _| Ok(expected_undo));
 
-        let result = HistoryQueryInteractor::new(repository)
+        let result = HistoryCommandInteractor::new(command)
             .undo_operation("user1", &target_id.to_string())
             .await
             .unwrap();
 
         assert_eq!(result, undo_id.to_string());
+    }
+
+    /// Invalid owner or target inputs must fail before the atomic executor runs.
+    #[tokio::test]
+    async fn undo_rejects_invalid_inputs_before_command_execution() {
+        use crate::use_case::error::UseCaseError;
+
+        for (user_id, operation_id) in [
+            ("user1", "invalid"),
+            ("", "e77df9d5-b7bf-47f2-8753-03f285d440e3"),
+        ] {
+            let command = MockUndoCommand::new();
+            let result = HistoryCommandInteractor::new(command)
+                .undo_operation(user_id, operation_id)
+                .await;
+            assert!(matches!(result, Err(UseCaseError::Validation(_))));
+        }
+    }
+
+    /// Expected conflicts and missing targets retain their public categories;
+    /// database failures remain internal errors at the use-case boundary.
+    #[tokio::test]
+    async fn undo_preserves_command_failure_classification() {
+        use crate::{domain::error::DomainError, use_case::error::UseCaseError};
+
+        let target_id = OperationId::from(Uuid::new_v4());
+        let failures = [
+            DomainError::Conflict("affected entity changed".to_owned()),
+            DomainError::NotFound {
+                entity_type: "operation",
+                entity_id: target_id.to_string(),
+                user_id: "user1".to_owned(),
+            },
+            DomainError::AuthorNameConflict("Existing author".to_owned()),
+            DomainError::InfrastructureError(anyhow::anyhow!("transaction failed")),
+        ];
+        for (index, failure) in failures.into_iter().enumerate() {
+            let mut command = MockUndoCommand::new();
+            command
+                .expect_undo_operation()
+                .times(1)
+                .return_once(move |_, _| Err(failure));
+            let result = HistoryCommandInteractor::new(command)
+                .undo_operation("user1", &target_id.to_string())
+                .await;
+            match (index, result) {
+                (0, Err(UseCaseError::Conflict(message))) => {
+                    assert_eq!(message, "affected entity changed")
+                }
+                (
+                    1,
+                    Err(UseCaseError::NotFound {
+                        entity_type,
+                        entity_id,
+                        user_id,
+                    }),
+                ) => {
+                    assert_eq!(entity_type, "operation");
+                    assert_eq!(entity_id, target_id.to_string());
+                    assert_eq!(user_id, "user1");
+                }
+                (2, Err(UseCaseError::AuthorNameConflict(name))) => {
+                    assert_eq!(name, "Existing author")
+                }
+                (3, Err(UseCaseError::Other(_))) => {}
+                (_, other) => panic!("unexpected command result: {other:?}"),
+            }
+        }
     }
 
     #[tokio::test]

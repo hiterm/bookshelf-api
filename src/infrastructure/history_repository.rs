@@ -275,14 +275,6 @@ impl HistoryRepository for PgHistoryRepository {
         Ok(undoable)
     }
 
-    async fn undo_operation(
-        &self,
-        user_id: &UserId,
-        operation_id: &OperationId,
-    ) -> Result<OperationId, DomainError> {
-        super::undo::undo_operation(&self.pool, user_id, operation_id).await
-    }
-
     async fn find_book_revisions(
         &self,
         user_id: &UserId,

@@ -5,14 +5,14 @@ use crate::{
     infrastructure::{
         author_repository::PgAuthorRepository, backup::PgBackupQuery,
         book_repository::PgBookRepository, history_repository::PgHistoryRepository,
-        transaction::PgTransactionManager, user_repository::PgUserRepository,
+        transaction::PgTransactionManager, undo::PgUndoCommand, user_repository::PgUserRepository,
     },
     presentation::graphql::{mutation::Mutation, query::Query, schema::build_schema},
     use_case::interactor::{
         author::{AuthorCommandInteractor, AuthorQueryInteractor},
         backup::BackupInteractor,
         book::{BookCommandInteractor, BookQueryInteractor},
-        history::HistoryQueryInteractor,
+        history::{HistoryCommandInteractor, HistoryQueryInteractor},
         user::{UserCommandInteractor, UserQueryInteractor},
     },
 };
@@ -23,11 +23,12 @@ pub type BQ = BookQueryInteractor<PgBookRepository>;
 pub type BC = BookCommandInteractor<PgBookRepository, PgAuthorRepository, PgTransactionManager>;
 pub type AQ = AuthorQueryInteractor<PgAuthorRepository>;
 pub type AC = AuthorCommandInteractor<PgAuthorRepository, PgBookRepository, PgTransactionManager>;
+pub type HC = HistoryCommandInteractor<PgUndoCommand>;
 pub type HQ = HistoryQueryInteractor<PgHistoryRepository>;
 pub type BackupExport = BackupInteractor<PgBackupQuery>;
 
 pub type AppQuery = Query<UQ, BQ, AQ, HQ>;
-pub type AppMutation = Mutation<UC, BC, AC, HQ>;
+pub type AppMutation = Mutation<UC, BC, AC, HC>;
 pub type AppSchema = Schema<AppQuery, AppMutation, EmptySubscription>;
 
 pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, BackupExport, AppSchema) {
@@ -35,6 +36,7 @@ pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, BackupExport, 
     let book_repository = PgBookRepository::new(pool.clone());
     let author_repository = PgAuthorRepository::new(pool.clone());
     let history_query = HistoryQueryInteractor::new(PgHistoryRepository::new(pool.clone()));
+    let history_command = HistoryCommandInteractor::new(PgUndoCommand::new(pool.clone()));
     let backup_query = BackupInteractor::new(PgBackupQuery::new(pool.clone()));
     let transaction_manager = PgTransactionManager::new(pool);
 
@@ -55,12 +57,7 @@ pub fn dependency_injection(pool: Pool<Postgres>) -> (AQ, BQ, HQ, BackupExport, 
         author_query.clone(),
         history_query.clone(),
     );
-    let mutation = Mutation::new(
-        user_command,
-        book_command,
-        author_command,
-        history_query.clone(),
-    );
+    let mutation = Mutation::new(user_command, book_command, author_command, history_command);
     let schema = build_schema(query, mutation);
 
     (

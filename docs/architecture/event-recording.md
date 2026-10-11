@@ -50,6 +50,26 @@ Use cases build response metadata directly from these explicit results after
 commit. Transactions retain user/Operation context without a last-revision
 slot; bulk mutations have no last-revision result.
 
+## Undo command boundary
+
+`HistoryQueryInteractor` and `HistoryRepository` serve history reads only.
+`HistoryCommandInteractor` validates the authenticated owner and target ID,
+then invokes `use_case::port::undo::UndoCommand`. This port guarantees one
+complete atomic Undo; it returns the new Operation ID only after commit.
+Dependency injection wires mutations to `PgUndoCommand`, separately from
+history queries and loaders.
+
+The PostgreSQL implementation owns the database mechanics: begin a
+SERIALIZABLE transaction, lock the owned target Operation, acquire ordered
+entity locks, revalidate the current state, apply inverse state, append fresh
+Revisions and OperationChanges, and commit. Any error rolls back the whole
+command. `is_operation_undoable` is an advisory read; the command never trusts
+an earlier eligibility result and always revalidates after locking.
+
+This explicit command port preserves Undo's existing isolation and set-based
+SQL. It does not replace SERIALIZABLE with the ordinary mutation transaction
+or share revision-writing internals yet; those are later stages of API #367 R2.
+
 ## Tenant-aware identity
 
 GraphQL identifies a revision as `(entityId, revisionNumber)`. The server adds
