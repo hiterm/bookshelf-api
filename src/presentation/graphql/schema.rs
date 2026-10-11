@@ -683,4 +683,39 @@ mod tests {
 
         Ok(())
     }
+    #[tokio::test]
+    async fn persisted_decode_failure_is_private_at_query_boundary() {
+        let marker = "private-stored-format";
+        let domain = crate::infrastructure::error::persisted_book_format(marker).unwrap_err();
+        let mut books = MockBookQueryUseCase::new();
+        books
+            .expect_find_by_id()
+            .with(predicate::eq("user1"), predicate::eq("book1"))
+            .times(1)
+            .return_once(move |_, _| Err(domain.into()));
+        let schema = build_schema(
+            Query::new(
+                MockUserQueryUseCase::new(),
+                books,
+                MockAuthorQueryUseCase::new(),
+                MockHistoryQueryUseCase::new(),
+            ),
+            mutation(),
+        );
+        let response = schema
+            .execute(
+                async_graphql::Request::from("{ book(id: \"book1\") { id } }").data(Claims {
+                    sub: "user1".into(),
+                    _permissions: None,
+                }),
+            )
+            .await;
+        assert_schema_error(
+            response,
+            "INTERNAL_ERROR",
+            serde_json::json!(["book"]),
+            "Internal server error",
+            Some(marker),
+        );
+    }
 }

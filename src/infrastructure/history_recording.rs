@@ -1,3 +1,4 @@
+use super::error::persisted_value;
 use sqlx::Row;
 
 use crate::domain::{
@@ -85,7 +86,7 @@ pub async fn append_book_revision(
     .execute(tx.as_mut())
     .await?;
 
-    RevisionNumber::try_from(revision_number)
+    persisted_value("revision number", RevisionNumber::try_from(revision_number))
 }
 
 /// Records an owned book deletion by linking the prior revision to a null after-revision.
@@ -163,7 +164,7 @@ pub async fn append_author_revision(
     .execute(tx.as_mut())
     .await?;
 
-    RevisionNumber::try_from(revision_number)
+    persisted_value("revision number", RevisionNumber::try_from(revision_number))
 }
 
 /// Records an owned author deletion by linking the prior revision to a null after-revision.

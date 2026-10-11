@@ -1,3 +1,4 @@
+use super::error::{persisted_book_format, persisted_book_store};
 use std::collections::HashMap;
 
 use async_trait::async_trait;
@@ -6,7 +7,6 @@ use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
-    common::types::{BookFormat, BookStore},
     domain::{entity::user::UserId, error::DomainError},
     use_case::port::backup::{
         BackupAuthorChangeProjection, BackupAuthorProjection, BackupAuthorRevisionProjection,
@@ -99,16 +99,6 @@ struct AuthorRevisionRow {
     recorded_at: OffsetDateTime,
 }
 
-fn book_format(value: &str) -> Result<BookFormat, DomainError> {
-    BookFormat::try_from(value)
-        .map_err(|_| DomainError::Unexpected(format!("unsupported persisted book format: {value}")))
-}
-
-fn book_store(value: &str) -> Result<BookStore, DomainError> {
-    BookStore::try_from(value)
-        .map_err(|_| DomainError::Unexpected(format!("unsupported persisted book store: {value}")))
-}
-
 fn book_snapshot(row: &BookRow) -> Result<BackupBookSnapshotProjection, DomainError> {
     Ok(BackupBookSnapshotProjection {
         title: row.title.clone(),
@@ -117,8 +107,8 @@ fn book_snapshot(row: &BookRow) -> Result<BackupBookSnapshotProjection, DomainEr
         read: row.read,
         owned: row.owned,
         priority: row.priority,
-        format: book_format(&row.format)?,
-        store: book_store(&row.store)?,
+        format: persisted_book_format(&row.format)?,
+        store: persisted_book_store(&row.store)?,
         purchase_date: row.purchase_date,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -265,8 +255,8 @@ async fn history(
                     read: row.read,
                     owned: row.owned,
                     priority: row.priority,
-                    format: book_format(&row.format)?,
-                    store: book_store(&row.store)?,
+                    format: persisted_book_format(&row.format)?,
+                    store: persisted_book_store(&row.store)?,
                     purchase_date: row.purchase_date,
                     created_at: row.book_created_at,
                     updated_at: row.book_updated_at,

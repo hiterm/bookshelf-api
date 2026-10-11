@@ -81,3 +81,18 @@ HTTP tests for GraphQL business errors MUST use a valid operation document and s
 #### Scenario: Valid control input succeeds
 - **WHEN** the corresponding operation is sent with valid non-conflicting input
 - **THEN** it completes without GraphQL errors
+
+### Requirement: Stored-data validation is distinct from client input validation
+The system SHALL treat failures of existing validation rules when reconstructing persisted entities or revisions as internal data inconsistencies. It SHALL retain Validation classification for invalid client inputs, without adding stricter validation rules for stored data.
+
+#### Scenario: A stored value cannot be decoded
+- **WHEN** current-state, revision, restore, or backup decoding encounters an unsupported persisted book format or store
+- **THEN** decoding fails with an internal error rather than a client Validation error
+
+#### Scenario: A validated stored field is invalid
+- **WHEN** entity or history reconstruction rejects a stored title, ISBN, priority, author name, owner ID, or revision number under an existing validation rule
+- **THEN** the failure is internal, and GraphQL exposes only `INTERNAL_ERROR` and `Internal server error`
+
+#### Scenario: A client submits invalid input
+- **WHEN** client input fails the existing input validation rules
+- **THEN** its public error remains `VALIDATION_ERROR`

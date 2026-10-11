@@ -1,3 +1,4 @@
+use super::error::persisted_value;
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
@@ -237,7 +238,8 @@ impl AuthorRepository for PgAuthorRepository {
                     |row: Result<AuthorRow, sqlx::Error>| -> Result<Author, DomainError> {
                         let row = row?;
                         let author_id = AuthorId::new(row.id);
-                        let author_name = AuthorName::new(row.name)?;
+                        let author_name =
+                            persisted_value("author name", AuthorName::new(row.name))?;
                         let author = Author::new_with_timestamps(
                             author_id,
                             author_name,
@@ -420,7 +422,7 @@ impl AuthorRepository for PgAuthorRepository {
         .await?;
         let author = Author::new_with_timestamps(
             author_id.clone(),
-            AuthorName::new(name)?,
+            persisted_value("author name", AuthorName::new(name))?,
             yomi,
             created_at,
             OffsetDateTime::now_utc(),
@@ -494,7 +496,7 @@ impl AuthorRepository for PgAuthorRepository {
             |row: Result<AuthorRow, sqlx::Error>| -> Result<(AuthorId, Author), DomainError> {
                 let row = row?;
                 let author_id = AuthorId::new(row.id);
-                let author_name = AuthorName::new(row.name)?;
+                let author_name = persisted_value("author name", AuthorName::new(row.name))?;
                 let author = Author::new_with_timestamps(
                     author_id.clone(),
                     author_name,
@@ -535,7 +537,7 @@ where
 fn author_from_optional_row(row: Option<AuthorRow>) -> Result<Option<Author>, DomainError> {
     row.map(|row| -> Result<Author, DomainError> {
         let author_id: AuthorId = row.id.into();
-        let author_name = AuthorName::new(row.name)?;
+        let author_name = persisted_value("author name", AuthorName::new(row.name))?;
         Author::new_with_timestamps(
             author_id,
             author_name,
@@ -1265,5 +1267,26 @@ mod tests {
     fn unknown_sqlx_error_remains_infrastructure_error() {
         let error = classify_author_name_write_error(sqlx::Error::RowNotFound, "author");
         assert!(matches!(error, DomainError::InfrastructureError(_)));
+    }
+}
+
+#[cfg(test)]
+mod decoding_tests {
+    use super::*;
+
+    #[test]
+    fn current_author_rejects_corrupt_name_as_internal_error() {
+        let row = AuthorRow {
+            id: Uuid::nil(),
+            name: "".into(),
+            yomi: "".into(),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        };
+        assert!(matches!(
+            author_from_optional_row(Some(row)),
+            Err(DomainError::Unexpected(_))
+        ));
+        assert!(author_from_optional_row(None).unwrap().is_none());
     }
 }
