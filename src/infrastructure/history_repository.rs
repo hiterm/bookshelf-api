@@ -1,3 +1,4 @@
+use super::error::{persisted_book_format, persisted_book_store, persisted_value};
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
@@ -5,22 +6,19 @@ use sqlx::PgPool;
 use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
-use crate::{
-    common::types::{BookFormat, BookStore},
-    domain::{
-        entity::{
-            author::{AuthorId, AuthorName},
-            book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
-            operation::{Operation, OperationDetail, OperationId, OperationType},
-            revision::{
-                AuthorOperationChange, AuthorRevision, AuthorRevisionKey, BookOperationChange,
-                BookRevision, BookRevisionKey, RevisionNumber,
-            },
-            user::UserId,
+use crate::domain::{
+    entity::{
+        author::{AuthorId, AuthorName},
+        book::{BookId, BookTitle, Isbn, OwnedFlag, Priority, ReadFlag},
+        operation::{Operation, OperationDetail, OperationId, OperationType},
+        revision::{
+            AuthorOperationChange, AuthorRevision, AuthorRevisionKey, BookOperationChange,
+            BookRevision, BookRevisionKey, RevisionNumber,
         },
-        error::DomainError,
-        repository::history_repository::HistoryRepository,
+        user::UserId,
     },
+    error::DomainError,
+    repository::history_repository::HistoryRepository,
 };
 
 #[derive(sqlx::FromRow)]
@@ -39,7 +37,7 @@ impl TryFrom<OperationRow> for Operation {
     fn try_from(row: OperationRow) -> Result<Self, Self::Error> {
         Ok(Self {
             id: OperationId::from(row.id),
-            user_id: UserId::new(row.user_id)?,
+            user_id: persisted_value("user ID", UserId::new(row.user_id))?,
             operation_type: OperationType::try_from(row.r#type.as_str())
                 .map_err(DomainError::Unexpected)?,
             detail: row
@@ -78,23 +76,24 @@ impl TryFrom<BookRevisionRow> for BookRevision {
     fn try_from(row: BookRevisionRow) -> Result<Self, Self::Error> {
         Ok(Self {
             book_id: BookId::new(row.book_id)?,
-            revision_number: RevisionNumber::try_from(row.revision_number)?,
-            user_id: UserId::new(row.user_id)?,
-            title: BookTitle::new(row.title)?,
+            revision_number: persisted_value(
+                "revision number",
+                RevisionNumber::try_from(row.revision_number),
+            )?,
+            user_id: persisted_value("user ID", UserId::new(row.user_id))?,
+            title: persisted_value("book title", BookTitle::new(row.title))?,
             author_ids: row
                 .author_ids
                 .unwrap_or_default()
                 .into_iter()
                 .map(AuthorId::new)
                 .collect(),
-            isbn: Isbn::new(row.isbn)?,
+            isbn: persisted_value("book ISBN", Isbn::new(row.isbn))?,
             read: ReadFlag::new(row.read),
             owned: OwnedFlag::new(row.owned),
-            priority: Priority::new(row.priority)?,
-            format: BookFormat::try_from(row.format.as_str())
-                .map_err(|error| DomainError::Unexpected(error.to_string()))?,
-            store: BookStore::try_from(row.store.as_str())
-                .map_err(|error| DomainError::Unexpected(error.to_string()))?,
+            priority: persisted_value("book priority", Priority::new(row.priority))?,
+            format: persisted_book_format(row.format.as_str())?,
+            store: persisted_book_store(row.store.as_str())?,
             purchase_date: row.purchase_date,
             book_created_at: row.book_created_at,
             book_updated_at: row.book_updated_at,
@@ -121,9 +120,12 @@ impl TryFrom<AuthorRevisionRow> for AuthorRevision {
     fn try_from(row: AuthorRevisionRow) -> Result<Self, Self::Error> {
         Ok(Self {
             author_id: AuthorId::new(row.author_id),
-            revision_number: RevisionNumber::try_from(row.revision_number)?,
-            user_id: UserId::new(row.user_id)?,
-            name: AuthorName::new(row.name)?,
+            revision_number: persisted_value(
+                "revision number",
+                RevisionNumber::try_from(row.revision_number),
+            )?,
+            user_id: persisted_value("user ID", UserId::new(row.user_id))?,
+            name: persisted_value("author name", AuthorName::new(row.name))?,
             yomi: row.yomi,
             author_created_at: row.author_created_at,
             author_updated_at: row.author_updated_at,
@@ -506,11 +508,15 @@ impl HistoryRepository for PgHistoryRepository {
                     book_id: BookId::new(row.book_id)?,
                     before_revision_number: row
                         .before_revision_number
-                        .map(RevisionNumber::try_from)
+                        .map(|number| {
+                            persisted_value("revision number", RevisionNumber::try_from(number))
+                        })
                         .transpose()?,
                     after_revision_number: row
                         .after_revision_number
-                        .map(RevisionNumber::try_from)
+                        .map(|number| {
+                            persisted_value("revision number", RevisionNumber::try_from(number))
+                        })
                         .transpose()?,
                 });
         }
@@ -552,11 +558,15 @@ impl HistoryRepository for PgHistoryRepository {
                     author_id: AuthorId::new(row.author_id),
                     before_revision_number: row
                         .before_revision_number
-                        .map(RevisionNumber::try_from)
+                        .map(|number| {
+                            persisted_value("revision number", RevisionNumber::try_from(number))
+                        })
                         .transpose()?,
                     after_revision_number: row
                         .after_revision_number
-                        .map(RevisionNumber::try_from)
+                        .map(|number| {
+                            persisted_value("revision number", RevisionNumber::try_from(number))
+                        })
                         .transpose()?,
                 });
         }
@@ -931,5 +941,86 @@ mod tests {
                 .await?
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod decoding_tests {
+    use super::*;
+
+    fn row() -> BookRevisionRow {
+        BookRevisionRow {
+            book_id: Uuid::nil(),
+            revision_number: 1,
+            user_id: "owner".into(),
+            title: "Stored book".into(),
+            author_ids: None,
+            isbn: "".into(),
+            read: false,
+            owned: true,
+            priority: 50,
+            format: "Printed".into(),
+            store: "Unknown".into(),
+            purchase_date: None,
+            book_created_at: OffsetDateTime::UNIX_EPOCH,
+            book_updated_at: OffsetDateTime::UNIX_EPOCH,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    #[test]
+    fn book_revision_rejects_corrupt_fields_as_internal_errors() {
+        for field in [
+            "title", "isbn", "priority", "format", "store", "revision", "owner",
+        ] {
+            let mut row = row();
+            match field {
+                "title" => row.title.clear(),
+                "isbn" => row.isbn = "not-an-isbn".into(),
+                "priority" => row.priority = -1,
+                "format" => row.format = "bad-format".into(),
+                "store" => row.store = "bad-store".into(),
+                "revision" => row.revision_number = 0,
+                "owner" => row.user_id.clear(),
+                _ => unreachable!(),
+            }
+            assert!(
+                matches!(BookRevision::try_from(row), Err(DomainError::Unexpected(_))),
+                "{field}"
+            );
+        }
+        assert_eq!(
+            BookRevision::try_from(row()).unwrap().title.as_str(),
+            "Stored book"
+        );
+    }
+
+    #[test]
+    fn author_revision_rejects_corrupt_fields_as_internal_errors() {
+        for field in ["name", "revision", "owner"] {
+            let mut row = AuthorRevisionRow {
+                author_id: Uuid::nil(),
+                revision_number: 1,
+                user_id: "owner".into(),
+                name: "Author".into(),
+                yomi: "".into(),
+                author_created_at: OffsetDateTime::UNIX_EPOCH,
+                author_updated_at: OffsetDateTime::UNIX_EPOCH,
+                created_at: OffsetDateTime::UNIX_EPOCH,
+            };
+            match field {
+                "name" => row.name.clear(),
+                "revision" => row.revision_number = 0,
+                "owner" => row.user_id.clear(),
+                _ => unreachable!(),
+            }
+            assert!(
+                matches!(
+                    AuthorRevision::try_from(row),
+                    Err(DomainError::Unexpected(_))
+                ),
+                "{field}"
+            );
+        }
     }
 }

@@ -1,3 +1,4 @@
+use super::error::persisted_value;
 use async_trait::async_trait;
 use sqlx::PgPool;
 
@@ -39,7 +40,9 @@ impl UserRepository for PgUserRepository {
             .fetch_optional(&self.pool)
             .await?;
 
-        let id = row.map(|row| UserId::new(row.id)).transpose()?;
+        let id = row
+            .map(|row| persisted_value("user ID", UserId::new(row.id)))
+            .transpose()?;
         Ok(id.map(User::new))
     }
 }

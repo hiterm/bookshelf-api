@@ -1,3 +1,4 @@
+use super::error::{persisted_book_format, persisted_book_store, persisted_value};
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
@@ -7,7 +8,6 @@ use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
-    common::types::{BookFormat, BookStore},
     domain::{
         entity::{
             author::AuthorId,
@@ -52,17 +52,17 @@ struct AuthorBookRow {
 /// Validates database fields and reconstructs a book, treating missing author links as an empty list.
 fn book_from_row(row: BookRow) -> Result<Book, DomainError> {
     let book_id = BookId::new(row.id)?;
-    let title = BookTitle::new(row.title)?;
+    let title = persisted_value("book title", BookTitle::new(row.title))?;
     let author_ids: Vec<AuthorId> = row
         .author_ids
         .map(|author_ids| author_ids.into_iter().map(AuthorId::new).collect())
         .unwrap_or_default();
-    let isbn = Isbn::new(row.isbn)?;
+    let isbn = persisted_value("book ISBN", Isbn::new(row.isbn))?;
     let read = ReadFlag::new(row.read);
     let owned = OwnedFlag::new(row.owned);
-    let priority = Priority::new(row.priority)?;
-    let format = BookFormat::try_from(row.format.as_str())?;
-    let store = BookStore::try_from(row.store.as_str())?;
+    let priority = persisted_value("book priority", Priority::new(row.priority))?;
+    let format = persisted_book_format(row.format.as_str())?;
+    let store = persisted_book_store(row.store.as_str())?;
 
     Book::new(
         book_id,
@@ -970,19 +970,19 @@ impl BookRepository for PgBookRepository {
         .await?;
         let book = Book::new(
             book_id.clone(),
-            BookTitle::new(source.title)?,
+            persisted_value("book title", BookTitle::new(source.title))?,
             source
                 .author_ids
                 .unwrap_or_default()
                 .into_iter()
                 .map(AuthorId::new)
                 .collect(),
-            Isbn::new(source.isbn)?,
+            persisted_value("book ISBN", Isbn::new(source.isbn))?,
             ReadFlag::new(source.read),
             OwnedFlag::new(source.owned),
-            Priority::new(source.priority)?,
-            BookFormat::try_from(source.format.as_str())?,
-            BookStore::try_from(source.store.as_str())?,
+            persisted_value("book priority", Priority::new(source.priority))?,
+            persisted_book_format(source.format.as_str())?,
+            persisted_book_store(source.store.as_str())?,
             source.purchase_date,
             source.created_at,
             OffsetDateTime::now_utc(),
@@ -1040,6 +1040,7 @@ impl BookRepository for PgBookRepository {
 #[cfg(feature = "test-with-database")]
 #[cfg(test)]
 mod tests {
+    use crate::common::types::{BookFormat, BookStore};
 
     use crate::{
         domain::{
@@ -2077,5 +2078,50 @@ mod tests {
         assert!(matches!(error, DomainError::Validation(_)));
         manager.rollback(tx).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod decoding_tests {
+    use super::*;
+
+    fn row() -> BookRow {
+        BookRow {
+            id: Uuid::nil(),
+            title: "Stored book".into(),
+            author_ids: None,
+            isbn: "".into(),
+            read: false,
+            owned: true,
+            priority: 50,
+            format: "Printed".into(),
+            store: "Unknown".into(),
+            purchase_date: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    #[test]
+    fn current_book_rejects_corrupt_fields_as_internal_errors() {
+        for field in ["title", "isbn", "priority", "format", "store"] {
+            let mut row = row();
+            match field {
+                "title" => row.title.clear(),
+                "isbn" => row.isbn = "not-an-isbn".into(),
+                "priority" => row.priority = -1,
+                "format" => row.format = "private-format".into(),
+                "store" => row.store = "private-store".into(),
+                _ => unreachable!(),
+            }
+            assert!(
+                matches!(book_from_row(row), Err(DomainError::Unexpected(_))),
+                "{field}"
+            );
+        }
+        let book = book_from_row(row()).unwrap();
+        assert_eq!(book.title().as_str(), "Stored book");
+        assert_eq!(book.priority().to_i32(), 50);
+        assert!(book.author_ids().is_empty());
     }
 }

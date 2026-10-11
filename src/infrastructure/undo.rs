@@ -1,8 +1,9 @@
+use super::error::{classify_author_name_write_error, persisted_value};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::domain::{
-    entity::{operation::OperationId, user::UserId},
+    entity::{author::AuthorName, operation::OperationId, user::UserId},
     error::DomainError,
 };
 
@@ -209,6 +210,13 @@ async fn restore_author(
     change: &AuthorChange,
 ) -> Result<(), DomainError> {
     let source = change.before_revision_number.expect("filtered revision");
+    let name: String = sqlx::query_scalar(
+        "SELECT name FROM author_revision WHERE user_id = $1 AND author_id = $2 AND revision_number = $3",
+    )
+    .bind(user_id.as_str()).bind(change.author_id).bind(source)
+    .fetch_optional(&mut **tx).await?
+    .ok_or_else(|| DomainError::Unexpected("Undo source author revision is missing".to_owned()))?;
+    let name = persisted_value("author name", AuthorName::new(name))?;
     let next = next_author_revision(tx, user_id, change.author_id).await?;
     sqlx::query(
         "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
@@ -223,7 +231,8 @@ async fn restore_author(
     .bind(change.author_id)
     .bind(source)
     .execute(&mut **tx)
-    .await?;
+    .await
+    .map_err(|error| classify_author_name_write_error(error, name.as_str()))?;
     sqlx::query(
         "INSERT INTO author_revision (
            author_id, revision_number, user_id, name, yomi,

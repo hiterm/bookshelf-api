@@ -1,3 +1,4 @@
+use super::error::{classify_author_name_write_error, persisted_value};
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
@@ -41,20 +42,6 @@ struct BulkAuthorRow {
     yomi: String,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
-}
-
-const AUTHOR_NAME_UNIQUE_CONSTRAINT: &str = "author_user_id_name_unique";
-
-/// Maps the author-name uniqueness violation to a conflict and preserves other database errors.
-fn classify_author_name_write_error(error: sqlx::Error, name: &str) -> DomainError {
-    if let sqlx::Error::Database(database_error) = &error
-        && database_error.code().as_deref() == Some("23505")
-        && database_error.constraint() == Some(AUTHOR_NAME_UNIQUE_CONSTRAINT)
-    {
-        return DomainError::AuthorNameConflict(name.to_owned());
-    }
-
-    error.into()
 }
 
 #[derive(Debug, Clone)]
@@ -237,7 +224,8 @@ impl AuthorRepository for PgAuthorRepository {
                     |row: Result<AuthorRow, sqlx::Error>| -> Result<Author, DomainError> {
                         let row = row?;
                         let author_id = AuthorId::new(row.id);
-                        let author_name = AuthorName::new(row.name)?;
+                        let author_name =
+                            persisted_value("author name", AuthorName::new(row.name))?;
                         let author = Author::new_with_timestamps(
                             author_id,
                             author_name,
@@ -420,7 +408,7 @@ impl AuthorRepository for PgAuthorRepository {
         .await?;
         let author = Author::new_with_timestamps(
             author_id.clone(),
-            AuthorName::new(name)?,
+            persisted_value("author name", AuthorName::new(name))?,
             yomi,
             created_at,
             OffsetDateTime::now_utc(),
@@ -437,12 +425,11 @@ impl AuthorRepository for PgAuthorRepository {
         .fetch_one(tx.as_mut())
         .await?;
         if conflicting_author_exists {
-            return Err(DomainError::Validation(format!(
-                "author name '{}' is already in use",
-                author.name().as_str()
-            )));
+            return Err(DomainError::AuthorNameConflict(
+                author.name().as_str().to_owned(),
+            ));
         }
-        let upsert_result = sqlx::query(
+        sqlx::query(
             "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6)
              ON CONFLICT (id, user_id) DO UPDATE SET
@@ -456,16 +443,8 @@ impl AuthorRepository for PgAuthorRepository {
         .bind(author.created_at())
         .bind(author.updated_at())
         .execute(tx.as_mut())
-        .await;
-        if let Err(sqlx::Error::Database(error)) = &upsert_result
-            && error.constraint() == Some("author_user_id_name_unique")
-        {
-            return Err(DomainError::Validation(format!(
-                "author name '{}' is already in use",
-                author.name().as_str()
-            )));
-        }
-        upsert_result?;
+        .await
+        .map_err(|error| classify_author_name_write_error(error, author.name().as_str()))?;
         let revision_number = append_author_revision(tx, &author, before_revision_number).await?;
         Ok(RevisionMutationResult {
             entity: author,
@@ -494,7 +473,7 @@ impl AuthorRepository for PgAuthorRepository {
             |row: Result<AuthorRow, sqlx::Error>| -> Result<(AuthorId, Author), DomainError> {
                 let row = row?;
                 let author_id = AuthorId::new(row.id);
-                let author_name = AuthorName::new(row.name)?;
+                let author_name = persisted_value("author name", AuthorName::new(row.name))?;
                 let author = Author::new_with_timestamps(
                     author_id.clone(),
                     author_name,
@@ -535,7 +514,7 @@ where
 fn author_from_optional_row(row: Option<AuthorRow>) -> Result<Option<Author>, DomainError> {
     row.map(|row| -> Result<Author, DomainError> {
         let author_id: AuthorId = row.id.into();
-        let author_name = AuthorName::new(row.name)?;
+        let author_name = persisted_value("author name", AuthorName::new(row.name))?;
         Author::new_with_timestamps(
             author_id,
             author_name,
@@ -1250,7 +1229,7 @@ mod database_tests {
             .await?;
         let result = repository.restore_revision(&mut tx, &author_id, 1).await;
 
-        assert!(matches!(result, Err(DomainError::Validation(_))));
+        assert!(matches!(result, Err(DomainError::AuthorNameConflict(_))));
         manager.rollback(tx).await?;
         Ok(())
     }
@@ -1265,5 +1244,26 @@ mod tests {
     fn unknown_sqlx_error_remains_infrastructure_error() {
         let error = classify_author_name_write_error(sqlx::Error::RowNotFound, "author");
         assert!(matches!(error, DomainError::InfrastructureError(_)));
+    }
+}
+
+#[cfg(test)]
+mod decoding_tests {
+    use super::*;
+
+    #[test]
+    fn current_author_rejects_corrupt_name_as_internal_error() {
+        let row = AuthorRow {
+            id: Uuid::nil(),
+            name: "".into(),
+            yomi: "".into(),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        };
+        assert!(matches!(
+            author_from_optional_row(Some(row)),
+            Err(DomainError::Unexpected(_))
+        ));
+        assert!(author_from_optional_row(None).unwrap().is_none());
     }
 }

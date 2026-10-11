@@ -683,4 +683,108 @@ mod tests {
 
         Ok(())
     }
+    #[tokio::test]
+    async fn persisted_decode_failure_is_private_at_query_boundary() {
+        let marker = "private-stored-format";
+        let domain = crate::infrastructure::error::persisted_book_format(marker).unwrap_err();
+        let mut books = MockBookQueryUseCase::new();
+        books
+            .expect_find_by_id()
+            .with(predicate::eq("user1"), predicate::eq("book1"))
+            .times(1)
+            .return_once(move |_, _| Err(domain.into()));
+        let schema = build_schema(
+            Query::new(
+                MockUserQueryUseCase::new(),
+                books,
+                MockAuthorQueryUseCase::new(),
+                MockHistoryQueryUseCase::new(),
+            ),
+            mutation(),
+        );
+        let response = schema
+            .execute(
+                async_graphql::Request::from("{ book(id: \"book1\") { id } }").data(Claims {
+                    sub: "user1".into(),
+                    _permissions: None,
+                }),
+            )
+            .await;
+        assert_schema_error(
+            response,
+            "INTERNAL_ERROR",
+            serde_json::json!(["book"]),
+            "Internal server error",
+            Some(marker),
+        );
+    }
+    #[tokio::test]
+    async fn restore_and_undo_name_conflicts_have_typed_public_contract() {
+        for undo in [false, true] {
+            let mut authors = MockAuthorCommandUseCase::new();
+            let mut history = MockHistoryCommandUseCase::new();
+            let (document, field) = if undo {
+                history
+                    .expect_undo_operation()
+                    .with(predicate::eq("user1"), predicate::eq("operation1"))
+                    .times(1)
+                    .return_once(|_, _| {
+                        Err(crate::domain::error::DomainError::AuthorNameConflict(
+                            "Original".into(),
+                        )
+                        .into())
+                    });
+                (
+                    "mutation { undoOperation(operationId: \"operation1\") { operationId } }",
+                    "undoOperation",
+                )
+            } else {
+                authors
+                    .expect_restore()
+                    .with(
+                        predicate::eq("user1"),
+                        predicate::eq("author1"),
+                        predicate::eq(1),
+                    )
+                    .times(1)
+                    .return_once(|_, _, _| {
+                        Err(crate::domain::error::DomainError::AuthorNameConflict(
+                            "Original".into(),
+                        )
+                        .into())
+                    });
+                (
+                    "mutation { restoreAuthor(authorId: \"author1\", revisionNumber: 1) { operationId } }",
+                    "restoreAuthor",
+                )
+            };
+            let schema = build_schema(
+                query(),
+                Mutation::new(
+                    MockUserCommandUseCase::new(),
+                    MockBookCommandUseCase::new(),
+                    authors,
+                    history,
+                ),
+            );
+            let response = schema
+                .execute(async_graphql::Request::from(document).data(Claims {
+                    sub: "user1".into(),
+                    _permissions: None,
+                }))
+                .await;
+            let json = serde_json::to_value(&response).unwrap();
+            assert_eq!(
+                json["errors"][0]["extensions"]["reason"],
+                "AUTHOR_NAME_CONFLICT"
+            );
+            assert_schema_error(
+                response,
+                "CONFLICT",
+                serde_json::json!([field]),
+                "author name 'Original' is already in use",
+                None,
+            );
+        }
+    }
 }
