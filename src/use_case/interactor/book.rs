@@ -1805,14 +1805,8 @@ mod import_integration_tests {
     }
 
     #[sqlx::test]
-    async fn import_rolls_back_on_failure(pool: PgPool) -> anyhow::Result<()> {
-        // The interactor now generates fresh book UUIDs internally, so the
-        // old "duplicate book_id" trigger is no longer expressible. We instead
-        // force a mid-transaction DB failure by pre-inserting an author row
-        // whose primary key collides with one a freshly imported author would
-        // create is also impossible (ids are generated). The remaining
-        // deterministic failure is a validation error, which must occur BEFORE
-        // begin and therefore persist nothing — proving no partial writes.
+    async fn import_validation_failure_persists_nothing(pool: PgPool) -> anyhow::Result<()> {
+        // Invalid inputs are rejected before a transaction begins.
         let user_id = prepare_user(&pool, "user1").await?;
 
         let result = interactor(&pool)
@@ -1841,6 +1835,140 @@ mod import_integration_tests {
         assert_eq!(author_count, 0, "no author rows should be persisted");
 
         Ok(())
+    }
+
+    // Compare complete rows, including timestamps, relationships and history,
+    // so rollback cannot pass by preserving counts while changing existing data.
+    async fn import_state(pool: &PgPool) -> anyhow::Result<Vec<serde_json::Value>> {
+        let mut state = Vec::new();
+        for query in [
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM author t",
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book t",
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book_author t",
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM operation t",
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM author_revision t",
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book_revision t",
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book_revision_author t",
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM author_operation_change t",
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book_operation_change t",
+        ] {
+            state.push(sqlx::query_scalar(query).fetch_one(pool).await?);
+        }
+        Ok(state)
+    }
+
+    async fn assert_import_write_failure_rolls_back(
+        pool: &PgPool,
+        preview: bool,
+    ) -> anyhow::Result<()> {
+        let user_id = prepare_user(pool, "user1").await?;
+        let other_user = prepare_user(pool, "user2").await?;
+        for user in [&user_id, &other_user] {
+            interactor(pool)
+                .import(user.as_str(), vec![entry("Seed", vec!["Existing Author"])])
+                .await?;
+        }
+        let before = import_state(pool).await?;
+        assert!(
+            before
+                .iter()
+                .all(|rows| !rows.as_array().unwrap().is_empty())
+        );
+
+        // This trigger is installed only in sqlx's isolated test database.
+        // Fail at the final relationship write, after authors, books and their
+        // revisions/changes have been written in the same transaction.
+        sqlx::raw_sql(
+            "CREATE FUNCTION fail_import_revision_link() RETURNS trigger
+             LANGUAGE plpgsql AS $$
+             BEGIN
+               IF EXISTS (
+                 SELECT 1 FROM book
+                 WHERE user_id = NEW.user_id AND id = NEW.book_id
+                   AND title = 'Injected failure'
+               ) THEN
+                 IF NOT EXISTS (
+                   SELECT 1 FROM author a
+                   JOIN author_revision r ON r.user_id = a.user_id AND r.author_id = a.id
+                   JOIN author_operation_change c ON c.user_id = a.user_id AND c.author_id = a.id
+                   JOIN operation o ON o.id = c.operation_id AND o.user_id = a.user_id
+                   WHERE a.user_id = NEW.user_id AND a.name = 'New Author'
+                     AND o.type = 'import_books'
+                 ) OR NOT EXISTS (
+                   SELECT 1 FROM book_operation_change
+                   WHERE user_id = NEW.user_id AND book_id = NEW.book_id
+                 ) THEN
+                   RAISE EXCEPTION 'failure injection prerequisites missing';
+                 END IF;
+                 RAISE EXCEPTION 'injected import revision link failure';
+               END IF;
+               RETURN NEW;
+             END $$;
+             CREATE TRIGGER fail_import_revision_link
+             BEFORE INSERT ON book_revision_author
+             FOR EACH ROW EXECUTE FUNCTION fail_import_revision_link();",
+        )
+        .execute(pool)
+        .await?;
+
+        let inputs = vec![
+            entry("Valid companion", vec!["Existing Author"]),
+            entry("Injected failure", vec!["Existing Author", "New Author"]),
+        ];
+        let error = if preview {
+            interactor(pool)
+                .preview_import(user_id.as_str(), inputs)
+                .await
+                .err()
+        } else {
+            interactor(pool)
+                .import(user_id.as_str(), inputs)
+                .await
+                .err()
+        }
+        .expect("the injected database failure must reach the caller");
+        let crate::use_case::error::UseCaseError::Other(error) = error else {
+            panic!("expected a database failure, got {error:?}");
+        };
+        assert!(
+            format!("{error:#}").contains("injected import revision link failure"),
+            "failure must occur after the required writes: {error:#}"
+        );
+        assert_eq!(import_state(pool).await?, before);
+
+        sqlx::raw_sql(
+            "DROP TRIGGER fail_import_revision_link ON book_revision_author;
+             DROP FUNCTION fail_import_revision_link();",
+        )
+        .execute(pool)
+        .await?;
+        // A positive control proves the same inputs are valid and retry works.
+        let inputs = vec![
+            entry("Valid companion", vec!["Existing Author"]),
+            entry("Injected failure", vec!["Existing Author", "New Author"]),
+        ];
+        if preview {
+            let result = interactor(pool)
+                .preview_import(user_id.as_str(), inputs)
+                .await?;
+            assert_eq!(result.books.len(), 2);
+            assert_eq!(import_state(pool).await?, before);
+        } else {
+            let result = interactor(pool).import(user_id.as_str(), inputs).await?;
+            assert_eq!(result.value.len(), 2);
+            assert_ne!(import_state(pool).await?, before);
+        }
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn import_write_failure_rolls_back_all_state(pool: PgPool) -> anyhow::Result<()> {
+        assert_import_write_failure_rolls_back(&pool, false).await
+    }
+
+    #[sqlx::test]
+    async fn preview_write_failure_rolls_back_all_state(pool: PgPool) -> anyhow::Result<()> {
+        assert_import_write_failure_rolls_back(&pool, true).await
     }
 
     #[sqlx::test]
