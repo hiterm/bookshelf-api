@@ -19,6 +19,7 @@ pub struct PgUndoCommand {
 }
 
 impl PgUndoCommand {
+    /// Uses the supplied pool for each independently committed Undo transaction.
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -26,6 +27,7 @@ impl PgUndoCommand {
 
 #[async_trait]
 impl UndoCommand for PgUndoCommand {
+    /// Executes the complete PostgreSQL workflow and returns only after commit.
     async fn undo_operation(
         &self,
         user_id: &UserId,
@@ -49,6 +51,9 @@ struct AuthorChange {
     after_revision_number: Option<i32>,
 }
 
+/// Locks and revalidates the owned target in a SERIALIZABLE transaction, then
+/// applies inverse state and records all history before committing the new ID.
+/// Dropping an uncommitted transaction rolls back every write on failure.
 async fn undo_operation(
     pool: &PgPool,
     user_id: &UserId,

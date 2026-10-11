@@ -36,6 +36,7 @@ pub struct HistoryCommandInteractor<UC> {
 }
 
 impl<UC> HistoryCommandInteractor<UC> {
+    /// Creates a command interactor backed by one complete atomic Undo executor.
     pub fn new(command: UC) -> Self {
         Self { command }
     }
@@ -43,6 +44,8 @@ impl<UC> HistoryCommandInteractor<UC> {
 
 #[async_trait]
 impl<UC: UndoCommand> HistoryCommandUseCase for HistoryCommandInteractor<UC> {
+    /// Validates owner and target identifiers before executing Undo, preserving
+    /// domain failure categories and returning the new Operation ID as a string.
     async fn undo_operation(
         &self,
         user_id: &str,
@@ -343,6 +346,8 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Ensures command execution uses the authenticated owner and target, while
+    /// the response identifies the newly recorded Undo rather than its target.
     #[tokio::test]
     async fn undo_returns_the_new_operation_id() {
         let target_id = OperationId::from(Uuid::new_v4());
@@ -363,6 +368,7 @@ mod tests {
         assert_eq!(result, undo_id.to_string());
     }
 
+    /// Invalid owner or target inputs must fail before the atomic executor runs.
     #[tokio::test]
     async fn undo_rejects_invalid_inputs_before_command_execution() {
         use crate::use_case::error::UseCaseError;
@@ -379,6 +385,8 @@ mod tests {
         }
     }
 
+    /// Expected conflicts and missing targets retain their public categories;
+    /// database failures remain internal errors at the use-case boundary.
     #[tokio::test]
     async fn undo_preserves_command_failure_classification() {
         use crate::{domain::error::DomainError, use_case::error::UseCaseError};

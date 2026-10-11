@@ -16,6 +16,9 @@ use crate::domain::{
 #[automock]
 #[async_trait]
 pub trait UndoCommand: Send + Sync + 'static {
+    /// Undoes the owned target and returns the newly committed Operation ID.
+    ///
+    /// Rejects missing or no-longer-undoable targets without retaining any writes.
     async fn undo_operation(
         &self,
         user_id: &UserId,
