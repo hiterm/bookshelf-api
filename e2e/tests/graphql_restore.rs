@@ -108,3 +108,57 @@ async fn restore_rejects_invalid_or_missing_revision() -> Result<()> {
     }
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn restore_and_undo_author_name_conflicts_are_actionable_and_recoverable() -> Result<()> {
+    let (_, token) = create_test_user().await?;
+    let (id, revision, _) = create_test_author_with_event("Conflict Original", &token).await?;
+    let update = format!(
+        r#"mutation {{ updateAuthor(authorData: {{ id: "{id}", name: "Conflict Changed" }}) {{ operationId }} }}"#
+    );
+    let (_, response) = graphql_request(&update, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "rename before conflict");
+    let operation = response["data"]["updateAuthor"]["operationId"]
+        .as_str()
+        .context("update operation")?;
+    let blocking_id = create_test_author("Conflict Original", &token).await?;
+    let state_query = format!(
+        r#"{{ author(id: "{id}") {{ id name yomi createdAt updatedAt }} authors {{ id name yomi createdAt updatedAt }} authorRevisions(authorId: "{id}") {{ revisionNumber name yomi }} operations {{ id type }} }}"#
+    );
+    let (_, before) = graphql_request(&state_query, Some(&token)).await?;
+    assert_no_graphql_errors(&before, "state before conflict");
+    let restore = format!(
+        r#"mutation {{ restoreAuthor(authorId: "{id}", revisionNumber: {revision}) {{ operationId revisionNumber author {{ name }} }} }}"#
+    );
+    let undo =
+        format!(r#"mutation {{ undoOperation(operationId: "{operation}") {{ operationId }} }}"#);
+    for (request, field) in [(&restore, "restoreAuthor"), (&undo, "undoOperation")] {
+        let (_, response) = graphql_request(request, Some(&token)).await?;
+        assert_graphql_error(&response, "author name conflict", "CONFLICT", &[field]);
+        assert_eq!(
+            response["errors"][0]["extensions"]["reason"],
+            "AUTHOR_NAME_CONFLICT"
+        );
+        assert_eq!(
+            response["errors"][0]["message"],
+            "author name 'Conflict Original' is already in use"
+        );
+        let (_, after) = graphql_request(&state_query, Some(&token)).await?;
+        assert_no_graphql_errors(&after, "state after conflict");
+        assert_eq!(after["data"], before["data"]);
+    }
+    delete_test_author(&blocking_id, &token).await?;
+    // Undo succeeds once the name is available. Restore remains valid afterward.
+    let (_, response) = graphql_request(&undo, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "retry undo after resolving conflict");
+    let (_, response) = graphql_request(&restore, Some(&token)).await?;
+    assert_no_graphql_errors(&response, "retry restore after resolving conflict");
+    assert_eq!(
+        response["data"]["restoreAuthor"]["author"]["name"],
+        "Conflict Original"
+    );
+    assert_eq!(response["data"]["restoreAuthor"]["revisionNumber"], 4);
+    delete_test_author(&id, &token).await?;
+    Ok(())
+}

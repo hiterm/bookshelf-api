@@ -96,3 +96,18 @@ The system SHALL treat failures of existing validation rules when reconstructing
 #### Scenario: A client submits invalid input
 - **WHEN** client input fails the existing input validation rules
 - **THEN** its public error remains `VALIDATION_ERROR`
+
+### Requirement: Author-name conflicts use one public contract across write paths
+The system SHALL report recognized author-name collisions during create, update, restore, and Undo as `CONFLICT` with reason `AUTHOR_NAME_CONFLICT`. It SHALL retain transaction atomicity and infrastructure classification for unrelated constraints or unexpected SQL errors.
+
+#### Scenario: Restore collides with an existing author name
+- **WHEN** restoring an owned Author Revision would reuse another live author's name in the same tenant, including a collision detected by the database write after an earlier precheck
+- **THEN** restore reports the typed name conflict and commits no current-state or history changes
+
+#### Scenario: Undo would restore a name now in use
+- **WHEN** an otherwise eligible Undo would restore an Author name held by another live Author in the same tenant
+- **THEN** Undo reports the typed name conflict and rolls back every inverse write and history record, including earlier successful writes in that Undo
+
+#### Scenario: A conflicting name becomes available
+- **WHEN** the client resolves the name collision and explicitly resubmits an otherwise valid restore or Undo
+- **THEN** the operation succeeds with ordinary fresh revisions and history

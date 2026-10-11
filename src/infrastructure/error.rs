@@ -36,6 +36,20 @@ pub(crate) fn persisted_book_store(value: &str) -> Result<BookStore, DomainError
     )
 }
 
+const AUTHOR_NAME_UNIQUE_CONSTRAINT: &str = "author_user_id_name_unique";
+
+/// Maps the author-name uniqueness violation to a conflict and preserves other database errors.
+pub(crate) fn classify_author_name_write_error(error: sqlx::Error, name: &str) -> DomainError {
+    if let sqlx::Error::Database(database_error) = &error
+        && database_error.code().as_deref() == Some("23505")
+        && database_error.constraint() == Some(AUTHOR_NAME_UNIQUE_CONSTRAINT)
+    {
+        return DomainError::AuthorNameConflict(name.to_owned());
+    }
+
+    error.into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,5 +93,40 @@ mod tests {
         let error =
             persisted_value::<()>("field", Err(sqlx::Error::RowNotFound.into())).unwrap_err();
         assert!(matches!(error, DomainError::InfrastructureError(_)));
+    }
+}
+
+#[cfg(all(test, feature = "test-with-database"))]
+mod database_tests {
+    use super::*;
+    use sqlx::PgPool;
+
+    #[sqlx::test]
+    async fn constraint_classifier_requires_exact_constraint_and_sqlstate(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        sqlx::raw_sql("CREATE SCHEMA classifier; CREATE TABLE classifier.expected (name text CONSTRAINT author_user_id_name_unique UNIQUE); INSERT INTO classifier.expected VALUES ('A'); CREATE TABLE other_unique (name text CONSTRAINT another_unique UNIQUE); INSERT INTO other_unique VALUES ('A'); CREATE TABLE other_fk (name text CONSTRAINT another_fk REFERENCES classifier.expected(name)); CREATE TABLE wrong_state (name text CONSTRAINT author_user_id_name_unique CHECK (name <> 'A'));").execute(&pool).await?;
+        for (query, conflict) in [
+            ("INSERT INTO classifier.expected VALUES ('A')", true),
+            ("INSERT INTO other_unique VALUES ('A')", false),
+            ("INSERT INTO other_fk VALUES ('missing')", false),
+            ("INSERT INTO wrong_state VALUES ('A')", false),
+        ] {
+            let sql_error = sqlx::query(query).execute(&pool).await.unwrap_err();
+            let classified = classify_author_name_write_error(sql_error, "A");
+            if conflict {
+                assert!(matches!(classified, DomainError::AuthorNameConflict(name) if name == "A"));
+            } else {
+                let DomainError::InfrastructureError(cause) = classified else {
+                    panic!("unexpected classification: {classified:?}");
+                };
+                assert!(cause.downcast_ref::<sqlx::Error>().is_some());
+            }
+        }
+        assert!(matches!(
+            classify_author_name_write_error(sqlx::Error::RowNotFound, "A"),
+            DomainError::InfrastructureError(_)
+        ));
+        Ok(())
     }
 }

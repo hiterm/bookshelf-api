@@ -15,9 +15,9 @@ Users should receive the same actionable error when an author name is already us
   - [x] plan updated
 - [x] (2026-10-11 JST) Milestone 1: Implement persisted-value decoding with unit and database regressions; update the active error specification.
   - [x] plan updated
-- [ ] Milestone 2: Share author-name constraint classification across writes, restore, and Undo; prove conflict rollback and HTTP behavior.
-  - [ ] plan updated
-- [ ] Milestone 3: Complete required checks, compatibility review, and reviewable delivery when implementation is authorized again.
+- [x] (2026-10-11 JST) Milestone 2: Share author-name constraint classification across writes, restore, and Undo; prove conflict rollback and HTTP behavior.
+  - [x] plan updated
+- [ ] Milestone 3: Complete reviewable delivery and CodeRabbit review/response.
   - [ ] plan updated
 
 ## Surprises & Discoveries
@@ -49,7 +49,7 @@ Historical decision: Stop after saving this plan. Rationale: the user's latest i
 ## Outcomes & Retrospective
 
 
-Planning is complete. The design identifies two intentional public code changes, existing reusable error types, persistence conversion boundaries, and tests that distinguish valid input from stored-data corruption and verify rollback. Source changes and test execution have not started. The plan itself does not establish that R3 is implemented or that a frontend release is required.
+Implementation and local verification are complete. The typed author-name conflict is shared across all four write paths; stored-data validation is separated from input validation. Mandatory fmt/clippy/tests passed (188 unit tests). The database-feature suite passed 250 library tests with one pre-existing ignored test, five atomic-save tests, three new conflict/rollback tests, and one new persisted-read test. Feature-enabled clippy passed. HTTP targeted tests passed nine cases and full API E2E passed 53 cases. Regenerating schema.graphql produced no diff. Four decoding regressions and three conflict regressions failed on the original baseline as expected. PR publication and CodeRabbit review/response remain pending.
 
 ## Context and Orientation
 
@@ -147,7 +147,7 @@ No migration, data rewrite, stricter validation rule, or transaction isolation c
 ## Artifacts and Notes
 
 
-Plan location: `.agent/plans/20261011-persistence-error-contract.md`. Baseline: `5a123a1909f97f43a8e67ea2daaacfc784468026`. Branch: `codex/persistence-error-contract`. Planning evidence is static source inspection; no implementation tests have run. Append exact validation results, PR URL, and known limitations during future milestones. The review copy supplied to the user is a snapshot; the repository file is authoritative when implementation resumes.
+Plan location: `.agent/plans/20261011-persistence-error-contract.md`. Baseline: `5a123a1909f97f43a8e67ea2daaacfc784468026`. Branch: `codex/persistence-error-contract`. Implementation evidence is recorded in Outcomes & Retrospective and scratch logs under `/workspace/work/r3/`. Append exact validation results, PR URL, and known limitations during future milestones. The review copy supplied to the user is a snapshot; the repository file is authoritative when implementation resumes.
 
 ## Interfaces and Dependencies
 
@@ -159,3 +159,5 @@ Revision note (2026-10-11 JST): initialized after the user narrowed work to plan
 Revision note (2026-10-11 JST): implementation, PR creation, and CodeRabbit review/response are now authorized; the earlier planning-only pause no longer applies.
 
 Revision note (2026-10-11 JST): milestone 1 implements current/history/restore/backup decoding and owner/revision reconstruction. fmt, clippy, 187 unit tests, and the complete database-feature suite passed; separate baseline regression verification remains running. User repository owner reconstruction also uses the shared decoder.
+
+Revision note (2026-10-11 JST): milestone 2 completes author-name constraint classification, actual post-precheck constraint injection, multi-author Undo rollback, resolver contracts, and combined restore/Undo HTTP conflict/recovery. A combined E2E in graphql_restore.rs exercises both endpoints instead of duplicating fixtures across two files. SQL classifier tests use a separate schema because named unique constraints create schema-scoped indexes. All verification counts above are actual current results; baseline regressions were independently demonstrated.
