@@ -22,7 +22,7 @@ operation ID, and observe fresh history or the existing conflict response.
 
 - [x] (2026-10-11) Review follow-up: document touched command functions; fmt, clippy and 190 unit tests passed.
 - [x] Review follow-up plan updated.
-- [ ] Confirm incremental CodeRabbit review and record its docstring check result.
+- [ ] Confirm incremental CodeRabbit docstring coverage (blocked by included OSS review limit; retry after reset).
 
 ## Surprises & Discoveries
 
@@ -179,3 +179,9 @@ Revision note (2026-10-11): documentation-only Rust changes passed all mandatory
 checks. An initial sandbox test run could not bind local JWKS HTTP sockets;
 rerunning the same checks with socket access passed all 190 tests. Existing
 CI, E2E, actionlint and zizmor passed on e7d3d56. Incremental review is pending.
+
+Revision note (2026-10-11): pushed a9f460a and requested incremental review.
+CodeRabbit refused the request because its included OSS review limit was used,
+reporting the next allowance in about 55 minutes. The earlier e7d3d56 approval
+stands; additional comment-only changes are locally verified but coverage-check
+resolution is NOT confirmed. Issue #367 records this exact distinction.
