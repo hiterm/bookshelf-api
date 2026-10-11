@@ -167,3 +167,30 @@ async fn restore_classifies_write_collision_after_precheck(pool: PgPool) -> anyh
     assert_eq!(state(&pool).await?, before);
     Ok(())
 }
+
+#[sqlx::test]
+async fn undo_corrupt_author_name_rolls_back_earlier_inverse_and_history(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (operation, ids) = setup(&pool, true).await?;
+    sqlx::query("UPDATE author_revision SET name='' WHERE user_id='owner' AND author_id=$1 AND revision_number=1")
+        .bind(ids[1]).execute(&pool).await?;
+    let owner = UserId::new("owner".into())?;
+    let history = PgHistoryRepository::new(pool.clone());
+    let before = state(&pool).await?;
+    assert!(matches!(
+        history.undo_operation(&owner, &operation).await,
+        Err(DomainError::Unexpected(_))
+    ));
+    assert_eq!(state(&pool).await?, before);
+    sqlx::query("UPDATE author_revision SET name='Recovered' WHERE user_id='owner' AND author_id=$1 AND revision_number=1")
+        .bind(ids[1]).execute(&pool).await?;
+    history.undo_operation(&owner, &operation).await?;
+    let name: String =
+        sqlx::query_scalar("SELECT name FROM author WHERE user_id='owner' AND id=$1")
+            .bind(ids[1])
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(name, "Recovered");
+    Ok(())
+}
