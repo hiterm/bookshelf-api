@@ -2,13 +2,16 @@
 
 use bookshelf_api::{
     domain::{
-        entity::{book::BookId, revision::RevisionNumber, user::UserId},
+        entity::{book::BookId, operation::NewOperation, revision::RevisionNumber, user::UserId},
         error::DomainError,
-        repository::{book_repository::BookRepository, history_repository::HistoryRepository},
+        repository::{
+            book_repository::BookRepository, history_repository::HistoryRepository,
+            transaction::TransactionManager,
+        },
     },
     infrastructure::{
         backup::PgBackupQuery, book_repository::PgBookRepository,
-        history_repository::PgHistoryRepository,
+        history_repository::PgHistoryRepository, transaction::PgTransactionManager,
     },
     use_case::port::backup::BackupQueryPort,
 };
@@ -75,6 +78,33 @@ async fn corrupt_enum_is_internal_in_current_history_and_backup_reads(
             backup.full(&owner).await,
             Err(DomainError::Unexpected(_))
         ));
+        // Restore must reject the corrupted source without changing current state or history.
+        let before = stored_state(&pool).await?;
+        let manager = PgTransactionManager::new(pool.clone());
+        let mut tx = manager
+            .begin_operation(&owner, &NewOperation::restore_book(1))
+            .await?;
+        assert!(matches!(
+            repository.restore_revision(&mut tx, &book, 1).await,
+            Err(DomainError::Unexpected(_))
+        ));
+        manager.rollback(tx).await?;
+        assert_eq!(stored_state(&pool).await?, before);
     }
     Ok(())
+}
+
+async fn stored_state(pool: &PgPool) -> anyhow::Result<Vec<serde_json::Value>> {
+    let mut result = Vec::new();
+    for query in [
+        "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book t WHERE user_id='decode-owner'",
+        "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book_revision t WHERE user_id='decode-owner'",
+        "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM operation t WHERE user_id='decode-owner'",
+        "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book_operation_change t WHERE user_id='decode-owner'",
+        "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book_author t WHERE user_id='decode-owner'",
+        "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM book_revision_author t WHERE user_id='decode-owner'",
+    ] {
+        result.push(sqlx::query_scalar(query).fetch_one(pool).await?);
+    }
+    Ok(result)
 }
