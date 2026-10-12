@@ -1,6 +1,12 @@
 use async_trait::async_trait;
 
-use super::error::{classify_author_name_write_error, persisted_value};
+use super::{
+    error::persisted_value,
+    history_recording::{
+        insert_author_change, insert_book_change, record_author_revision, record_book_revision,
+    },
+    revision_restoration::{restore_author_current, restore_book_current},
+};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -250,46 +256,16 @@ async fn restore_author(
     .fetch_optional(&mut **tx).await?
     .ok_or_else(|| DomainError::Unexpected("Undo source author revision is missing".to_owned()))?;
     let name = persisted_value("author name", AuthorName::new(name))?;
-    let next = next_author_revision(tx, user_id, change.author_id).await?;
-    sqlx::query(
-        "INSERT INTO author (id, user_id, name, yomi, created_at, updated_at)
-         SELECT author_id, user_id, name, yomi, author_created_at, current_timestamp
-         FROM author_revision
-         WHERE user_id = $1 AND author_id = $2 AND revision_number = $3
-         ON CONFLICT (id, user_id) DO UPDATE
-         SET name = EXCLUDED.name, yomi = EXCLUDED.yomi,
-             created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at",
-    )
-    .bind(user_id.as_str())
-    .bind(change.author_id)
-    .bind(source)
-    .execute(&mut **tx)
-    .await
-    .map_err(|error| classify_author_name_write_error(error, name.as_str()))?;
-    sqlx::query(
-        "INSERT INTO author_revision (
-           author_id, revision_number, user_id, name, yomi,
-           author_created_at, author_updated_at
-         ) SELECT author_id, $4, user_id, name, yomi,
-                  author_created_at, current_timestamp
-           FROM author_revision
-           WHERE user_id = $1 AND author_id = $2 AND revision_number = $3",
-    )
-    .bind(user_id.as_str())
-    .bind(change.author_id)
-    .bind(source)
-    .bind(next)
-    .execute(&mut **tx)
-    .await?;
-    insert_author_change(
+    restore_author_current(tx, user_id, change.author_id, source, name.as_str(), None).await?;
+    record_author_revision(
         tx,
         user_id,
         undo_id,
         change.author_id,
         change.after_revision_number,
-        Some(next),
     )
-    .await
+    .await?;
+    Ok(())
 }
 
 async fn restore_book(
@@ -318,77 +294,16 @@ async fn restore_book(
             "book revision references missing author {author_id}"
         )));
     }
-    let next = next_book_revision(tx, user_id, change.book_id).await?;
-    sqlx::query(
-        "INSERT INTO book (
-           id, user_id, title, isbn, read, owned, priority, format, store, purchase_date,
-           created_at, updated_at
-         ) SELECT book_id, user_id, title, isbn, read, owned, priority, format,
-                  store, purchase_date, book_created_at, current_timestamp
-           FROM book_revision
-           WHERE user_id = $1 AND book_id = $2 AND revision_number = $3
-         ON CONFLICT (id, user_id) DO UPDATE
-         SET title = EXCLUDED.title, isbn = EXCLUDED.isbn, read = EXCLUDED.read,
-             owned = EXCLUDED.owned, priority = EXCLUDED.priority,
-             format = EXCLUDED.format, store = EXCLUDED.store,
-             purchase_date = EXCLUDED.purchase_date,
-             created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at",
-    )
-    .bind(user_id.as_str())
-    .bind(change.book_id)
-    .bind(source)
-    .execute(&mut **tx)
-    .await?;
-    sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
-        .bind(user_id.as_str())
-        .bind(change.book_id)
-        .execute(&mut **tx)
-        .await?;
-    sqlx::query(
-        "INSERT INTO book_author (user_id, book_id, author_id)
-         SELECT user_id, book_id, author_id FROM book_revision_author
-         WHERE user_id = $1 AND book_id = $2 AND revision_number = $3",
-    )
-    .bind(user_id.as_str())
-    .bind(change.book_id)
-    .bind(source)
-    .execute(&mut **tx)
-    .await?;
-    sqlx::query(
-        "INSERT INTO book_revision (
-           book_id, revision_number, user_id, title, isbn, read, owned,
-           priority, format, store, purchase_date, book_created_at, book_updated_at
-         ) SELECT book_id, $4, user_id, title, isbn, read, owned, priority,
-                  format, store, purchase_date, book_created_at, current_timestamp
-           FROM book_revision
-           WHERE user_id = $1 AND book_id = $2 AND revision_number = $3",
-    )
-    .bind(user_id.as_str())
-    .bind(change.book_id)
-    .bind(source)
-    .bind(next)
-    .execute(&mut **tx)
-    .await?;
-    sqlx::query(
-        "INSERT INTO book_revision_author (user_id, book_id, revision_number, author_id)
-         SELECT user_id, book_id, $4, author_id FROM book_revision_author
-         WHERE user_id = $1 AND book_id = $2 AND revision_number = $3",
-    )
-    .bind(user_id.as_str())
-    .bind(change.book_id)
-    .bind(source)
-    .bind(next)
-    .execute(&mut **tx)
-    .await?;
-    insert_book_change(
+    restore_book_current(tx, user_id, change.book_id, source, None).await?;
+    record_book_revision(
         tx,
         user_id,
         undo_id,
         change.book_id,
         change.after_revision_number,
-        Some(next),
     )
-    .await
+    .await?;
+    Ok(())
 }
 
 async fn delete_book(
@@ -438,62 +353,6 @@ async fn delete_author(
         None,
     )
     .await
-}
-
-async fn next_book_revision(
-    tx: &mut Transaction<'_, Postgres>,
-    user_id: &UserId,
-    id: Uuid,
-) -> Result<i32, DomainError> {
-    Ok(sqlx::query_scalar(
-        "SELECT COALESCE(MAX(revision_number), 0) + 1
-         FROM book_revision WHERE user_id = $1 AND book_id = $2",
-    )
-    .bind(user_id.as_str())
-    .bind(id)
-    .fetch_one(&mut **tx)
-    .await?)
-}
-
-async fn next_author_revision(
-    tx: &mut Transaction<'_, Postgres>,
-    user_id: &UserId,
-    id: Uuid,
-) -> Result<i32, DomainError> {
-    Ok(sqlx::query_scalar(
-        "SELECT COALESCE(MAX(revision_number), 0) + 1
-         FROM author_revision WHERE user_id = $1 AND author_id = $2",
-    )
-    .bind(user_id.as_str())
-    .bind(id)
-    .fetch_one(&mut **tx)
-    .await?)
-}
-
-async fn insert_book_change(
-    tx: &mut Transaction<'_, Postgres>,
-    user_id: &UserId,
-    undo_id: &OperationId,
-    id: Uuid,
-    before: Option<i32>,
-    after: Option<i32>,
-) -> Result<(), DomainError> {
-    sqlx::query("INSERT INTO book_operation_change (operation_id, user_id, book_id, before_revision_number, after_revision_number) VALUES ($1, $2, $3, $4, $5)")
-        .bind(undo_id.to_uuid()).bind(user_id.as_str()).bind(id).bind(before).bind(after).execute(&mut **tx).await?;
-    Ok(())
-}
-
-async fn insert_author_change(
-    tx: &mut Transaction<'_, Postgres>,
-    user_id: &UserId,
-    undo_id: &OperationId,
-    id: Uuid,
-    before: Option<i32>,
-    after: Option<i32>,
-) -> Result<(), DomainError> {
-    sqlx::query("INSERT INTO author_operation_change (operation_id, user_id, author_id, before_revision_number, after_revision_number) VALUES ($1, $2, $3, $4, $5)")
-        .bind(undo_id.to_uuid()).bind(user_id.as_str()).bind(id).bind(before).bind(after).execute(&mut **tx).await?;
-    Ok(())
 }
 
 #[cfg(all(test, feature = "test-with-database"))]

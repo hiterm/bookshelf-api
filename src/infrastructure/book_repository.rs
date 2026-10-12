@@ -22,6 +22,7 @@ use crate::{
         history_recording::{
             append_book_deletion, append_book_revision, latest_book_revision_number,
         },
+        revision_restoration::restore_book_current,
         transaction::PgTransaction,
     },
 };
@@ -199,7 +200,7 @@ impl BookRepository for PgBookRepository {
         .execute(tx.as_mut())
         .await?;
 
-        let revision_number = append_book_revision(tx, book, None).await?;
+        let revision_number = append_book_revision(tx, book.id().to_uuid(), None).await?;
         Ok(revision_number)
     }
 
@@ -638,7 +639,8 @@ impl BookRepository for PgBookRepository {
         .execute(tx.as_mut())
         .await?;
 
-        let revision_number = append_book_revision(tx, book, Some(before_revision_number)).await?;
+        let revision_number =
+            append_book_revision(tx, book.id().to_uuid(), Some(before_revision_number)).await?;
         Ok(revision_number)
     }
 
@@ -987,49 +989,16 @@ impl BookRepository for PgBookRepository {
             source.created_at,
             OffsetDateTime::now_utc(),
         )?;
-        let author_ids: Vec<_> = book.author_ids().iter().map(AuthorId::to_uuid).collect();
-        sqlx::query(
-            "INSERT INTO book (id, user_id, title, isbn, read, owned, priority,
-                               format, store, purchase_date, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-             ON CONFLICT (id, user_id) DO UPDATE SET
-               title = EXCLUDED.title, isbn = EXCLUDED.isbn, read = EXCLUDED.read,
-               owned = EXCLUDED.owned, priority = EXCLUDED.priority,
-               format = EXCLUDED.format, store = EXCLUDED.store,
-               purchase_date = EXCLUDED.purchase_date,
-               created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at",
+        restore_book_current(
+            tx.as_mut(),
+            &user_id,
+            book.id().to_uuid(),
+            revision_number,
+            Some(*book.updated_at()),
         )
-        .bind(book.id().to_uuid())
-        .bind(user_id.as_str())
-        .bind(book.title().as_str())
-        .bind(book.isbn().as_str())
-        .bind(book.read().to_bool())
-        .bind(book.owned().to_bool())
-        .bind(book.priority().to_i32())
-        .bind(book.format().to_string())
-        .bind(book.store().to_string())
-        .bind(book.purchase_date())
-        .bind(book.created_at())
-        .bind(book.updated_at())
-        .execute(tx.as_mut())
         .await?;
-        sqlx::query("DELETE FROM book_author WHERE user_id = $1 AND book_id = $2")
-            .bind(user_id.as_str())
-            .bind(book.id().to_uuid())
-            .execute(tx.as_mut())
-            .await?;
-        if !author_ids.is_empty() {
-            sqlx::query(
-                "INSERT INTO book_author (user_id, book_id, author_id)
-                 SELECT $1, $2, author_id FROM UNNEST($3::uuid[]) input(author_id)",
-            )
-            .bind(user_id.as_str())
-            .bind(book.id().to_uuid())
-            .bind(&author_ids)
-            .execute(tx.as_mut())
-            .await?;
-        }
-        let revision_number = append_book_revision(tx, &book, before_revision_number).await?;
+        let revision_number =
+            append_book_revision(tx, book.id().to_uuid(), before_revision_number).await?;
         Ok(RevisionMutationResult {
             entity: book,
             revision_number,
