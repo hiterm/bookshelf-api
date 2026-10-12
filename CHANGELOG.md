@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.17.7](https://github.com/hiterm/bookshelf-api/compare/2.17.6...2.17.7) - 2026-10-12
+
+### Other Changes
+- Test import and preview rollback after database writes by @hiterm in https://github.com/hiterm/bookshelf-api/pull/373
+- Normalize persisted errors and author restore conflicts by @hiterm in https://github.com/hiterm/bookshelf-api/pull/375
+- Separate Undo commands from history reads by @hiterm in https://github.com/hiterm/bookshelf-api/pull/376
+- Test Undo eligibility and execution contract by @hiterm in https://github.com/hiterm/bookshelf-api/pull/377
+- Share restoration and revision recording by @hiterm in https://github.com/hiterm/bookshelf-api/pull/378
+
 ## [2.17.6](https://github.com/hiterm/bookshelf-api/compare/2.17.5...2.17.6) - 2026-10-09
 
 ### Other Changes
