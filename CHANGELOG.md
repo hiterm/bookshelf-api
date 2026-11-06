@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.17.8](https://github.com/hiterm/bookshelf-api/compare/2.17.7...2.17.8) - 2026-11-06
+
+### Other Changes
+- Update cargo non-major by @renovate[bot] in https://github.com/hiterm/bookshelf-api/pull/307
+
 ## [2.17.7](https://github.com/hiterm/bookshelf-api/compare/2.17.6...2.17.7) - 2026-10-12
 
 ### Other Changes
