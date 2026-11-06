@@ -99,7 +99,7 @@ jobs:
           package_json_file: bookshelf-src/package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "26"
           cache: "pnpm"
           cache-dependency-path: bookshelf-src/pnpm-lock.yaml
       - uses: ./.github/actions/setup-rust-toolchain
